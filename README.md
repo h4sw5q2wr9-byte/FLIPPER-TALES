@@ -10,9 +10,9 @@ NFC, RFID, Infrared, iButton, BadUSB, GPIO, U2F, BLE**.
 > radios, NFC, IR or USB hardware, and never transmits anything. It reads and writes nothing but its
 > own save file.
 
-> **Status: Milestone 1 in progress.** The combat core is implemented and
-> host-tested; the Flipper front-end is not written yet. See
-> [`docs/DESIGN.md`](docs/DESIGN.md).
+> **Status: Milestone 1 playable.** Combat core, battle screen and input are
+> implemented and the `.fap` builds against official firmware. Not yet run on
+> real hardware. See [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## What it is
 
@@ -57,9 +57,21 @@ make -C test sim     # headless balance simulation
 ## Layout
 
 ```
-src/core/    pure C99 game logic — host-testable
-src/app/     Furi / Canvas / input / storage
-assets/      1-bit sprites (XBM), app icon
+src/core/    pure C99 game logic — host-testable, no Flipper headers
+src/app/     Furi / Canvas / input — rendering and glue only
+assets/      app icon (1-bit PNG)
 test/        host unit tests + battle simulator
 docs/        design bible and research notes
 ```
+
+## Controls
+
+| Button | Action |
+|---|---|
+| ← / → | choose a module |
+| OK | confirm; then time the action command, and time your guard |
+| Back | quit |
+
+Tap OK in the last **150 ms** before an attack lands to **jam** it (half damage,
+payload nullified). Tap in the last **50 ms** to **capture** it — zero damage,
+and the attack is stored in your Signal Library.

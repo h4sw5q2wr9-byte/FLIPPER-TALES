@@ -14,6 +14,7 @@
 #define FT_TYPES_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* ---- Stat limits (DESIGN.md 4.1) ------------------------------------- */
@@ -122,5 +123,24 @@ typedef enum {
     FT_PAYLOAD_STALL,    /* may lose the turn */
     FT_PAYLOAD_COUNT
 } FtPayload;
+
+/* ---- Input timing windows (DESIGN.md 4.4) ---------------------------- */
+
+/* Measured backwards from the impact frame. Hard Mode halves both. */
+#define FT_JAM_WINDOW_MS     150
+#define FT_CAPTURE_WINDOW_MS 50
+
+/* Action command: tolerance around the perfect moment, per rating band. */
+#define FT_BAND_EXCELLENT_MS 30
+#define FT_BAND_GREAT_MS     60
+#define FT_BAND_GOOD_MS      100
+#define FT_BAND_NICE_MS      160
+
+/* ---- Battle pacing --------------------------------------------------- */
+
+#define FT_ACTION_WINDOW_MS    900  /* action command bar sweep */
+#define FT_TELEGRAPH_MS       1100  /* enemy wind-up before impact */
+#define FT_IMPACT_HOLD_MS      450  /* result popup lingers */
+#define FT_OUTCOME_HOLD_MS    1400  /* win/lose banner */
 
 #endif /* FT_TYPES_H */

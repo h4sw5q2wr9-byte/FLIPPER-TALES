@@ -143,6 +143,15 @@ Measured backwards from the impact frame. Tunable constants:
 | Jam window | 150 ms | 75 ms |
 | Capture window | innermost 50 ms | innermost 25 ms |
 
+The app polls at 50 Hz (20 ms), which resolves the 50 ms capture window to
+roughly two or three frames. These are the numbers most likely to need changing
+once the game is played on hardware — they are constants in `ft_types.h` for
+exactly that reason.
+
+Action commands use the same mechanism, graded by distance from the perfect
+moment: ≤30 ms EXCELLENT, ≤60 ms AMAZING, ≤100 ms GREAT, ≤160 ms GOOD, else a
+miss. Early and late are punished identically.
+
 ### 4.5 Attack classes and Capture
 
 Every enemy attack has a class, which determines what you can do about it:
@@ -247,7 +256,20 @@ The headless simulator runs thousands of fights for balance tuning without touch
 
 ## 7. Milestones
 
-### M1 — Combat vertical slice *(current)*
+### M1 — Combat vertical slice *(in progress)*
+
+Implemented: the whole of `src/core` (damage, rolling Charge, Signal meter and
+Library, priority table, progression, the battle state machine and its timing
+windows), plus `src/app` — the 128×64 battle screen, input handling and a
+building `.fap` (13 KB, 6 KB text, 0 bss against a ~60–100 KB budget).
+
+**Known gap:** the phase machine resolves the player before the enemy and does
+not yet consult `ft_priority`, so the `FAST` attribute has no observable effect.
+Ordering only matters once more than one enemy shares the board, which arrives
+with M2.
+
+Still to do: the module install/loadout screen, sound, and persistence.
+
 
 One battle screen. Three enemies — plain, `AIRBORNE`, `ENCRYPTED` — to prove the attribute locks.
 Sub-GHz + NFC. ~8 modules. The full stack: action commands, jam/capture/undodgeable, the Signal

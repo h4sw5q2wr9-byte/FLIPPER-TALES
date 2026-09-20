@@ -5,6 +5,7 @@
 
 #include "ft_combat.h"
 #include "ft_data.h"
+#include "ft_encounter.h"
 #include "ft_priority.h"
 #include "ft_progress.h"
 #include "ft_rng.h"
@@ -575,6 +576,187 @@ static void test_rng(void) {
     CHECK(ft_rng_chance(&r, 100), "100%% always fires");
 }
 
+
+static void test_guard_timing(void) {
+    section("guard windows (DESIGN 4.4)");
+
+    /* Innermost 50 ms captures. */
+    CHECK_EQ(ft_guard_from_timing(0, false), FT_GUARD_CAPTURE);
+    CHECK_EQ(ft_guard_from_timing(50, false), FT_GUARD_CAPTURE);
+
+    /* Out to 150 ms jams. */
+    CHECK_EQ(ft_guard_from_timing(51, false), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(150, false), FT_GUARD_JAM);
+
+    /* Earlier than that has lapsed by the time the hit lands. */
+    CHECK_EQ(ft_guard_from_timing(151, false), FT_GUARD_NONE);
+    CHECK_EQ(ft_guard_from_timing(5000, false), FT_GUARD_NONE);
+
+    /* A press after impact is late, not a guard. */
+    CHECK_EQ(ft_guard_from_timing(-1, false), FT_GUARD_NONE);
+
+    /* Hard Mode halves both windows. */
+    CHECK_EQ(ft_guard_from_timing(25, true), FT_GUARD_CAPTURE);
+    CHECK_EQ(ft_guard_from_timing(26, true), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(75, true), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(76, true), FT_GUARD_NONE);
+
+    /* What was a capture on normal is only a jam on Hard Mode. */
+    CHECK_EQ(ft_guard_from_timing(40, false), FT_GUARD_CAPTURE);
+    CHECK_EQ(ft_guard_from_timing(40, true), FT_GUARD_JAM);
+}
+
+static void test_rating_timing(void) {
+    section("action command bands");
+
+    CHECK_EQ(ft_rating_from_timing(0), FT_RATING_EXCELLENT);
+    CHECK_EQ(ft_rating_from_timing(30), FT_RATING_EXCELLENT);
+    CHECK_EQ(ft_rating_from_timing(31), FT_RATING_AMAZING);
+    CHECK_EQ(ft_rating_from_timing(60), FT_RATING_AMAZING);
+    CHECK_EQ(ft_rating_from_timing(100), FT_RATING_GREAT);
+    CHECK_EQ(ft_rating_from_timing(160), FT_RATING_GOOD);
+    CHECK_EQ(ft_rating_from_timing(161), FT_RATING_MISS);
+
+    /* Early and late are punished identically. */
+    for(int32_t d = 0; d <= 300; d += 7) {
+        CHECK_EQ(ft_rating_from_timing(d), ft_rating_from_timing(-d));
+    }
+}
+
+static void test_encounter(void) {
+    section("encounter state machine");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    FtEncounter e;
+    ft_encounter_init(&e, FT_ENEMY_STRAY_PACKET, &lo, 7);
+
+    CHECK_EQ(e.phase, FT_PHASE_MENU);
+    CHECK_EQ(e.enemy_charge, FT_ENEMIES[FT_ENEMY_STRAY_PACKET].charge);
+    CHECK(!ft_encounter_over(&e), "a fresh encounter is not over");
+    CHECK(ft_encounter_incoming(&e) == NULL, "nothing incoming during the menu");
+
+    /* The menu wraps in both directions. */
+    ft_encounter_menu_move(&e, -1);
+    CHECK_EQ(e.menu_index, FT_ACTION_COUNT - 1);
+    ft_encounter_menu_move(&e, 1);
+    CHECK_EQ(e.menu_index, 0);
+
+    /* Thinking must never cost Charge: the roll is paused in the menu. */
+    e.roll.target = 0;
+    const int16_t before = e.roll.current;
+    ft_encounter_tick(&e, 10000);
+    CHECK_EQ(e.roll.current, before);
+    CHECK_EQ(e.phase, FT_PHASE_MENU);
+
+    /* Attribute locks are surfaced as unavailable menu entries. */
+    FtEncounter beacon;
+    ft_encounter_init(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 1);
+    CHECK(ft_encounter_action_available(&beacon, FT_ACTION_BROADCAST), "broadcast reaches AIRBORNE");
+    CHECK(!ft_encounter_action_available(&beacon, FT_ACTION_CONTACT), "contact cannot reach AIRBORNE");
+    CHECK(ft_encounter_action_available(&beacon, FT_ACTION_DEFEND), "Defend is always available");
+
+    FtEncounter lock;
+    ft_encounter_init(&lock, FT_ENEMY_SEALED_LOCK, &lo, 1);
+    CHECK(!ft_encounter_action_available(&lock, FT_ACTION_BROADCAST), "broadcast is refused by ENCRYPTED");
+    CHECK(ft_encounter_action_available(&lock, FT_ACTION_CONTACT), "contact works on ENCRYPTED");
+
+    /* Confirming an unavailable action does nothing at all. */
+    beacon.menu_index = FT_ACTION_CONTACT;
+    ft_encounter_press_ok(&beacon);
+    CHECK_EQ(beacon.phase, FT_PHASE_MENU);
+
+    /* A perfectly timed action command earns the top rating. */
+    FtEncounter fight;
+    ft_encounter_init(&fight, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    fight.menu_index = FT_ACTION_CONTACT;
+    ft_encounter_press_ok(&fight);
+    CHECK_EQ(fight.phase, FT_PHASE_PLAYER_ACT);
+
+    ft_encounter_tick(&fight, FT_ACTION_WINDOW_MS / 2);
+    ft_encounter_press_ok(&fight);
+
+    /* Mashing must not improve on the first press. */
+    const uint32_t recorded = fight.action_press_ms;
+    ft_encounter_tick(&fight, 50);
+    ft_encounter_press_ok(&fight);
+    CHECK_EQ(fight.action_press_ms, recorded);
+
+    ft_encounter_tick(&fight, FT_ACTION_WINDOW_MS);
+    CHECK_EQ(fight.phase, FT_PHASE_RESULT);
+    CHECK_EQ(fight.last_rating, FT_RATING_EXCELLENT);
+    CHECK(fight.last_player_hit.damage > 0, "a perfect contact hit should land damage");
+
+    /* Focus feeds the Signal meter without an action command. */
+    FtEncounter focus;
+    ft_encounter_init(&focus, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    const int16_t sig_before = focus.signal.value;
+    focus.menu_index = FT_ACTION_FOCUS;
+    ft_encounter_press_ok(&focus);
+    CHECK_EQ(focus.phase, FT_PHASE_RESULT); /* skips the sweep entirely */
+    CHECK_EQ(focus.signal.value, sig_before + ft_signal_focus_gain(0));
+
+    /* A perfect hit one-shots the tutorial enemy (4 power at 200%), so the
+     * full-battle run uses the toughest M1 enemy to guarantee the player is
+     * actually attacked. */
+    FtEncounter quick;
+    ft_encounter_init(&quick, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    CHECK(FT_ENEMIES[FT_ENEMY_STRAY_PACKET].charge <= 8, "tutorial enemy stays one-shottable");
+
+    /* A whole battle terminates rather than spinning forever. */
+    FtEncounter run;
+    ft_encounter_init(&run, FT_ENEMY_SEALED_LOCK, &lo, 11);
+    int guard_ticks = 0;
+    for(int i = 0; i < 20000 && !ft_encounter_over(&run); i++) {
+        if(run.phase == FT_PHASE_MENU) {
+            run.menu_index = FT_ACTION_CONTACT;
+            ft_encounter_press_ok(&run);
+        } else if(run.phase == FT_PHASE_PLAYER_ACT && run.phase_ms >= FT_ACTION_WINDOW_MS / 2) {
+            ft_encounter_press_ok(&run);
+        } else if(run.phase == FT_PHASE_TELEGRAPH && run.phase_ms >= FT_TELEGRAPH_MS - 20) {
+            ft_encounter_press_ok(&run);
+            guard_ticks++;
+        }
+        ft_encounter_tick(&run, 10);
+    }
+    CHECK(ft_encounter_over(&run), "a played-out battle must terminate");
+    CHECK_EQ(run.phase, FT_PHASE_WIN);
+    CHECK(guard_ticks > 0, "the run should have faced at least one attack");
+
+    /* Capture, end to end. Stray Packet's only attack is NORMAL class, so it
+     * is capturable; skipping the action command keeps the player's damage low
+     * enough that the enemy actually gets a turn. */
+    FtEncounter cap;
+    ft_encounter_init(&cap, FT_ENEMY_STRAY_PACKET, &lo, 11);
+    bool faced_attack = false;
+    for(int i = 0; i < 20000 && !ft_encounter_over(&cap); i++) {
+        if(cap.phase == FT_PHASE_MENU) {
+            cap.menu_index = FT_ACTION_CONTACT;
+            ft_encounter_press_ok(&cap);
+        } else if(cap.phase == FT_PHASE_TELEGRAPH && cap.phase_ms >= FT_TELEGRAPH_MS - 20) {
+            ft_encounter_press_ok(&cap);
+            faced_attack = true;
+        }
+        ft_encounter_tick(&cap, 10);
+    }
+    CHECK(faced_attack, "the capture run should have faced an attack");
+    CHECK_EQ(cap.last_guard, FT_GUARD_CAPTURE);
+    CHECK(cap.lib.count > 0, "a frame-perfect guard should capture the signal");
+    CHECK(ft_siglib_holds(&cap.lib, FT_ENEMIES[FT_ENEMY_STRAY_PACKET].attacks[0].id),
+          "the captured id should be the attack that was guarded");
+
+    /* An UNDODGEABLE attack can never be captured, however well timed. */
+    FtEncounter undo;
+    ft_encounter_init(&undo, FT_ENEMY_SEALED_LOCK, &lo, 11);
+    undo.phase = FT_PHASE_TELEGRAPH;
+    undo.enemy_attack_index = 1; /* Seal: UNDODGEABLE */
+    undo.guard_pressed = true;
+    undo.guard_press_ms = FT_TELEGRAPH_MS; /* frame perfect */
+    ft_encounter_tick(&undo, 0);
+    CHECK_EQ(FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attacks[1].klass, FT_CLASS_UNDODGEABLE);
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -592,6 +774,9 @@ int main(void) {
     test_flash_budget();
     test_loadout();
     test_enemy_table();
+    test_guard_timing();
+    test_rating_timing();
+    test_encounter();
     test_rng();
 
     printf("\n%d checks, %d failures\n\n", checks, failures);
