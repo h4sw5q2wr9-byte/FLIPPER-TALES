@@ -1,0 +1,18 @@
+# ufbt / Flipper build artifacts
+.ufbt/
+dist/
+build/
+*.fap
+*.fap.dbg
+*.elf
+
+# host test builds
+test/bin/
+*.o
+*.out
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+compile_commands.json
