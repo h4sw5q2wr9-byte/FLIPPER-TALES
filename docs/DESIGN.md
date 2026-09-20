@@ -1,7 +1,13 @@
-# Pixel Tales — Design Bible
+# Flipper Tales — Design Bible
 
 A turn-based RPG for the **Flipper Zero**, in the lineage of Paper Mario 64 / EarthBound, with
 [Block Tales](RESEARCH.md) as the immediate mechanical reference.
+
+You play a wiped device recovering its modules. Your combat abilities *are* the modules — Sub-GHz,
+NFC, RFID, Infrared, iButton, BadUSB, GPIO, U2F, BLE.
+
+> **These are in-game items with in-game effects.** The app does not use the Flipper's real radios,
+> NFC, IR or USB hardware, and never transmits anything. See §2.1.
 
 Status: **design locked for Milestone 1**. Nothing here is implemented yet.
 
@@ -11,11 +17,11 @@ Status: **design locked for Milestone 1**. Nothing here is implemented yet.
 
 1. **Timing is the whole defence.** You are never safe because of a stat. You are safe because you
    pressed OK at the right moment. One button carries the entire defensive game.
-2. **Damage is a scene, not a number.** Rolling HP means a lethal hit gives you a window to act.
-   Deaths are dramatic and occasionally survivable.
-3. **Builds come from scarcity.** Three stats, one choice per level, stackable cards. Every build is
-   a visible sacrifice.
-4. **Everything is readable at 128×64 in 1-bit.** If it can't be understood in black and white on a
+2. **A perfect parry teaches you something.** Capturing a signal permanently expands your moveset.
+   Skill converts into progression, not just survival.
+3. **Damage is a scene, not a number.** Rolling Charge means a lethal hit gives you a window to act.
+4. **Builds come from scarcity.** Three stats, one choice per level, stackable modules.
+5. **Everything is readable at 128×64 in 1-bit.** If it can't be understood in black and white on a
    screen the size of a postage stamp, it doesn't ship.
 
 ## 2. Platform constraints
@@ -31,14 +37,29 @@ Status: **design locked for Milestone 1**. Nothing here is implemented yet.
 | Toolchain | C, built with [`ufbt`](https://pypi.org/project/ufbt/) |
 
 **Firmware target: Official (OFW), latest Release.** An OFW-built FAP runs on Momentum; a
-Momentum-built FAP does not run on OFW. Nothing this game needs exists outside the core Furi API, so
-OFW is a strict superset of audience — and the official Apps Catalog
+Momentum-built FAP does not run on OFW. The game needs nothing outside Canvas, input, storage and
+timers, so OFW is a strict superset of audience — and the official Apps Catalog
 [requires](https://raw.githubusercontent.com/flipperdevices/flipper-application-catalog/main/documentation/Contributing.md)
 compatibility with the latest Release/RC firmware.
 
-### Hard rules falling out of the hardware
+### 2.1 The hardware is fiction
 
-- **No floating point.** All maths is integer. NRG is stored in centi-units (100 = one bar).
+The module names are **theme only**. Flipper Tales:
+
+- does **not** link against `furi_hal_subghz`, the NFC stack, `infrared_worker`, `lfrfid_worker`,
+  USB HID, or GPIO;
+- does **not** transmit, receive, read, emulate or replay any real signal;
+- requests no radio permissions and performs no I/O beyond SD-card saves.
+
+This is a deliberate scope decision with three payoffs: it sidesteps region-locked Sub-GHz TX rules
+and any resemblance to an attack tool (catalog general requirement #4 forbids bypassing the device's
+intentional limits), it keeps the RAM and flash budget small, and it leaves **100% of game logic
+host-testable** (§6).
+
+### 2.2 Hard rules falling out of the hardware
+
+- **No floating point.** All maths is integer. The Signal meter is stored in centi-units
+  (100 = one bar).
 - **Static tables live in flash** (`const`), never RAM. Battle state stays under ~2 KB.
 - **~4 lines × ~20 characters** of text at a time. Writing must be EarthBound-terse. This shapes the
   script more than any other constraint.
@@ -50,15 +71,16 @@ Deliberate, and each has a reason.
 
 | Change | Why |
 |---|---|
-| **Original IP throughout** — no Roblox references, our own world and relics | Catalog requirement #2 is "no infringement on rights or trademarks". Block Tales itself is ineligible for the official catalog. |
+| **Original IP throughout** — our own world, modules instead of licensed swords | Catalog requirement #2 is "no infringement on rights or trademarks". Block Tales itself, built on Roblox IP, is ineligible for the official catalog. |
+| **Superguard captures the signal** (§4.5) | New. Block Tales' superguard only avoids damage; ours converts execution into permanent progression. |
 | **Solo only.** No party scaling, no shared-meter party tax, and **no solo double-turn rule** | The double-turn exists only to compensate for having no party. With solo as the only mode we balance 1v1 honestly instead of bolting on a handicap. |
-| **Integer NRG** (centi-units) | No FPU budget. |
-| ~28 cards (from 85), ~24 items (from 158) | RAM, and a 128×64 menu shows ~5 rows. |
+| **Integer Signal meter** (centi-units) | No FPU budget. |
+| ~28 modules/cards (from 85), ~24 items (from 158) | RAM, and a 128×64 menu shows ~5 rows. |
 | **Ratings become a universal damage multiplier** | In Block Tales, ratings are per-move feedback labels. A single rating→multiplier table is far cheaper and more legible here. |
 | **Attack class encoded by banner border, not colour** | We have no colour. See §5. |
-| Cards that *exploit* being mid-roll (a "gambler" archetype) | Block Tales only uses rolling HP defensively. There's an untapped build space there. |
+| Cards that *exploit* being mid-roll (a "gambler" archetype) | Block Tales only uses rolling HP defensively. There's untapped build space there — and it pairs with the low-Charge Signal bonus (§4.7). |
 
-**Kept wholesale:** HP/SP/BP with one choice per level · stackable cards · the three-tier guard ·
+**Kept wholesale:** three stats with one choice per level · stackable cards · the three-tier guard ·
 rolling HP and mortal damage · the published priority table · enemy attributes as puzzle-locks ·
 difficulty-as-an-equippable-card.
 
@@ -66,10 +88,18 @@ difficulty-as-an-equippable-card.
 
 ### 4.1 Stats
 
-- Start: **10 HP**, 5 SP, 3 BP.
-- Level costs a flat **100 XP**, carries the remainder, and fully restores HP/SP.
-- One choice per level: `+5 HP` / `+5 SP` / `+3 BP`.
-- Caps: HP 100, SP 100, BP 30. Level cap starts at 4, +4 per chapter.
+The three stats are renamed to mean something:
+
+| Stat | Name | Role |
+|---|---|---|
+| HP | **Charge** | Survival. Damage drains the battery. |
+| SP | **RAM** | Running a module costs memory. |
+| BP | **Flash** | How many modules you can keep installed. |
+
+- Start: **10 Charge**, 5 RAM, 3 Flash.
+- Levelling costs a flat **100 XP**, carries the remainder, and fully restores Charge/RAM.
+- One choice per level: `+5 Charge` / `+5 RAM` / `+3 Flash`.
+- Caps: Charge 100, RAM 100, Flash 30. Level cap starts at 4, +4 per chapter.
 - Underlevelled enemies award 0 XP; a single battle awards at most 100 XP.
 
 ### 4.2 Damage resolution (all integer)
@@ -79,17 +109,17 @@ raw        = base_power + atk_up - atk_down
 raw        = raw * rating_pct / 100          // action command, see 4.3
 effective  = raw - max(0, target_def - pierce)
 
-if effective <= 0            -> DEFLECT     (0 damage, no status applied)
+if effective <= 0            -> DEFLECT     (0 damage, no payload applied)
 
 switch (guard_result):
-  NONE       -> dmg = effective
-  BLOCK      -> dmg = effective / 2          // floor; status nullified
-  SUPERGUARD -> dmg = 0                      // counter if melee, dodge if ranged
+  NONE     -> dmg = effective
+  JAM      -> dmg = effective / 2            // floor; payload nullified
+  CAPTURE  -> dmg = 0                        // + signal captured, see 4.5
 
 final = max(0, dmg)
 ```
 
-`Sword` pierces 50% of target DEF, rounded up.
+`NFC` pierces 50% of target `SHIELDED`, rounded up.
 
 ### 4.3 Action commands → ratings
 
@@ -110,63 +140,73 @@ Measured backwards from the impact frame. Tunable constants:
 
 | | Normal | Hard Mode |
 |---|---|---|
-| Block window | 150 ms | 75 ms |
-| Superguard window | innermost 50 ms | innermost 25 ms |
+| Jam window | 150 ms | 75 ms |
+| Capture window | innermost 50 ms | innermost 25 ms |
 
-### 4.5 Rolling HP
+### 4.5 Attack classes and Capture
 
-- HP ticks toward its target at **1 HP per 60 ms** (base).
-- Interval modifiers: `+10%` per point of DEF · `×4` while Defending · `×0.5` with Hard Mode.
+Every enemy attack has a class, which determines what you can do about it:
+
+| Class | Banner (§5) | Jam | Capture |
+|---|---|---|---|
+| Normal | plain 1px box | ✅ | ✅ |
+| `GUARDED` | hatched box | ✅ | ❌ |
+| `UNDODGEABLE` | inverted box | ❌ | ❌ |
+
+**Capture** is the centrepiece mechanic. A frame-perfect guard against a Normal-class attack takes
+zero damage *and* writes that attack into the player's **Signal Library**:
+
+- The library is a **4-slot ring buffer**; capturing when full overwrites the oldest.
+- Captured signals are replayed from the Special slot and cost **Signal meter**, not RAM.
+- A replayed signal deals **75%** of the enemy's version — it's a copy, not the original.
+- Captures persist across battles and are saved.
+
+This makes execution compound into progression, and it gives `UNDODGEABLE` a second meaning beyond
+"you take this": some attacks keep their secrets.
+
+### 4.6 Rolling Charge
+
+- Charge ticks toward its target at **1 per 60 ms** (base).
+- Interval modifiers: `+10%` per point of `SHIELDED` · `×4` while Defending · `×0.5` with Hard Mode.
 - **Pauses during the thinking phase** (menu open).
 - Damage **≥125** applies instantly, bypassing the roll.
-- **Mortal damage** (target 0): the player may still act while draining. Healing above 0 cancels it.
+- **Brownout** (target 0): the player may still act while draining. Healing above 0 cancels it.
 - Fleeing or winning mid-roll keeps whatever is currently displayed.
 
-### 4.6 Turn priority
-
-Deterministic, no hidden speed stat. Resolved in tiers:
-
-1. Special (relic) slot
-2. Healing actions
-3. Status/buff actions
-4. **Mobile** enemy actions
-5. Debuff actions (DEF-down etc.)
-6. Player attacks
-7. Enemy actions
-8. Focus
-9. Revives
-
-### 4.7 NRG — the relic meter
+### 4.7 Signal — the module meter
 
 Integer centi-units, **100 = one bar**.
 
-- Battle starts at **50**. Max bars = `1 + chapters_completed`.
+- Battle starts at **50**. Max bars = `1 + modules_recovered`.
 - Gains: `+10` per player attack · `+10` per enemy turn · `+35` from Focus
   (`+5` per `Deep Focus` stack).
-- Low-HP bonus: `+15` when attacking at ≤25% max HP, `+20` at exactly 1 HP.
+- **Low-Charge bonus**: `+15` when attacking at ≤25% max Charge, `+20` at exactly 1.
 - No party tax (solo only).
+
+The low-Charge bonus is deliberately load-bearing: charging faster the closer you are to dying is the
+solo risk/reward loop, and it pairs directly with being mid-roll (§4.6).
 
 ### 4.8 Enemy attributes — Milestone 1 subset
 
-| Attribute | Effect |
-|---|---|
-| `DEFENSE(n)` | Flat reduction applied **per hit** — punishes multi-hit hardest |
-| `FLYING` | Melee cannot target it; projectiles can |
-| `SPIKY` | Ball attacks deal nothing and refund 1 SP (a Pass) |
-| `MOBILE` | Acts **before** the player |
+| Attribute | Effect | Block Tales equivalent |
+|---|---|---|
+| `SHIELDED(n)` | Flat reduction applied **per hit** — punishes multi-hit hardest | Defense |
+| `AIRBORNE` | **NFC** (contact) cannot reach it; broadcast/projectile can | Flying |
+| `ENCRYPTED` | **Sub-GHz** deals nothing and refunds 1 RAM (a Pass) | Spiky |
+| `FAST` | Acts **before** the player | Mobile |
 
-Later: `DISABLES_NRG`, `SHIELD`, `MELEE_DEFLECTING`, `PROJECTILE_DEFLECTING`.
+Later: `JAMMER` (locks the Signal meter), `SHIELD`, deflection attributes.
 
 ## 5. Reading the screen in 1-bit
 
 The hardest port problem: Block Tales telegraphs attack class **with colour** (yellow GUARDED, red
 UNDODGEABLE). We have none. Solution — encode it in the **attack-name banner border**:
 
-| Class | Banner | Blockable | Superguardable |
-|---|---|---|---|
-| Normal | plain 1px box | ✅ | ✅ |
-| **GUARDED** | hatched/dashed box | ✅ | ❌ |
-| **UNDODGEABLE** | inverted (white-on-black) | ❌ | ❌ |
+| Class | Banner |
+|---|---|
+| Normal | plain 1px box |
+| `GUARDED` | hatched/dashed box |
+| `UNDODGEABLE` | inverted (white-on-black) |
 
 1-bit also makes **inversion a free, extremely legible channel** — the guard window telegraph is an
 invert-on-frame pulse. Arguably clearer than colour.
@@ -175,15 +215,15 @@ invert-on-frame pulse. Arguably clearer than colour.
 
 ```
 ┌────────────────────────────────────────────┐  y=0
-│ ENEMY NAME              [DEF:2][FLY]       │  status strip, 12px
+│ ROGUE BEACON          [SHLD:2][AIR]        │  status strip, 12px
 ├────────────────────────────────────────────┤  y=12
 │                                            │
-│   @                      ,-.   ,-.         │  battle scene, 32px
-│  /|\                    (   ) (   )        │  player left, enemies right
+│   ▟                      ,-.   ,-.         │  battle scene, 32px
+│  ▜█▛                    (   ) (   )        │  player left, enemies right
 │                                            │
 ├────────────────────────────────────────────┤  y=44
-│ HP 18/25  SP 7   NRG ▮▮▯                   │  player bars, 10px
-│ > SWORD   BALL   CARDS   ITEM              │  action menu, 10px
+│ CHG 18/25  RAM 7  SIG ▮▮▯                  │  player bars, 10px
+│ > SUBGHZ  NFC   CARDS   ITEM               │  action menu, 10px
 └────────────────────────────────────────────┘  y=63
 ```
 
@@ -191,16 +231,16 @@ The attack-telegraph banner overlays the battle scene, centred.
 
 ## 6. Architecture
 
-Two layers. This split is what makes the combat maths **verifiable on a host machine** instead of
-shipping a blind binary.
+Two layers. Because §2.1 keeps all hardware out of scope, **the entire game is pure logic** and the
+core compiles and runs on a host machine — combat maths is verified before anything is flashed.
 
 ```
 src/core/     pure C99, ZERO Flipper headers — compiles with host gcc
-              damage resolution · turn priority · rolling-HP tick · status stack
-              card effects · seeded deterministic RNG
+              damage resolution · turn priority · rolling-Charge tick · status stack
+              module effects · Signal Library · seeded deterministic RNG
 src/app/      Furi / Canvas / input / storage. Deliberately thin.
 assets/       1-bit sprites (XBM), 10x10 app icon
-test/         host-compiled unit tests + headless battle simulator
+test/         host unit tests + headless battle simulator
 ```
 
 The headless simulator runs thousands of fights for balance tuning without touching hardware.
@@ -209,32 +249,33 @@ The headless simulator runs thousands of fights for balance tuning without touch
 
 ### M1 — Combat vertical slice *(current)*
 
-One battle screen. Three enemies — plain, **Flying**, **Spiky** — to prove the attribute locks.
-Sword + Ball. ~8 cards. The full stack: action commands, block/superguard/undodgeable, rolling HP
-with the mortal-damage window, priority resolution, ratings popups, Hard Mode card. Host test
-harness and balance simulator. A `.fap` that builds.
+One battle screen. Three enemies — plain, `AIRBORNE`, `ENCRYPTED` — to prove the attribute locks.
+Sub-GHz + NFC. ~8 modules. The full stack: action commands, jam/capture/undodgeable, the Signal
+Library, rolling Charge with the brownout window, priority resolution, ratings popups, Hard Mode
+card. Host test harness and balance simulator. A `.fap` that builds.
 
-Cards in M1:
+Modules in M1:
 
-| Card | Slot | BP | Effect |
+| Module | Slot | Flash | Effect |
 |---|---|---|---|
-| Sword | Sword | 0 | Base melee; pierces 50% DEF |
-| Power Stab | Sword | 2 | +damage, stackable |
-| Ball | Ball | 0 | Base projectile; hits Flying |
-| Fireball | Ball | 2 | Projectile + Burn |
-| HP+ | Passive | 3 | +5 max HP, stackable |
-| Safe Guard | Passive | 1 | Blocking reduces more |
-| Deep Focus | Passive | 1 | +5 NRG on Focus, stackable |
+| Sub-GHz | Broadcast | 0 | Base ranged; hits all enemies, low per-hit; reaches `AIRBORNE` |
+| Amplify | Broadcast | 2 | +damage, stackable |
+| NFC | Contact | 0 | Base melee; high single-target; pierces 50% `SHIELDED` |
+| Payload | Contact | 2 | Contact hit + damage-over-time (BadUSB flavour) |
+| Charge+ | Passive | 3 | +5 max Charge, stackable |
+| Faraday | Passive | 1 | Jamming reduces more |
+| Deep Focus | Passive | 1 | +5 Signal on Focus, stackable |
 | Hard Mode | Passive | 0 | +50% XP; 2× damage, halved guard window, 2× roll speed |
 
-Strategies (Defend / Focus / Pass / Run) are built in at 0 BP.
+Strategies (Defend / Focus / Pass / Run) are built in at 0 Flash.
 
 ### M2 — Overworld
 Top-down tile grid, 128×64 viewport, visible enemies you walk into, dash on OK, SD-card maps,
 save/load.
 
 ### M3 — Chapter 1
-Town, NPCs, a shop, the card economy, a boss, the first relic (+1 NRG bar), level cap 8.
+Town, NPCs, a shop, the module economy, a boss, the first module recovery (+1 Signal bar),
+level cap 8.
 
 ### M4 — Catalog submission
 Open-source licence, 10×10 icon, qFlipper screenshots, README, changelog,
@@ -242,8 +283,10 @@ Open-source licence, 10×10 icon, qFlipper screenshots, README, changelog,
 
 ## 8. Open questions
 
-- Setting and tone. The mechanical frame ("one relic per chapter, each adding a meter bar") is
-  settled; the fiction is not.
-- Are relics **weapons** (like the source's swords) or a broader category — instruments, masks,
-  tools? A non-weapon relic set would distance us further and open up non-damage ultimates.
-- Save slots: one file, or three?
+- **Tone.** Two candidates: *warm* (a small device in a world of chatty appliances, EarthBound-ish)
+  or *cold* (a wiped tool inside a decaying system, rogue processes as enemies). The mechanics don't
+  care; the script does.
+- **Title.** "Flipper Tales" is the working title. "Flipper" is Flipper Devices' trademark, and we
+  are otherwise being deliberately catalog-safe — worth a decision before M4, not before M1.
+- **Module order.** Which modules are recovered in which chapter determines the difficulty curve.
+- Save slots: one file, or three? (Defaulting to three.)
