@@ -269,6 +269,31 @@ Modules in M1:
 
 Strategies (Defend / Focus / Pass / Run) are built in at 0 Flash.
 
+#### Balance notes
+
+Figures from `make -C test sim` (2000 battles per cell), which plays whole
+battles headlessly against a scripted policy. Two findings so far:
+
+- **`Sub-GHz` is base power 3, not 2.** At 2, the `AIRBORNE` lock forced the
+  player onto a module dealing 1 damage per hit through the Drift Beacon's
+  shield — the enemy that teaches the lock was harder than the one two levels
+  above it. A lock should redirect the player, not punish them. The Beacon also
+  lost its shield for the same reason: `AIRBORNE` already constrains the tool
+  choice, and shielding it taxed that same forced choice twice.
+- **The skill gradient is real.** Base loadout against the Drift Beacon wins
+  0% / 77% / 98% / 100% at guard skill 0 / 35 / 70 / 95%. Losing every battle
+  at zero execution is the intended shape of pillar 1.
+
+Open balance watch-items:
+
+- `Amplify + Charge+` (5 Flash, reachable at level 2) currently wins 100% at
+  zero guard skill against every M1 enemy. Flash investment may be allowed to
+  substitute for execution too cleanly.
+- The simulator fights every enemy from fresh level-1 stats and does not level
+  the player between encounters, so later enemies read harder there than they
+  will in play. Hard Mode's +50% XP upside is not modelled at all, only its
+  costs — its rows are a floor, not a verdict.
+
 ### M2 — Overworld
 Top-down tile grid, 128×64 viewport, visible enemies you walk into, dash on OK, SD-card maps,
 save/load.

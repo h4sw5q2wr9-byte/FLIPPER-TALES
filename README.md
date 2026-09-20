@@ -10,7 +10,9 @@ NFC, RFID, Infrared, iButton, BadUSB, GPIO, U2F, BLE**.
 > radios, NFC, IR or USB hardware, and never transmits anything. It reads and writes nothing but its
 > own save file.
 
-> **Status: design phase.** No code yet. See [`docs/DESIGN.md`](docs/DESIGN.md).
+> **Status: Milestone 1 in progress.** The combat core is implemented and
+> host-tested; the Flipper front-end is not written yet. See
+> [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## What it is
 
@@ -48,7 +50,8 @@ Because no hardware APIs are in scope, core game logic lives in `src/core/` as p
 Flipper headers** — it compiles and is unit-tested on the host:
 
 ```sh
-make -C test         # run host tests + headless balance simulator
+make -C test test    # unit tests (also enforces the no-floating-point rule)
+make -C test sim     # headless balance simulation
 ```
 
 ## Layout

@@ -1,0 +1,126 @@
+/*
+ * Flipper Tales — core types and tuning constants.
+ *
+ * This header, and everything else in src/core, is pure C99 with no Flipper
+ * SDK dependency. It compiles and runs on a host machine so the combat maths
+ * can be unit-tested and balance-simulated before anything is flashed.
+ *
+ * Rules for this directory:
+ *   - no floating point anywhere (the MCU has no FPU budget)
+ *   - no heap allocation (fixed-size storage only)
+ *   - no stdio, no Furi, no hardware
+ */
+#ifndef FT_TYPES_H
+#define FT_TYPES_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/* ---- Stat limits (DESIGN.md 4.1) ------------------------------------- */
+
+#define FT_START_CHARGE 10
+#define FT_START_RAM    5
+#define FT_START_FLASH  3
+
+#define FT_CAP_CHARGE 100
+#define FT_CAP_RAM    100
+#define FT_CAP_FLASH  30
+
+#define FT_LEVEL_UP_CHARGE 5
+#define FT_LEVEL_UP_RAM    5
+#define FT_LEVEL_UP_FLASH  3
+
+#define FT_XP_PER_LEVEL   100
+#define FT_XP_BATTLE_CAP  100
+
+#define FT_LEVEL_CAP_BASE         4
+#define FT_LEVEL_CAP_PER_CHAPTER  4
+
+/* ---- Combat tuning (DESIGN.md 4.2, 4.6) ------------------------------ */
+
+/* An attack always has at least this much power before defence is applied. */
+#define FT_MIN_RAW_DAMAGE 1
+
+/* Damage at or above this bypasses rolling Charge and applies instantly.
+ * 125 is the highest Charge reachable: the 100 cap plus 5 stacked Charge+. */
+#define FT_INSTANT_DAMAGE_THRESHOLD 125
+
+#define FT_ROLL_BASE_INTERVAL_MS 60
+#define FT_JAM_REDUCTION_PCT     50
+
+/* ---- Signal meter (DESIGN.md 4.7) ------------------------------------ */
+
+#define FT_SIGNAL_PER_BAR      100
+#define FT_SIGNAL_BATTLE_START 50
+#define FT_SIGNAL_MAX_BARS     4
+
+#define FT_SIGNAL_GAIN_ATTACK      10
+#define FT_SIGNAL_GAIN_LOW_CHARGE  15
+#define FT_SIGNAL_GAIN_LAST_CHARGE 20
+#define FT_SIGNAL_GAIN_ENEMY_TURN  10
+#define FT_SIGNAL_GAIN_FOCUS       35
+#define FT_SIGNAL_GAIN_DEEP_FOCUS  5
+
+/* ---- Signal Library (DESIGN.md 4.5) ---------------------------------- */
+
+#define FT_SIGLIB_SLOTS       4
+#define FT_SIGLIB_REPLAY_PCT  75
+
+/* ---- Battle sizing --------------------------------------------------- */
+
+#define FT_MAX_ENEMIES   4
+#define FT_MAX_ACTORS    (FT_MAX_ENEMIES + 1)
+#define FT_MAX_INSTALLED 12
+
+/* ---- Ratings (DESIGN.md 4.3) ----------------------------------------- */
+
+typedef enum {
+    FT_RATING_MISS = 0,
+    FT_RATING_NICE,
+    FT_RATING_GOOD,
+    FT_RATING_GREAT,
+    FT_RATING_AMAZING,
+    FT_RATING_EXCELLENT,
+    FT_RATING_COUNT
+} FtRating;
+
+/* ---- Guarding (DESIGN.md 4.5) ---------------------------------------- */
+
+typedef enum {
+    FT_GUARD_NONE = 0,
+    FT_GUARD_JAM,     /* halves damage, nullifies the payload */
+    FT_GUARD_CAPTURE  /* frame-perfect: zero damage, writes to Signal Library */
+} FtGuard;
+
+typedef enum {
+    FT_CLASS_NORMAL = 0,  /* jammable and capturable */
+    FT_CLASS_GUARDED,     /* jammable, not capturable */
+    FT_CLASS_UNDODGEABLE  /* neither */
+} FtAttackClass;
+
+/* How an attack reaches its target. Drives the attribute locks below. */
+typedef enum {
+    FT_DELIVERY_CONTACT = 0,  /* NFC, iButton — cannot reach AIRBORNE */
+    FT_DELIVERY_BROADCAST,    /* Sub-GHz, BLE — does nothing to ENCRYPTED */
+    FT_DELIVERY_DIRECTED,     /* Infrared, RFID — reaches anything in front */
+    FT_DELIVERY_NONE          /* support actions that never target */
+} FtDelivery;
+
+/* ---- Enemy attributes (DESIGN.md 4.8) -------------------------------- */
+
+#define FT_ATTR_AIRBORNE  (1u << 0) /* contact attacks cannot reach it */
+#define FT_ATTR_ENCRYPTED (1u << 1) /* broadcast attacks do nothing, refund RAM */
+#define FT_ATTR_FAST      (1u << 2) /* acts before the player */
+#define FT_ATTR_JAMMER    (1u << 3) /* locks the Signal meter */
+
+/* ---- Status payloads ------------------------------------------------- */
+
+typedef enum {
+    FT_PAYLOAD_NONE = 0,
+    FT_PAYLOAD_CORRUPT,  /* damage over time */
+    FT_PAYLOAD_DRAIN,    /* RAM loss per turn */
+    FT_PAYLOAD_STALL,    /* may lose the turn */
+    FT_PAYLOAD_COUNT
+} FtPayload;
+
+#endif /* FT_TYPES_H */
