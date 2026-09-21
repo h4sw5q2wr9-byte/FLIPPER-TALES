@@ -419,9 +419,204 @@ Open balance watch-items:
   will in play. Hard Mode's +50% XP upside is not modelled at all, only its
   costs — its rows are a floor, not a verdict.
 
-### M2 — Overworld
-Top-down tile grid, 128×64 viewport, visible enemies you walk into, dash on OK, SD-card maps,
-save/load.
+### M2 — Overworld *(partly built)*
+
+Built: tiles, collision, camera, renderer, and a four-room prologue chain.
+`make -C test map` renders every room at panel resolution and whole.
+Still to build: entities, room transitions, the strike, terminals, the pause
+menu, and saving.
+
+#### Tiles and the viewport
+
+8px tiles give a **16×8 viewport**: coarse enough to read at one bit, fine
+enough that a room is more than a few paces across. Maps are one byte per tile,
+row-major — the format production maps will stream from the SD card, so nothing
+about the renderer changes when they do. Maps, tiles and sprites are all
+authored as editable ASCII under `tools/`.
+
+Ten tiles: floor, wall, void, grass, cable, door, terminal, locked port, crate,
+ladder.
+
+**Tiles that belong to a run orient themselves to it.** A door in a horizontal
+wall is walked through vertically and reads face-on; the same door in a vertical
+wall is walked through sideways and must read as a gap. Rather than make map
+authors pick the right variant, `ft_map_art_index` derives it from the
+neighbours: solid above and below is a side-on passage, solid left and right is
+front-facing, ambiguous falls back to front-facing. Locked ports follow doors;
+conduit follows its own run.
+
+**Walls use the same mechanism for depth.** A wall with floor below is showing
+its south-facing side and draws as brick with a solid base; a wall with more
+wall below is seen from above and draws as a near-solid cap. The contrast is
+what gives a run apparent height. A dithered band then falls on whatever sits
+under a wall — 50% dither, because a solid bar is indistinguishable from more
+wall at one bit.
+
+Open floor grows **procedural greenery**: `ft_map_scatter` hashes the tile
+coordinate against a per-map density, so weeds are deterministic (nothing
+shimmers as the camera scrolls) and stay out of the map data.
+
+#### Movement
+
+The avatar is **the same handheld device as the battle sprite**, shrunk to
+8×12 — it is the player character, so it must be recognisably the thing you are
+in combat. Facing lives in the screen (shifted pupils), since at 8px wide a
+turned body is unreadable. It is drawn with a one-pixel white halo, without
+which it carries a crate's visual weight and vanishes into the floor stipple.
+
+Only the lower rows collide, the standard top-down trick that lets a head pass
+in front of scenery. Movement resolves each axis separately, so a diagonal into
+a wall slides along it. The camera centres the player and clamps to the map.
+
+#### Shape of an area
+
+**An area is a numbered chain of rooms, walked left to right** — not an open
+map, and not rooms with backtracking. This is the thing the first sketch got
+wrong: it drew 2.5-screen open fields when the reference builds areas out of
+screen-sized set-pieces (RESEARCH.md, "Area structure").
+
+A room is therefore **about one screen**, sometimes a little over for a touch of
+scroll, and holds a small fixed amount:
+
+- at most **one overworld foe**, which on contact fights a *predefined group* —
+  the sprite you can see, plus friends you cannot
+- at most **one obstacle**, with exactly one answer
+- usually one item, sometimes one hidden thing in a corner
+- occasionally a **side room** off the path, holding an item and nothing else
+
+A room is an authored set-piece, not a space to explore. The interest is the
+encounter, the obstacle and the hidden thing — not the floorplan. It is also
+why rooms are cheap: a dozen small maps beat two big ones.
+
+An area ends with a **mini-boss standing in the exit**; beating it opens the way
+on, which is how a chapter paces itself without a quest log. Towns are the same
+chain with foes swapped for a shop, an inn and NPCs.
+
+#### Controls
+
+| Button | Overworld |
+|---|---|
+| D-pad | Walk |
+| OK | Interact — talk, open, read, and **strike** |
+| Back | Pause menu: loadout, journal, save, quit |
+
+No dash. Block Tales needs one because its areas are large and 3D; ours are a
+screen at a time, and a dash would mostly clip through the collision footprint.
+
+#### Encounters
+
+Foes are **visible and placed**, never random — an encounter is a decision, not
+a tax on walking. Each drifts near a home tile and moves toward you inside a
+short alert radius. Who makes contact decides the opening:
+
+| Opening | How | Effect |
+|---|---|---|
+| **First Strike** | Press OK facing an adjacent foe | That foe starts damaged and you act first |
+| **Neutral** | Walk into it | Normal start |
+| **Jumped** | It reaches you while you face away | It acts first |
+
+`First Strike` is a real status in the reference, so this is faithful rather
+than invented. The harsher version — losing your guard when jumped — is
+deliberately **not** taken: with guarding being the entire defensive game and
+Hard Mode doubling damage, that punishes one mistake twice.
+
+Defeated foes stay down for the visit and return when the area is re-entered.
+
+#### Obstacles
+
+One per room at most, and **each has exactly one answer**, so an obstacle is a
+recognition test rather than a puzzle:
+
+| Obstacle | Answer | From |
+|---|---|---|
+| Sealed hatch | Infrared, along a clear line | Ch. 1 |
+| Shuttered vent | RFID reads what is behind it | Ch. 2 |
+| **Locked port** | iButton | Ch. 3 |
+| Dead lift or bridge | GPIO powers it | Ch. 4 |
+| Inert drone in the way | BLE pairs and moves it | Ch. 5 |
+| Gap between terraces | A ladder, already there | — |
+
+Locked ports are seeded from the prologue onward, so early areas hold things
+that cannot be taken yet. That is the whole backtracking design: light,
+optional, and visible the first time through.
+
+#### Interactions
+
+- **Door** — transition to a linked room and position.
+- **Terminal** — full restore and save. The only save point, so its placement
+  is the pacing.
+- **Ladder** — walk through a terrace edge. Top-down has no elevation, so a
+  terrace is drawn as wall and the ladder is the gap in it.
+
+#### Entities
+
+Up to a dozen per room, in a fixed array — no allocation:
+
+```c
+typedef struct {
+    FtEntKind kind;   /* foe, NPC, item, receiver */
+    FtPos     pos;
+    uint8_t   data;   /* roster id, dialogue id, contents */
+    uint8_t   home_tx, home_ty;
+    uint8_t   flags;  /* defeated, taken, triggered */
+} FtEntity;
+```
+
+A foe's `data` indexes a **roster** — the group it fights as — which is what
+lets one visible sprite mean "and two friends", as the reference does. This is
+what the multi-foe battle work feeds.
+
+Persistent flags (an item taken, a port unlocked, a boss beaten) live in the
+save as a bitfield keyed by room and entity index, so the world remembers what
+you did without storing the world.
+
+#### The world
+
+Five chapters after the prologue, each recovering one module. **Each module is
+both a combat tool and a traversal verb**, which is what makes gating an area
+behind it honest rather than arbitrary.
+
+```
+[Cold Boot]      prologue — wake up wiped, start with SUB + NFC
+     |
+[The Scrapline] --> Infrared : trigger receivers across gaps
+     |
+[Cold Storage]  --> RFID     : read through walls, reveal hidden doors
+     |
+[The Turnstile] --> iButton  : open the locked ports
+     |
+[Signal Hill]   --> GPIO     : power dead lifts and bridges
+     |
+[The Deadzone]  --> BLE      : pair with devices and move them
+```
+
+| Area | Module | Combat role |
+|---|---|---|
+| The Scrapline | **Infrared** | Line-of-sight: huge damage, front foe only |
+| Cold Storage | **RFID** | Penetrates, ignores `SHIELDED` |
+| The Turnstile | **iButton** | Strips enemy buffs |
+| Signal Hill | **GPIO** | Support, buffs, RAM regen |
+| The Deadzone | **BLE** | Control — and where `JAMMER` foes live |
+
+#### Progression and saving
+
+Battles already grant XP and level-ups choosing Charge, RAM or Flash. The
+overworld adds the **Flash economy**: modules found in the world are installed
+from the pause menu against a budget, so a new module is a decision rather than
+a strict upgrade.
+
+One save file per slot, written at terminals: stats, loadout, captured signals,
+current room and position, and the entity flag bitfield. Three slots.
+
+#### The prologue chain
+
+| Room | Size | Holds |
+|---|---|---|
+| [1] Cold Boot | 16×8 | A terminal, to teach saving. No foe, no obstacle. |
+| [2] Boot Corridor | 20×8 | First encounter, seen before it is reached. |
+| [3] The Drop | 18×14 | A terrace split by a ladder; the shelf item is passed before it can be taken. |
+| [4] Cold Gate | 18×10 | A sealed side room behind a locked port — the reason to come back. |
+
 
 ### M3 — Chapter 1
 Town, NPCs, a shop, the module economy, a boss, the first module recovery (+1 Signal bar),
