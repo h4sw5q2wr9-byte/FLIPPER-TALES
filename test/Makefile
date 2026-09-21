@@ -44,7 +44,7 @@ $(BIN)/map_preview: $(CORE_SRC) $(APP_DIR)/ft_overworld.c canvas_stub.c map_prev
 
 map: $(BIN)/map_preview
 	@mkdir -p preview
-	@rm -f preview/map_*.pbm
+	@rm -f preview/map_*.pbm preview/whole_*.pbm
 	@./$(BIN)/map_preview
 	@python3 topng.py map
 

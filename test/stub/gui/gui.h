@@ -63,6 +63,9 @@ size_t   canvas_current_font_height(const Canvas* canvas);
 
 /* Harness-only extras. */
 Canvas* ft_stub_canvas_alloc(void);
+
+/* A canvas larger than the panel, for rendering a whole map in one image. */
+Canvas* ft_stub_canvas_alloc_size(int w, int h);
 void    ft_stub_canvas_free(Canvas* canvas);
 int     ft_stub_canvas_write_pbm(const Canvas* canvas, const char* path);
 /* Number of pixels drawn outside the 128x64 panel since the last clear. */

@@ -6,6 +6,7 @@
 
 #include "ft_maps.h"
 #include "ft_overworld.h"
+#include "ft_tiles.h"
 
 typedef struct {
     const char*  name;
@@ -15,6 +16,52 @@ typedef struct {
     bool         moving;
     uint32_t     area_ms; /* banner is only up briefly after entering */
 } Shot;
+
+/* Draw an entire map into one oversized canvas, so a level can be reviewed as
+ * a whole rather than a screen at a time.
+ *
+ * This walks the tiles itself rather than calling ft_overworld_render, which
+ * is bound to the 128x64 viewport — but it asks core for every decision
+ * (orientation, scatter, shadow), so what it shows is what the game draws. */
+static void draw_whole_map(Canvas* c, const FtMap* m) {
+    canvas_clear(c);
+    canvas_set_color(c, ColorBlack);
+
+    for(int32_t ty = 0; ty < (int32_t)m->h; ty++) {
+        for(int32_t tx = 0; tx < (int32_t)m->w; tx++) {
+            const int32_t ox = tx * FT_TILE_PX;
+            const int32_t oy = ty * FT_TILE_PX;
+
+            const uint8_t layers[3] = {
+                ft_map_art_index(m, tx, ty),
+                ft_map_scatter(m, tx, ty) ? (uint8_t)FT_TILE_ART_TUFT : 0xFFu,
+                ft_map_has_shadow(m, tx, ty) ? (uint8_t)FT_TILE_ART_SHADOW : 0xFFu,
+            };
+
+            for(int l = 0; l < 3; l++) {
+                if(layers[l] == 0xFFu) continue;
+                const uint8_t* rows = FT_TILE_ART[layers[l]];
+
+                for(int32_t ry = 0; ry < FT_TILE_PX; ry++) {
+                    for(int32_t rx = 0; rx < FT_TILE_PX; rx++) {
+                        if(rows[ry] & (1u << rx)) canvas_draw_dot(c, ox + rx, oy + ry);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void write_whole_map(const FtMap* m, const char* path) {
+    Canvas* c = ft_stub_canvas_alloc_size(
+        (int)m->w * FT_TILE_PX, (int)m->h * FT_TILE_PX);
+
+    draw_whole_map(c, m);
+    ft_stub_canvas_write_pbm(c, path);
+
+    printf("  %-16s %ux%u tiles -> %s\n", m->name, m->w, m->h, path);
+    ft_stub_canvas_free(c);
+}
 
 int main(void) {
     static const Shot shots[] = {
@@ -65,6 +112,10 @@ int main(void) {
     }
 
     ft_stub_canvas_free(canvas);
+
+    /* Whole-level views, for judging layout rather than presentation. */
+    write_whole_map(&FT_MAP_COLD_BOOT, "preview/whole_cold_boot.pbm");
+    write_whole_map(&FT_MAP_SCRAPLINE, "preview/whole_scrapline.pbm");
 
     printf("\n%s\n", clipped_total ? "MAP PREVIEW FAILED" : "map preview clean");
     return clipped_total ? 1 : 0;

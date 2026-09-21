@@ -17,21 +17,33 @@
 /* Cap top sits on row 0 of the glyph cell, baseline six rows below. */
 #define FONT_BASELINE 6
 
+/* Sized at allocation rather than fixed, so the same rasteriser can render a
+ * single panel or a whole map laid out in one image. */
 struct Canvas {
-    uint8_t px[STUB_H][STUB_W]; /* 1 = ink */
-    Color   color;
-    Font    font;
-    int     clipped;
+    uint8_t* px; /* w * h, 1 = ink */
+    int      w;
+    int      h;
+    Color    color;
+    Font     font;
+    int      clipped;
 };
 
-Canvas* ft_stub_canvas_alloc(void) {
+Canvas* ft_stub_canvas_alloc_size(int w, int h) {
     Canvas* c = calloc(1, sizeof(Canvas));
+    c->px = calloc((size_t)w * (size_t)h, 1);
+    c->w = w;
+    c->h = h;
     c->color = ColorBlack;
     c->font = FontSecondary;
     return c;
 }
 
+Canvas* ft_stub_canvas_alloc(void) {
+    return ft_stub_canvas_alloc_size(STUB_W, STUB_H);
+}
+
 void ft_stub_canvas_free(Canvas* c) {
+    free(c->px);
     free(c);
 }
 
@@ -50,20 +62,21 @@ static int font_advance(Font f) {
 }
 
 static void put(Canvas* c, int32_t x, int32_t y) {
-    if(x < 0 || x >= STUB_W || y < 0 || y >= STUB_H) {
+    if(x < 0 || x >= c->w || y < 0 || y >= c->h) {
         c->clipped++;
         return;
     }
+    uint8_t* p = &c->px[(size_t)y * (size_t)c->w + (size_t)x];
     switch(c->color) {
-    case ColorWhite: c->px[y][x] = 0; break;
-    case ColorXOR:   c->px[y][x] = (uint8_t)!c->px[y][x]; break;
+    case ColorWhite: *p = 0; break;
+    case ColorXOR:   *p = (uint8_t)!*p; break;
     case ColorBlack:
-    default:         c->px[y][x] = 1; break;
+    default:         *p = 1; break;
     }
 }
 
 void canvas_clear(Canvas* c) {
-    memset(c->px, 0, sizeof(c->px));
+    memset(c->px, 0, (size_t)c->w * (size_t)c->h);
     c->clipped = 0;
 }
 
@@ -210,9 +223,11 @@ int ft_stub_canvas_write_pbm(const Canvas* c, const char* path) {
     FILE* f = fopen(path, "wb");
     if(!f) return -1;
 
-    fprintf(f, "P1\n%d %d\n", STUB_W, STUB_H);
-    for(int y = 0; y < STUB_H; y++) {
-        for(int x = 0; x < STUB_W; x++) fputc(c->px[y][x] ? '1' : '0', f);
+    fprintf(f, "P1\n%d %d\n", c->w, c->h);
+    for(int y = 0; y < c->h; y++) {
+        for(int x = 0; x < c->w; x++) {
+            fputc(c->px[(size_t)y * (size_t)c->w + (size_t)x] ? '1' : '0', f);
+        }
         fputc('\n', f);
     }
     fclose(f);
