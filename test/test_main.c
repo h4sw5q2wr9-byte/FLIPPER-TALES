@@ -8,6 +8,7 @@
 #include "ft_encounter.h"
 #include "ft_priority.h"
 #include "ft_progress.h"
+#include "ft_map.h"
 #include "ft_rng.h"
 #include "ft_tutorial.h"
 #include "ft_roll.h"
@@ -973,6 +974,95 @@ static void test_anim(void) {
           "the popup needs at least 300ms on screen");
 }
 
+
+static void test_map(void) {
+    section("overworld map");
+
+    /* A tiny hand-built map: a walled box with a void and a crate inside. */
+    static const uint8_t TILES[6 * 4] = {
+        1, 1, 1, 1, 1, 1,
+        1, 0, 0, 2, 0, 1,
+        1, 0, 8, 0, 3, 1,
+        1, 1, 1, 1, 1, 1,
+    };
+    const FtMap m = {TILES, 6, 4, "Test"};
+
+    CHECK_EQ(ft_map_tile(&m, 0, 0), FT_TILE_WALL);
+    CHECK_EQ(ft_map_tile(&m, 1, 1), FT_TILE_FLOOR);
+    CHECK_EQ(ft_map_tile(&m, 3, 1), FT_TILE_VOID);
+    CHECK_EQ(ft_map_tile(&m, 4, 2), FT_TILE_GRASS);
+
+    /* Off-map reads as wall, so the world has edges without every caller
+     * bounds-checking. */
+    CHECK_EQ(ft_map_tile(&m, -1, 0), FT_TILE_WALL);
+    CHECK_EQ(ft_map_tile(&m, 99, 0), FT_TILE_WALL);
+    CHECK_EQ(ft_map_tile(&m, 0, -5), FT_TILE_WALL);
+    CHECK_EQ(ft_map_tile(NULL, 0, 0), FT_TILE_WALL);
+
+    /* What stops you, and what does not. */
+    CHECK(ft_tile_solid(FT_TILE_WALL), "walls are solid");
+    CHECK(ft_tile_solid(FT_TILE_VOID), "voids are solid");
+    CHECK(ft_tile_solid(FT_TILE_CRATE), "crates are solid");
+    CHECK(ft_tile_solid(FT_TILE_LOCK), "locked ports are solid until opened");
+    CHECK(!ft_tile_solid(FT_TILE_FLOOR), "floor is walkable");
+    CHECK(!ft_tile_solid(FT_TILE_GRASS), "grass is walkable");
+    CHECK(!ft_tile_solid(FT_TILE_DOOR), "doors are walkable");
+    CHECK(!ft_tile_solid(FT_TILE_TERM), "terminals are walkable");
+
+    CHECK(ft_tile_interactive(FT_TILE_DOOR), "doors do something");
+    CHECK(ft_tile_interactive(FT_TILE_TERM), "terminals do something");
+    CHECK(!ft_tile_interactive(FT_TILE_FLOOR), "plain floor does not");
+
+    /* Only the avatar's feet collide, so a head may overlap scenery above. */
+    const FtPos clear = {8, 8};
+    CHECK(!ft_map_blocked(&m, clear), "open floor is not blocked");
+
+    const FtPos in_wall = {0, 0};
+    CHECK(ft_map_blocked(&m, in_wall), "the wall row blocks");
+
+    /* Walking into a wall stops that axis but not the other: a diagonal into
+     * a wall should slide along it rather than sticking. */
+    const FtPos from = {8, 8};
+    const FtPos slid = ft_map_move(&m, from, -8, 0);
+    CHECK_EQ(slid.x, from.x); /* left is a wall */
+
+    const FtPos diag = ft_map_move(&m, from, -8, 4);
+    CHECK_EQ(diag.x, from.x);      /* blocked horizontally */
+    CHECK_EQ(diag.y, from.y + 4);  /* but still slid down */
+
+    /* Free movement actually moves. */
+    const FtPos moved = ft_map_move(&m, from, 0, 4);
+    CHECK_EQ(moved.y, from.y + 4);
+
+    /* Camera never shows outside the map, however far the focus runs. */
+    static const uint8_t BIG[40 * 20] = {0};
+    const FtMap big = {BIG, 40, 20, "Big"};
+    const int32_t max_x = 40 * FT_TILE_PX - FT_VIEW_W * FT_TILE_PX;
+    const int32_t max_y = 20 * FT_TILE_PX - FT_VIEW_H * FT_TILE_PX;
+
+    const FtPos far_pos = {9999, 9999};
+    const FtPos c1 = ft_map_camera(&big, far_pos);
+    CHECK_EQ(c1.x, max_x);
+    CHECK_EQ(c1.y, max_y);
+
+    const FtPos neg = {-9999, -9999};
+    const FtPos c2 = ft_map_camera(&big, neg);
+    CHECK_EQ(c2.x, 0);
+    CHECK_EQ(c2.y, 0);
+
+    /* Mid-map, the focus is centred. */
+    const FtPos mid = {160, 80};
+    const FtPos c3 = ft_map_camera(&big, mid);
+    CHECK_EQ(c3.x, 160 + FT_AVATAR_W / 2 - (FT_VIEW_W * FT_TILE_PX) / 2);
+    CHECK_EQ(c3.y, 80 + FT_AVATAR_H / 2 - (FT_VIEW_H * FT_TILE_PX) / 2);
+
+    /* A map smaller than the viewport pins to the origin instead of going
+     * negative and revealing a band of off-map wall. */
+    const FtPos c4 = ft_map_camera(&m, mid);
+    CHECK_EQ(c4.x, 0);
+    CHECK_EQ(c4.y, 0);
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -996,6 +1086,7 @@ int main(void) {
     test_encounter();
     test_tutorial();
     test_anim();
+    test_map();
     test_rng();
 
     printf("\n%d checks, %d failures\n\n", checks, failures);

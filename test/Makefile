@@ -17,7 +17,7 @@ CORE_SRC := $(wildcard $(CORE_DIR)/*.c)
 PREVIEW_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wpedantic -O2 -g \
                   -I$(CORE_DIR) -I$(APP_DIR) -Istub -I.
 
-.PHONY: all test sim preview check-nofloat clean
+.PHONY: all test sim preview map check-nofloat clean
 
 all: test
 
@@ -38,6 +38,14 @@ sim: $(BIN)/sim
 
 $(BIN)/preview: $(CORE_SRC) $(APP_DIR)/ft_render.c canvas_stub.c preview.c | $(BIN)
 	$(CC) $(PREVIEW_CFLAGS) $^ -o $@
+
+$(BIN)/map_preview: $(CORE_SRC) $(APP_DIR)/ft_overworld.c canvas_stub.c map_preview.c | $(BIN)
+	$(CC) $(PREVIEW_CFLAGS) $^ -o $@
+
+map: $(BIN)/map_preview
+	@mkdir -p preview
+	@./$(BIN)/map_preview
+	@python3 topng.py map
 
 preview: $(BIN)/preview
 	@rm -rf preview

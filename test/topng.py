@@ -6,10 +6,15 @@ from PIL import Image, ImageDraw
 
 SCALE = 3
 COLS = 3
+
 PAD = 8
 LABEL_H = 11
 
-frames = sorted(glob.glob("preview/*.pbm"))
+import sys
+
+prefix = sys.argv[1] if len(sys.argv) > 1 else ""
+pattern = f"preview/{prefix}*.pbm" if prefix else "preview/[0-9]*.pbm"
+frames = sorted(glob.glob(pattern))
 if not frames:
     raise SystemExit("no frames; run the preview binary first")
 
@@ -40,5 +45,6 @@ for i, (name, img) in enumerate(tiles):
     sheet.paste(img, (cx, cy + LABEL_H))
     draw.rectangle([cx - 1, cy + LABEL_H - 1, cx + tw, cy + LABEL_H + th], outline=0)
 
-sheet.save("preview/sheet.png")
-print(f"  wrote preview/sheet.png ({len(tiles)} frames)")
+out = f"preview/{prefix or 'sheet'}.png"
+sheet.save(out)
+print(f"  wrote {out} ({len(tiles)} frames)")
