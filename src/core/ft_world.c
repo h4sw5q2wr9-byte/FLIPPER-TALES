@@ -43,10 +43,81 @@ static const FtEntity CB3_ENTS[] = {
 /* [4] Cold Gate: a group standing in the exit, the way an area ends. */
 static const FtExit CB4_EXITS[] = {
     {0, 2, 2, 16, 10},
-    {17, 8, 0, 2, 3},
+    {17, 8, 4, 1, 2}, /* out of the prologue and into the concept slices */
 };
 static const FtEntity CB4_ENTS[] = {
     {FT_ENT_FOE, 13, 8, 3},
+};
+
+/* ---- Concept slices ---------------------------------------------------
+ *
+ * One room from each of the five chapters, chained on past the prologue so
+ * they can be walked rather than read about. They are a *sample* of each
+ * area, not the area: enough to establish what the place looks like, what
+ * is in it, and what the chapter's module would be for.
+ *
+ * Every one carries a locked port, because the progression is the point —
+ * the gate you cannot open yet is the thing that makes each area a promise
+ * rather than a backdrop. See DESIGN.md "The world". */
+
+/* [5] The Scrapline. Wreckage, and a span of missing floor with a terminal
+ * stranded on the far side: Infrared is line-of-sight, so what the module
+ * buys you here is reaching across a gap you cannot walk. */
+static const FtExit SL1_EXITS[] = {
+    {0, 2, 3, 16, 8},
+    {21, 8, 5, 1, 2},
+};
+static const FtEntity SL1_ENTS[] = {
+    {FT_ENT_FOE, 8, 6, 0},
+    {FT_ENT_FOE, 11, 3, 2},
+};
+
+/* [6] Cold Storage. A sealed cell in the middle of a frosted floor, with no
+ * visible way in: RFID reads through walls, so the module finds the door
+ * that was never drawn. */
+static const FtExit CS1_EXITS[] = {
+    {0, 2, 4, 20, 8},
+    {21, 8, 6, 1, 2},
+};
+static const FtEntity CS1_ENTS[] = {
+    {FT_ENT_FOE, 17, 2, 1},
+    {FT_ENT_FOE, 4, 7, 0},
+};
+
+/* [7] The Turnstile. Ranks of locked ports across the only route through.
+ * This is the wall the chapter is named after, and you can walk up to it
+ * long before the iButton exists. */
+static const FtExit TS1_EXITS[] = {
+    {0, 2, 5, 20, 8},
+    {21, 8, 7, 1, 2},
+};
+static const FtEntity TS1_ENTS[] = {
+    {FT_ENT_FOE, 15, 4, 3},
+};
+
+/* [8] Signal Hill. Pylons and dead cable runs on a terrace, with the ladder
+ * up sitting behind a run that carries nothing: GPIO powers what is already
+ * there. */
+static const FtExit SH1_EXITS[] = {
+    {0, 2, 6, 20, 8},
+    {21, 8, 8, 1, 2},
+};
+static const FtEntity SH1_ENTS[] = {
+    {FT_ENT_FOE, 15, 1, 2},
+    {FT_ENT_FOE, 5, 6, 1},
+};
+
+/* [9] The Deadzone. Interference over everything and nothing that reads
+ * straight. BLE pairs with devices and moves them, so the crates in the way
+ * are the way through. The chain loops back to the start from here: past
+ * this is Chapter 1, which does not exist yet. */
+static const FtExit DZ1_EXITS[] = {
+    {0, 2, 7, 20, 8},
+    {21, 8, 0, 3, 4},
+};
+static const FtEntity DZ1_ENTS[] = {
+    {FT_ENT_FOE, 9, 4, 3},
+    {FT_ENT_FOE, 17, 7, 2},
 };
 
 static const FtRoom FT_ROOMS[] = {
@@ -54,8 +125,19 @@ static const FtRoom FT_ROOMS[] = {
     {&FT_MAP_CB2, CB2_EXITS, 2, CB2_ENTS, 1},
     {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 2},
     {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 1},
+    {&FT_MAP_SL1, SL1_EXITS, 2, SL1_ENTS, 2},
+    {&FT_MAP_CS1, CS1_EXITS, 2, CS1_ENTS, 2},
+    {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 1},
+    {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2},
+    {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2},
 };
 #define ROOM_COUNT (sizeof(FT_ROOMS) / sizeof(FT_ROOMS[0]))
+
+/* Every room's every entity must have a bit to live in. Overflowing this is
+ * silent at runtime — clear_entity simply returns and the thing comes back —
+ * so it fails the build instead. */
+typedef char ft_cleared_bits_fit
+    [(FT_CLEARED_BYTES * 8u >= ROOM_COUNT * FT_MAX_ROOM_ENTS) ? 1 : -1];
 
 const FtRoom* ft_room(uint8_t index) {
     return &FT_ROOMS[index < ROOM_COUNT ? index : 0];

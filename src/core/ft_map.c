@@ -6,6 +6,8 @@ bool ft_tile_solid(FtTile t) {
     case FT_TILE_VOID:
     case FT_TILE_CRATE:
     case FT_TILE_LOCK: /* until the iButton module opens it */
+    case FT_TILE_SCRAP:
+    case FT_TILE_PYLON:
         return true;
     default:
         return false;
@@ -46,7 +48,11 @@ bool ft_map_scatter(const FtMap* m, int32_t tx, int32_t ty) {
 
     /* Only bare floor. Growing weeds through a crate or a doorway looks like
      * a bug rather than like nature. */
-    if(ft_map_tile(m, tx, ty) != FT_TILE_FLOOR) return false;
+    const FtTile ground = ft_map_tile(m, tx, ty);
+    if(ground != FT_TILE_FLOOR && ground != FT_TILE_FROST &&
+       ground != FT_TILE_STATIC) {
+        return false;
+    }
 
     /* Cheap spatial hash: deterministic per tile, so the scatter is stable as
      * the camera scrolls rather than reseeding every frame. */

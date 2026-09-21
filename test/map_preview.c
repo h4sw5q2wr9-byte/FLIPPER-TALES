@@ -77,6 +77,16 @@ int main(void) {
         {"cb3-lower",    2, &FT_MAP_CB3, 80,  68, FT_FACE_RIGHT, true,  9000},
         {"cb4-lock",     3, &FT_MAP_CB4, 40,  44, FT_FACE_RIGHT, false, 0},
         {"cb4-exit",     3, &FT_MAP_CB4, 120, 68, FT_FACE_RIGHT, true,  9000},
+        /* The concept slices, each at the thing that makes it that place. */
+        {"sl1-gap",      4, &FT_MAP_SL1, 80,  36, FT_FACE_RIGHT, true,  0},
+        {"sl1-scrap",    4, &FT_MAP_SL1, 48,  28, FT_FACE_RIGHT, true,  9000},
+        {"cs1-cell",     5, &FT_MAP_CS1, 72,  36, FT_FACE_DOWN,  true,  0},
+        {"cs1-frost",    5, &FT_MAP_CS1, 140, 28, FT_FACE_LEFT,  true,  9000},
+        {"ts1-gate",     6, &FT_MAP_TS1, 80,  36, FT_FACE_RIGHT, true,  0},
+        {"sh1-pylons",   7, &FT_MAP_SH1, 72,  20, FT_FACE_RIGHT, true,  0},
+        {"sh1-ladder",   7, &FT_MAP_SH1, 48,  36, FT_FACE_DOWN,  true,  9000},
+        {"dz1-static",   8, &FT_MAP_DZ1, 80,  44, FT_FACE_RIGHT, true,  0},
+        {"dz1-void",     8, &FT_MAP_DZ1, 24,  52, FT_FACE_RIGHT, true,  9000},
     };
 
     Canvas* canvas = ft_stub_canvas_alloc();
@@ -148,6 +158,11 @@ int main(void) {
     write_whole_map(&FT_MAP_CB2, "preview/whole_2_cb2.pbm");
     write_whole_map(&FT_MAP_CB3, "preview/whole_3_cb3.pbm");
     write_whole_map(&FT_MAP_CB4, "preview/whole_4_cb4.pbm");
+    write_whole_map(&FT_MAP_SL1, "preview/whole_5_sl1.pbm");
+    write_whole_map(&FT_MAP_CS1, "preview/whole_6_cs1.pbm");
+    write_whole_map(&FT_MAP_TS1, "preview/whole_7_ts1.pbm");
+    write_whole_map(&FT_MAP_SH1, "preview/whole_8_sh1.pbm");
+    write_whole_map(&FT_MAP_DZ1, "preview/whole_9_dz1.pbm");
 
     printf("\n%s\n", clipped_total ? "MAP PREVIEW FAILED" : "map preview clean");
     return clipped_total ? 1 : 0;

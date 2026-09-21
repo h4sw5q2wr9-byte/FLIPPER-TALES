@@ -914,6 +914,43 @@ behind it honest rather than arbitrary.
 | Signal Hill | **GPIO** | Support, buffs, RAM regen |
 | The Deadzone | **BLE** | Control — and where `JAMMER` foes live |
 
+#### Concept slices *(built)*
+
+One room from each of the five, chained on past Cold Gate so the areas can be
+**walked** rather than read about. They are a sample of each chapter, not the
+chapter: enough to establish what the place looks like, what is in it, and
+what its module would be for.
+
+| Room | What it shows | The module's job, made visible |
+|---|---|---|
+| The Scrapline | Wreckage and a span of missing floor | A terminal sealed in a pocket behind the gap. Infrared is line-of-sight, so it reaches what you cannot walk to |
+| Cold Storage | A frosted floor around a sealed cell | The cell has no door drawn. RFID reads through walls and finds the one that was never there |
+| The Turnstile | Ranks of locked ports across the route | The gate the chapter is named after. You squeeze past it below; iButton is the way through |
+| Signal Hill | Pylons and dead cable runs on a terrace | Everything is in place and nothing is powered. GPIO turns it on |
+| The Deadzone | Interference over the whole floor, and holes | Crates in the way that BLE would pair with and move |
+
+Each area gets a **ground or obstacle of its own** — `FT_TILE_SCRAP`,
+`FT_TILE_FROST`, `FT_TILE_PYLON`, `FT_TILE_STATIC` — because an area that
+reuses the prologue's corridor tiles is not a place, it is the same corridor
+with a different name over the door. The Turnstile is the one exception: its
+identity is the locked ports, which already existed.
+
+Every slice carries **the gate for the chapter after it**, so the whole
+progression is walkable: you can see every door you cannot open yet.
+
+Three checks keep the set honest, all of which caught something real:
+
+- `tools/genmaps.py` refuses to emit a room whose border is not sealed except
+  at its doors. Cold Storage was leaking off its right edge — invisible when
+  you are counting characters by eye.
+- The tests **flood-fill each room from its first door** and require every
+  entity and every exit to be reachable. Signal Hill's upper terrace was cut
+  in two by its own mast, stranding a foe; The Scrapline's gap could be
+  walked around, which was the entire point of the room.
+- The cleared-entity bitfield is asserted at compile time to cover every room
+  times every entity. At 8 bytes the nine rooms used 54 of its 64 bits, and
+  the eleventh room would have silently stopped being recorded.
+
 #### Progression and saving
 
 Battles already grant XP and level-ups choosing Charge, RAM or Flash. The

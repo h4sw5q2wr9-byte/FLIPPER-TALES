@@ -13,8 +13,13 @@
 
 #define FT_MAX_ROOM_ENTS 6
 
-/* One bit per entity per room, for what has been beaten or taken. */
-#define FT_CLEARED_BYTES 8
+/* One bit per entity per room, for what has been beaten or taken.
+ *
+ * Sized with headroom on purpose: at 8 bytes the nine rooms below needed 54
+ * of the 64 bits, and the eleventh room would have silently stopped being
+ * recorded — a boss that quietly respawns, found much later and blamed on
+ * anything but this. ft_world.c asserts the fit at compile time. */
+#define FT_CLEARED_BYTES 16
 #define FT_MAX_ROOM_EXITS 4
 
 typedef enum {

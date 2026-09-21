@@ -555,6 +555,143 @@ static void test_enemy_table(void) {
     CHECK_EQ(ft_resolve_hit(nfc, &lock, &p).outcome, FT_HIT_OK);
 }
 
+static void test_world_tour(void) {
+    section("the chain is walkable");
+
+    /* Every room must be reachable from the start by following exits, or a
+     * concept slice is a room nobody can get to. */
+    bool seen[32];
+    for(uint8_t i = 0; i < 32u; i++) seen[i] = false;
+
+    CHECK(ft_room_count() <= 32u, "the walk fits its bookkeeping");
+
+    uint8_t stack[32];
+    uint8_t top = 0;
+    stack[top++] = 0;
+    seen[0] = true;
+
+    while(top > 0u) {
+        const uint8_t r = stack[--top];
+        const FtRoom* room = ft_room(r);
+
+        for(uint8_t e = 0; e < room->exit_count; e++) {
+            const uint8_t dest = room->exits[e].dest_room;
+            if(dest >= ft_room_count() || seen[dest]) continue;
+
+            seen[dest] = true;
+            stack[top++] = dest;
+        }
+    }
+
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        CHECK(seen[r], "room %u (%s) is reachable", r, ft_room(r)->map->name);
+    }
+
+    /* Every entity must stand on ground, and on ground the player can reach
+     * from a door. A foe sealed inside a pocket is a fight nobody can start
+     * and an encounter marker that never clears. */
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        const FtRoom* room = ft_room(r);
+
+        for(uint8_t i = 0; i < room->ent_count; i++) {
+            const FtEntity* ent = &room->ents[i];
+            CHECK(!ft_tile_solid(ft_map_tile(room->map, ent->tx, ent->ty)),
+                  "room %u entity %u stands on open ground", r, i);
+
+            /* Flood from the room's first door and require the entity to be
+             * in the same region. */
+            const FtMap* m = room->map;
+            static bool reach[64 * 32];
+            const uint32_t cells = (uint32_t)m->w * m->h;
+            CHECK(cells <= sizeof(reach) / sizeof(reach[0]), "the flood fits");
+
+            for(uint32_t k = 0; k < cells; k++) reach[k] = false;
+
+            static uint16_t queue[64 * 32];
+            uint32_t head = 0, tail = 0;
+
+            const uint16_t sx = room->exits[0].tx, sy = room->exits[0].ty;
+            reach[(uint32_t)sy * m->w + sx] = true;
+            queue[tail++] = (uint16_t)((uint32_t)sy * m->w + sx);
+
+            while(head < tail) {
+                const uint32_t cell = queue[head++];
+                const int32_t cx = (int32_t)(cell % m->w);
+                const int32_t cy = (int32_t)(cell / m->w);
+
+                static const int8_t STEP[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+                for(uint8_t d = 0; d < 4u; d++) {
+                    const int32_t nx = cx + STEP[d][0], ny = cy + STEP[d][1];
+                    if(nx < 0 || ny < 0 || nx >= (int32_t)m->w || ny >= (int32_t)m->h) {
+                        continue;
+                    }
+                    const uint32_t n = (uint32_t)ny * m->w + (uint32_t)nx;
+                    if(reach[n] || ft_tile_solid(ft_map_tile(m, nx, ny))) continue;
+
+                    reach[n] = true;
+                    queue[tail++] = (uint16_t)n;
+                }
+            }
+
+            CHECK(reach[(uint32_t)ent->ty * m->w + ent->tx],
+                  "room %u entity %u can be walked to", r, i);
+
+            /* And so can every exit, or the chain is broken inside a room. */
+            for(uint8_t x = 0; x < room->exit_count; x++) {
+                const uint32_t cell =
+                    (uint32_t)room->exits[x].ty * m->w + room->exits[x].tx;
+                CHECK(reach[cell], "room %u exit %u can be walked to", r, x);
+            }
+        }
+    }
+
+    /* And every room can be left again, or it is a trap. */
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        CHECK(ft_room(r)->exit_count > 0, "room %u has a way out", r);
+    }
+
+    /* Each area slice should actually look like somewhere: at least one tile
+     * the prologue does not use. A room built only from corridor tiles is a
+     * corridor with a different name over the door. */
+    static const FtTile FLAVOUR[] = {
+        FT_TILE_SCRAP, FT_TILE_FROST, FT_TILE_PYLON, FT_TILE_STATIC};
+
+    int flavoured = 0;
+    for(uint8_t r = 4; r < ft_room_count(); r++) {
+        const FtMap* m = ft_room(r)->map;
+        bool has = false;
+
+        for(uint16_t y = 0; y < m->h; y++) {
+            for(uint16_t x = 0; x < m->w; x++) {
+                const FtTile t = ft_map_tile(m, x, y);
+                for(size_t k = 0; k < sizeof(FLAVOUR) / sizeof(FLAVOUR[0]); k++) {
+                    if(t == FLAVOUR[k]) has = true;
+                }
+            }
+        }
+        if(has) flavoured++;
+
+        /* The Turnstile is the exception: its identity is the locked ports,
+         * which are an existing tile. */
+        CHECK(has || m->name[0] == 'T', "room %u (%s) has a look of its own",
+              r, m->name);
+    }
+    CHECK(flavoured >= 4, "at least four areas have their own ground");
+
+    /* Every area slice carries the gate for the chapter after it. */
+    for(uint8_t r = 4; r < ft_room_count(); r++) {
+        const FtMap* m = ft_room(r)->map;
+        int locks = 0;
+
+        for(uint16_t y = 0; y < m->h; y++) {
+            for(uint16_t x = 0; x < m->w; x++) {
+                if(ft_map_tile(m, x, y) == FT_TILE_LOCK) locks++;
+            }
+        }
+        CHECK(locks > 0, "room %u (%s) shows a gate", r, m->name);
+    }
+}
+
 static void test_rng(void) {
     section("deterministic RNG");
 
@@ -2399,6 +2536,33 @@ static void test_broadcast_sweep(void) {
 static void test_world_links(void) {
     section("room links");
 
+    /* Every entity in every room needs a bit in the cleared bitfield. At 8
+     * bytes this was down to its last ten, and the room past that would have
+     * silently stopped being recorded. */
+    uint16_t bits = 0;
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        bits = (uint16_t)(bits + ft_room(r)->ent_count);
+    }
+    CHECK(FT_CLEARED_BYTES * 8u >= (uint32_t)ft_room_count() * FT_MAX_ROOM_ENTS,
+          "the cleared bitfield covers every room (%u rooms, %u bits)",
+          ft_room_count(), FT_CLEARED_BYTES * 8u);
+    CHECK(bits > 0, "some rooms have entities");
+
+    /* Clearing the very last entity of the very last room must stick. */
+    FtWorld last;
+    ft_world_init(&last);
+
+    const uint8_t r_last = (uint8_t)(ft_room_count() - 1u);
+    ft_world_enter(&last, r_last, ft_room(r_last)->exits[0].tx,
+                   ft_room(r_last)->exits[0].ty);
+
+    if(ft_room(r_last)->ent_count > 0u) {
+        const uint8_t e_last = (uint8_t)(ft_room(r_last)->ent_count - 1u);
+        ft_world_clear_entity(&last, e_last);
+        CHECK(ft_world_entity_gone(&last, e_last),
+              "the last entity of the last room stays cleared");
+    }
+
     /* Every exit must sit on a real door, and every destination must be
      * somewhere the player can actually stand. A wrong coordinate here is an
      * unreachable exit or a spawn inside a wall — found on hardware, minutes
@@ -2500,6 +2664,7 @@ int main(void) {
     test_scene_wipe();
     test_broadcast_sweep();
     test_world_links();
+    test_world_tour();
     test_rng();
 
     printf("\n%d checks, %d failures\n\n", checks, failures);

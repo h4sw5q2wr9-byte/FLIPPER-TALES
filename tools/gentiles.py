@@ -213,6 +213,65 @@ TILES["crate"] = """
 """
 
 
+# ---- Area flavour ------------------------------------------------------
+#
+# One ground or obstacle per chapter. An area that reuses the prologue's
+# corridor tiles is not a place, it is the same corridor with a different
+# name over the door.
+
+# The Scrapline: heaped wreckage. Solid. Jagged on purpose — the silhouette
+# has to differ from the crate's neat X-brace at a glance.
+TILES["scrap"] = """
+..##....
+.####.#.
+##.####.
+#.#####.
+#####.##
+.##.####
+####.###
+.#.####.
+"""
+
+# Cold Storage: rimed floor. Walkable. A sparse crystal lattice, lighter than
+# the wall courses so a frosted room still reads as open ground.
+TILES["frost"] = """
+...#....
+..###...
+...#..#.
+......#.
+.#......
+#.#.....
+.#...#..
+.....#..
+"""
+
+# Signal Hill: the base of a mast. Solid. Vertical, so a row of them reads as
+# a line of pylons rather than as fencing.
+TILES["pylon"] = """
+...##...
+...##...
+..####..
+.#.##.#.
+#..##..#
+...##...
+..####..
+.######.
+"""
+
+# The Deadzone: floor under interference. Walkable. Broken scanlines — the
+# ground is still there, something is just sitting on top of it.
+TILES["static"] = """
+#.#..#..
+........
+..#...#.
+........
+.#..#..#
+........
+#...##..
+........
+"""
+
+
 def parse(art):
     rows = [r for r in art.strip("\n").split("\n") if r.strip() or True]
     rows = [r for r in art.strip("\n").split("\n")]
@@ -263,10 +322,10 @@ with open("src/app/ft_tiles.h", "w") as fh:
 static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
 """)
     # Must match FtTile, then the orientation variants (FT_TILE_ART_*).
-    order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock", "crate",
+    # Must match FtTile exactly, then the orientation variants (FT_TILE_ART_*).
+    order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock",
+             "crate", "ladder", "scrap", "frost", "pylon", "static",
              "door_side", "lock_side", "cable_v", "wall_top", "shadow", "tuft"]
-    # Ladder is a real tile, so it goes in the FtTile run, not the variants.
-    order.insert(9, "ladder")
     for name in order:
         fh.write("    /* %-6s */ {%s},\n" % (name, ", ".join("0x%02X" % b for b in data[name])))
     fh.write("};\n\n#endif /* FT_TILES_H */\n")

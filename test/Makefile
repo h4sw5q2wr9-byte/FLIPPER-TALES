@@ -12,6 +12,13 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror -Wpedantic -Wshadow \
 APP_DIR  := ../src/app
 CORE_SRC := $(wildcard $(CORE_DIR)/*.c)
 
+# Headers are prerequisites too. Without this, editing a generated map or
+# tile table left every binary here stale, and the tests happily passed
+# against the previous world — which is exactly the kind of green that costs
+# an afternoon.
+HDRS := $(wildcard $(CORE_DIR)/*.h) $(wildcard $(APP_DIR)/*.h) \
+        $(wildcard stub/*/*.h) ft_font5x8.h
+
 # The preview harness compiles the real renderer against a stub canvas, so the
 # 128x64 layout can be inspected (and clipping caught) without a device.
 PREVIEW_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wpedantic -O2 -g \
@@ -24,11 +31,11 @@ all: test
 $(BIN):
 	@mkdir -p $(BIN)
 
-$(BIN)/test_main: $(CORE_SRC) test_main.c | $(BIN)
-	$(CC) $(CFLAGS) $^ -o $@
+$(BIN)/test_main: $(CORE_SRC) test_main.c $(HDRS) | $(BIN)
+	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
 
-$(BIN)/sim: $(CORE_SRC) sim.c | $(BIN)
-	$(CC) $(CFLAGS) -I$(APP_DIR) $^ -o $@
+$(BIN)/sim: $(CORE_SRC) sim.c $(HDRS) | $(BIN)
+	$(CC) $(CFLAGS) -I$(APP_DIR) $(filter %.c,$^) -o $@
 
 test: $(BIN)/test_main check-nofloat
 	@./$(BIN)/test_main
@@ -36,11 +43,11 @@ test: $(BIN)/test_main check-nofloat
 sim: $(BIN)/sim
 	@./$(BIN)/sim
 
-$(BIN)/preview: $(CORE_SRC) $(APP_DIR)/ft_render.c canvas_stub.c preview.c | $(BIN)
-	$(CC) $(PREVIEW_CFLAGS) $^ -o $@
+$(BIN)/preview: $(CORE_SRC) $(APP_DIR)/ft_render.c canvas_stub.c preview.c $(HDRS) | $(BIN)
+	$(CC) $(PREVIEW_CFLAGS) $(filter %.c,$^) -o $@
 
-$(BIN)/map_preview: $(CORE_SRC) $(APP_DIR)/ft_overworld.c canvas_stub.c map_preview.c | $(BIN)
-	$(CC) $(PREVIEW_CFLAGS) $^ -o $@
+$(BIN)/map_preview: $(CORE_SRC) $(APP_DIR)/ft_overworld.c canvas_stub.c map_preview.c $(HDRS) | $(BIN)
+	$(CC) $(PREVIEW_CFLAGS) $(filter %.c,$^) -o $@
 
 map: $(BIN)/map_preview
 	@mkdir -p preview

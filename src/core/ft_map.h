@@ -53,6 +53,15 @@ typedef enum {
     FT_TILE_LOCK,
     FT_TILE_CRATE,
     FT_TILE_LADDER,
+
+    /* Area flavour. A chapter that looks like the last one is not a place,
+     * it is the same corridor with a different name over the door, so each
+     * area gets one ground or obstacle of its own. */
+    FT_TILE_SCRAP,  /* The Scrapline: heaped wreckage, solid */
+    FT_TILE_FROST,  /* Cold Storage: rimed floor, walkable */
+    FT_TILE_PYLON,  /* Signal Hill: a mast base, solid */
+    FT_TILE_STATIC, /* The Deadzone: floor under interference, walkable */
+
     FT_TILE_COUNT
 } FtTile;
 
