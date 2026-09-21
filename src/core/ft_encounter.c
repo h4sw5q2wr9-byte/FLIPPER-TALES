@@ -53,6 +53,20 @@ uint32_t ft_encounter_sweep_ms(const FtEncounter* e) {
     return (window && elapsed > window) ? window : elapsed;
 }
 
+/* ---- Action animation ------------------------------------------------- */
+
+bool ft_encounter_in_anim(const FtEncounter* e) {
+    if(e->phase != FT_PHASE_RESULT && e->phase != FT_PHASE_IMPACT) return false;
+    return e->phase_ms < FT_ANIM_MS;
+}
+
+uint8_t ft_encounter_anim_progress(const FtEncounter* e) {
+    if(e->phase != FT_PHASE_RESULT && e->phase != FT_PHASE_IMPACT) return 255u;
+    if(e->phase_ms >= FT_ANIM_MS) return 255u;
+
+    return (uint8_t)((e->phase_ms * 255u) / FT_ANIM_MS);
+}
+
 /* ---- Setup ----------------------------------------------------------- */
 
 const FtEnemy* ft_encounter_enemy(const FtEncounter* e) {
@@ -104,6 +118,9 @@ void ft_encounter_init(FtEncounter* e, FtEnemyId enemy, const FtLoadout* lo, uin
     e->last_player_hit = blank;
     e->last_enemy_hit = blank;
     e->last_capture_was_new = false;
+
+    /* Coaching defaults on; the app turns it off once the player asks. */
+    e->coach = true;
 
     ft_rng_seed(&e->rng, seed);
 }

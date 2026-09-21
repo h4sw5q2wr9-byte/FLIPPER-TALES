@@ -1,5 +1,6 @@
 #include "ft_render.h"
 
+#include "../core/ft_tutorial.h"
 #include "ft_sprites.h"
 
 #include <stdio.h>
@@ -129,6 +130,48 @@ static const uint16_t* enemy_sprite(uint32_t attrs) {
     return FT_SPRITE_PACKET;
 }
 
+/* Lunge curve: out fast, hold briefly, ease back. Returns pixels of travel
+ * for a progress value of 0..255. */
+static int32_t lunge_px(uint8_t t, int32_t reach) {
+    if(t < 80u) return (reach * (int32_t)t) / 80;          /* strike out   */
+    if(t < 150u) return reach;                              /* connect      */
+    if(t < 255u) return (reach * (int32_t)(255u - t)) / 105; /* recover     */
+    return 0;
+}
+
+/* Two-pixel judder, used on whoever just took damage. */
+static int32_t shake_px(uint8_t t) {
+    if(t >= 200u) return 0;
+    return ((t / 20u) % 2u) ? 2 : -2;
+}
+
+/* A broadcast attack crossing the gap: a widening arc, so ranged reads
+ * differently from a contact lunge. */
+static void draw_wave(Canvas* c, int32_t from_x, int32_t to_x, int32_t y, uint8_t t) {
+    if(t >= 200u) return;
+
+    const int32_t x = from_x + ((to_x - from_x) * (int32_t)t) / 200;
+    for(int32_t i = 0; i < 3; i++) {
+        const int32_t r = 2 + i * 2;
+        canvas_draw_dot(c, x, y - r);
+        canvas_draw_dot(c, x, y + r);
+        canvas_draw_dot(c, x + (from_x < to_x ? -i : i), y);
+    }
+}
+
+/* A capture bursts outward from the player. */
+static void draw_capture_burst(Canvas* c, int32_t cx, int32_t cy, uint8_t t) {
+    if(t >= 220u) return;
+    const int32_t r = 4 + ((int32_t)t * 10) / 220;
+
+    for(int32_t i = -1; i <= 1; i++) {
+        canvas_draw_dot(c, cx - r, cy + i * 3);
+        canvas_draw_dot(c, cx + r, cy + i * 3);
+        canvas_draw_dot(c, cx + i * 3, cy - r);
+        canvas_draw_dot(c, cx + i * 3, cy + r);
+    }
+}
+
 static void draw_arena(Canvas* canvas, const FtEncounter* e) {
     const int32_t floor_y = FT_ARENA_Y + 18;
 
@@ -136,8 +179,38 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
      * arena reading as two shapes floating in a void. */
     for(int32_t x = 2; x < FT_SCREEN_W - 2; x += 3) canvas_draw_dot(canvas, x, floor_y);
 
-    draw_player(canvas, 4, floor_y - 16, ft_roll_active(&e->roll));
-    draw_sprite(canvas, enemy_sprite(ft_encounter_enemy(e)->attrs), 106, floor_y - 16);
+    const uint8_t t = ft_encounter_anim_progress(e);
+    int32_t px = 4, py = floor_y - 16;
+    int32_t ex = 106, ey = floor_y - 16;
+
+    if(e->phase == FT_PHASE_RESULT) {
+        const FtHitResult* r = &e->last_player_hit;
+        const bool contact =
+            (e->menu_index == FT_ACTION_CONTACT) && (r->outcome == FT_HIT_OK);
+
+        if(contact) px += lunge_px(t, 70);
+        if(r->damage > 0) ex += shake_px(t);
+
+        if(!contact && r->outcome == FT_HIT_OK && e->menu_index == FT_ACTION_BROADCAST) {
+            draw_wave(canvas, 24, 102, floor_y - 8, t);
+        }
+    } else if(e->phase == FT_PHASE_IMPACT) {
+        const FtAttack* atk = ft_encounter_incoming(e);
+        const bool contact = atk && atk->delivery == FT_DELIVERY_CONTACT;
+
+        if(contact) ex -= lunge_px(t, 70);
+        else if(atk) draw_wave(canvas, 102, 24, floor_y - 8, t);
+
+        if(e->last_enemy_hit.damage > 0) px += shake_px(t);
+        if(e->last_enemy_hit.captured) draw_capture_burst(canvas, 12, floor_y - 8, t);
+    } else if(e->phase == FT_PHASE_MENU) {
+        /* A slow idle bob, so the board is never completely still. */
+        if((e->phase_ms / 600u) % 2u) py -= 1;
+        if((e->phase_ms / 700u) % 2u) ey -= 1;
+    }
+
+    draw_player(canvas, px, py, ft_roll_active(&e->roll));
+    draw_sprite(canvas, enemy_sprite(ft_encounter_enemy(e)->attrs), ex, ey);
 
     /* Enemy health, directly under its sprite. */
     const int32_t bw = 24;
@@ -360,6 +433,26 @@ static void draw_enemy_result(Canvas* canvas, const FtEncounter* e) {
     }
 }
 
+/* The coach line during the menu, where the action row is already full. Sits
+ * low in the arena so the characters' faces stay visible behind it. */
+static void draw_coach_callout(Canvas* canvas, const char* hint) {
+    canvas_set_font(canvas, FontSecondary);
+
+    int32_t w = (int32_t)canvas_string_width(canvas, hint) + 8;
+    if(w > FT_SCREEN_W - 6) w = FT_SCREEN_W - 6;
+
+    const int32_t x = (FT_SCREEN_W - w) / 2;
+    const int32_t y = FT_ARENA_Y + 14;
+
+    canvas_set_color(canvas, ColorWhite);
+    canvas_draw_box(canvas, x, y, (size_t)w, 11);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_draw_frame(canvas, x, y, (size_t)w, 11);
+    canvas_draw_line(canvas, x + 2, y + 11, x + w, y + 11);
+
+    draw_centred(canvas, FT_SCREEN_W / 2, y + 8, hint);
+}
+
 /* ---- Status ---------------------------------------------------------- */
 
 static void draw_status(Canvas* canvas, const FtEncounter* e) {
@@ -464,22 +557,51 @@ static void draw_prompt(Canvas* canvas, const char* s) {
 
 /* ---- Help ------------------------------------------------------------ */
 
-void ft_render_help(Canvas* canvas) {
+void ft_render_help(Canvas* canvas, uint8_t page) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
-
     canvas_set_font(canvas, FontSecondary);
-    draw_centred(canvas, FT_SCREEN_W / 2, 7, "HOW TO PLAY");
+
+    if(page >= FT_HELP_PAGES) page = 0;
+
+    static const char* const TITLES[FT_HELP_PAGES] = {
+        "1/3  THE FIGHT",
+        "2/3  YOUR STRIKE",
+        "3/3  THEIR TURN",
+    };
+
+    /* Four lines per page, 21 characters each: the panel's width budget. */
+    static const char* const BODY[FT_HELP_PAGES][4] = {
+        {
+            "Turns alternate. You",
+            "pick a module, they",
+            "hit back. Read their",
+            "tags: AIR, ENC, SH2.",
+        },
+        {
+            "A bar sweeps. Wait",
+            "for the pips, then",
+            "tap OK in the black",
+            "block. Centre = x2.",
+        },
+        {
+            "Tap OK as the cursor",
+            "reaches the far end.",
+            "Dots = jam, half hit.",
+            "Solid = capture, 0",
+        },
+    };
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 7, TITLES[page]);
     canvas_draw_line(canvas, 0, 9, FT_SCREEN_W - 1, 9);
 
-    /* At ~6px per character, 20 characters is the width budget per line. */
-    canvas_draw_str(canvas, 2, 18, "Pick a module, tap");
-    canvas_draw_str(canvas, 2, 26, "OK inside the black");
-    canvas_draw_str(canvas, 2, 34, "block: harder hit.");
+    for(int32_t i = 0; i < 4; i++) {
+        canvas_draw_str(canvas, 2, 20 + i * 9, BODY[page][i]);
+    }
 
-    canvas_draw_str(canvas, 2, 46, "Attacked? Tap OK in");
-    canvas_draw_str(canvas, 2, 54, "the end zone. Solid");
-    canvas_draw_str(canvas, 2, 62, "= capture, dots = jam");
+    draw_centred(canvas, FT_SCREEN_W / 2, 62,
+                 (page + 1 < FT_HELP_PAGES) ? "RIGHT: more  OK: go" :
+                                              "LEFT: back   OK: go");
 }
 
 /* ---- Entry ----------------------------------------------------------- */
@@ -525,30 +647,29 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
         break;
     }
 
-    switch(e->phase) {
-    case FT_PHASE_RESULT:
-        draw_player_result(canvas, e);
-        break;
-    case FT_PHASE_IMPACT:
-        draw_enemy_result(canvas, e);
-        break;
-    default:
-        break;
+    /* The popup waits for the animation, or it would cover the arena for the
+     * whole hold and the sprites would never be seen to act. */
+    if(!ft_encounter_in_anim(e)) {
+        if(e->phase == FT_PHASE_RESULT) draw_player_result(canvas, e);
+        if(e->phase == FT_PHASE_IMPACT) draw_enemy_result(canvas, e);
     }
 
     draw_status(canvas, e);
 
-    switch(e->phase) {
-    case FT_PHASE_MENU:
+    const char* hint = ft_tutorial_hint(e);
+
+    if(e->phase == FT_PHASE_MENU) {
+        if(hint) draw_coach_callout(canvas, hint);
         draw_menu(canvas, e);
-        break;
-    case FT_PHASE_PLAYER_ACT:
+        return;
+    }
+
+    /* Everywhere else the action row is free, so the coach speaks there. */
+    if(hint) {
+        draw_prompt(canvas, hint);
+    } else if(e->phase == FT_PHASE_PLAYER_ACT) {
         draw_prompt(canvas, "OK to strike");
-        break;
-    case FT_PHASE_TELEGRAPH:
+    } else if(e->phase == FT_PHASE_TELEGRAPH) {
         draw_prompt(canvas, "OK to guard");
-        break;
-    default:
-        break;
     }
 }

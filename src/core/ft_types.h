@@ -148,7 +148,11 @@ typedef enum {
  * wide, so a longer sweep makes every timing band too few pixels to read. */
 #define FT_ACTION_WINDOW_MS    700  /* action command bar sweep */
 #define FT_TELEGRAPH_MS        800  /* enemy wind-up before impact */
-#define FT_IMPACT_HOLD_MS      450  /* result popup lingers */
+/* A resolved action plays out in two parts: the sprites act, and only then
+ * does the result popup appear. Without the split the popup covers the arena
+ * for the whole hold and the animation is never seen. */
+#define FT_ANIM_MS             320  /* lunge, travel and recoil */
+#define FT_IMPACT_HOLD_MS      760  /* animation, then the popup */
 #define FT_OUTCOME_HOLD_MS    1400  /* win/lose banner */
 
 #endif /* FT_TYPES_H */

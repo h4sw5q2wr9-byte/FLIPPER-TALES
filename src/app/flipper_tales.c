@@ -35,12 +35,14 @@ typedef struct {
     FtLoadout   loadout;
     FtEncounter encounter;
     uint8_t     enemy_index;
+    bool        coach;
 
     /* Shown on launch: the timing windows are the whole game and are not
      * self-evident, so the rules go up before the first turn rather than
      * hiding behind a hint in the corner. */
-    bool show_help;
-    bool running;
+    bool    show_help;
+    uint8_t help_page;
+    bool    running;
 } FlipperTales;
 
 /* ---- GUI callbacks --------------------------------------------------- */
@@ -53,7 +55,7 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
     if(furi_mutex_acquire(app->mutex, 25) != FuriStatusOk) return;
 
     if(app->show_help) {
-        ft_render_help(canvas);
+        ft_render_help(canvas, app->help_page);
     } else {
         ft_render_battle(canvas, &app->encounter);
     }
@@ -70,9 +72,15 @@ static void ft_input_callback(InputEvent* event, void* ctx) {
 /* ---- Input ----------------------------------------------------------- */
 
 static void ft_start_encounter(FlipperTales* app, uint8_t enemy_index) {
+    /* ft_encounter_init resets coaching to on, so carry the player's choice
+     * across fights rather than nagging them again each time. */
+    const bool coach = app->coach;
+
     app->enemy_index = (uint8_t)(enemy_index % FT_ENEMY_COUNT);
     ft_encounter_init(&app->encounter, (FtEnemyId)app->enemy_index, &app->loadout,
                       furi_get_tick());
+
+    app->encounter.coach = coach;
 }
 
 static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
@@ -89,9 +97,24 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
      * automatic miss for anyone who does not tap cleanly. */
     if(event->key == InputKeyOk && !pressed) return;
 
-    /* Any key dismisses the help card. */
     if(app->show_help) {
-        if(pressed) app->show_help = false;
+        if(!pressed && !repeated) return;
+
+        switch(event->key) {
+        case InputKeyRight:
+            if(app->help_page + 1 < FT_HELP_PAGES) app->help_page++;
+            break;
+        case InputKeyLeft:
+            if(app->help_page > 0) app->help_page--;
+            break;
+        case InputKeyOk:
+        case InputKeyBack:
+            app->show_help = false;
+            app->help_page = 0;
+            break;
+        default:
+            break;
+        }
         return;
     }
 
@@ -120,17 +143,21 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
 
     /* The menu is a 2x2 grid, so vertical movement is a step of two. */
     case InputKeyUp:
-        if(ft_encounter_over(&app->encounter) || app->encounter.phase == FT_PHASE_MENU) {
-            if(ft_encounter_over(&app->encounter)) {
-                app->show_help = true;
-            } else {
-                ft_encounter_menu_move(&app->encounter, -2);
-            }
+        if(ft_encounter_over(&app->encounter)) {
+            app->show_help = true;
+        } else {
+            ft_encounter_menu_move(&app->encounter, -2);
         }
         break;
 
     case InputKeyDown:
-        ft_encounter_menu_move(&app->encounter, 2);
+        if(app->encounter.phase == FT_PHASE_MENU) {
+            ft_encounter_menu_move(&app->encounter, 2);
+        } else {
+            /* Outside the grid, DOWN silences or restores the coach. */
+            app->coach = !app->coach;
+            app->encounter.coach = app->coach;
+        }
         break;
 
     default:
@@ -155,9 +182,11 @@ static FlipperTales* ft_alloc(void) {
 
     ft_loadout_init(&app->loadout);
     app->enemy_index = 0;
+    app->coach = true;
     ft_start_encounter(app, 0);
 
     app->show_help = true;
+    app->help_page = 0;
     app->running = true;
 
     return app;

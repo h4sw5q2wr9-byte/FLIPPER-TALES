@@ -23,7 +23,9 @@
 #define FT_STATUS_Y  37
 #define FT_ACTION_Y  46
 
+#define FT_HELP_PAGES 3
+
 void ft_render_battle(Canvas* canvas, const FtEncounter* e);
-void ft_render_help(Canvas* canvas);
+void ft_render_help(Canvas* canvas, uint8_t page);
 
 #endif /* FT_RENDER_H */

@@ -148,6 +148,12 @@ about five samples. These are the numbers most likely to need changing
 once the game is played on hardware — they are constants in `ft_types.h` for
 exactly that reason.
 
+A resolved action plays out in two parts: `FT_ANIM_MS` (320 ms) of sprite
+animation — a contact lunge, a travelling arc for broadcasts, a judder on
+whoever took damage, a burst on a capture — and only then does the result popup
+take the arena. Without the split the popup covers the sprites for the whole
+hold and the animation is never seen.
+
 Both bars open with a **500 ms ready beat** (`FT_READY_MS`). The track and its
 target zones are drawn, but the cursor is held at the start line and three pips
 count the player in. Presses during the beat are ignored rather than penalised —
@@ -243,6 +249,27 @@ invert-on-frame pulse. Arguably clearer than colour.
 ```
 
 The attack-telegraph banner overlays the battle scene, centred.
+
+### 5.0 Teaching the game
+
+Two layers, because the timing windows are the whole game and nothing about
+them is self-evident.
+
+**A three-page help deck** on launch (the fight, your strike, their turn),
+navigated with LEFT/RIGHT and dismissed with OK. Reachable again with UP from
+any outcome screen.
+
+**A contextual coach** during play: one line, keyed to the exact situation —
+which module is locked and why, whether to wait or tap, what a jam was missing
+to become a capture. It is derived from battle state in `ft_tutorial.c` rather
+than tracked as its own step counter, so there is nothing to fall out of sync
+with the fight and every line is testable by constructing an encounter and
+asking what it would say. DOWN silences it outside the menu grid; the choice
+carries across fights.
+
+A test walks every reachable combination of enemy, phase, menu index, attack
+and ready state, and fails if any line the coach can produce exceeds the
+20-character width budget.
 
 ### 5.1 Verifying the layout
 

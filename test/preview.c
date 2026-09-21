@@ -7,6 +7,7 @@
 
 #include "ft_encounter.h"
 #include "ft_render.h"
+#include "ft_tutorial.h"
 
 typedef struct {
     const char* name;
@@ -66,6 +67,8 @@ static void build(FtEncounter* e, const Shot* s) {
         e->last_capture_was_new = true;
     }
 
+    if(s->variant == 9) e->coach = false;
+
     /* A couple of stored signals, so the win screen has something to report. */
     ft_siglib_capture(&e->lib, 10);
     ft_siglib_capture(&e->lib, 11);
@@ -77,19 +80,23 @@ int main(void) {
         {"menu-airborne",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_MENU,       0,    1, 0},
         {"menu-encrypted",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    0, 0},
         {"menu-last",       FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    3, 0},
+        {"menu-nocoach",    FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    1, 9},
         /* Phase times include the FT_READY_MS lead-in. */
         {"strike-ready",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 200,  1, 0},
         {"strike-early",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 620,  1, 0},
         {"strike-perfect",  FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 850,  1, 0},
-        {"result-hit",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     100,  1, 0},
-        {"result-locked",   FT_ENEMY_SEALED_LOCK,  FT_PHASE_RESULT,     100,  0, 1},
+        {"anim-strike",     FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     110,  1, 0},
+        {"result-hit",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     500,  1, 0},
+        {"result-locked",   FT_ENEMY_SEALED_LOCK,  FT_PHASE_RESULT,     500,  0, 1},
         {"telegraph-ready", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  250,  0, 0},
         {"telegraph-far",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  800,  0, 0},
         {"telegraph-near",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1270, 0, 0},
         {"telegraph-guard", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1240, 0, 1},
         {"telegraph-undo",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_TELEGRAPH,  1100, 0, 1},
-        {"impact-capture",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     100,  0, 0},
-        {"impact-jam",      FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     100,  0, 1},
+        {"anim-incoming",   FT_ENEMY_SEALED_LOCK,  FT_PHASE_IMPACT,     110,  0, 1},
+        {"anim-capture",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     110,  0, 0},
+        {"impact-capture",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     500,  0, 0},
+        {"impact-jam",      FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     500,  0, 1},
         {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0},
         {"lose",            FT_ENEMY_SEALED_LOCK,  FT_PHASE_LOSE,       100,  0, 0},
     };
@@ -97,10 +104,28 @@ int main(void) {
     Canvas* canvas = ft_stub_canvas_alloc();
     int total_clipped = 0;
 
-    ft_render_help(canvas);
-    ft_stub_canvas_write_pbm(canvas, "preview/99_help.pbm");
-    total_clipped += ft_stub_canvas_clipped(canvas);
-    printf("  %-18s %s\n", "help", ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
+    for(uint8_t page = 0; page < FT_HELP_PAGES; page++) {
+        ft_render_help(canvas, page);
+
+        char hp[64];
+        snprintf(hp, sizeof(hp), "preview/9%u_help%u.pbm", page, page + 1u);
+        ft_stub_canvas_write_pbm(canvas, hp);
+
+        const int c = ft_stub_canvas_clipped(canvas);
+        total_clipped += c;
+        printf("  help page %u        %s\n", page + 1u, c ? "CLIPPED" : "ok");
+    }
+
+    /* Every coaching line must fit the panel, whatever state produces it. */
+    for(size_t i = 0; i < sizeof(shots) / sizeof(shots[0]); i++) {
+        FtEncounter e;
+        build(&e, &shots[i]);
+        const char* hint = ft_tutorial_hint(&e);
+        if(hint && strlen(hint) > FT_TUTORIAL_MAX_CHARS) {
+            printf("  HINT TOO LONG (%zu): \"%s\"\n", strlen(hint), hint);
+            total_clipped++;
+        }
+    }
 
     for(size_t i = 0; i < sizeof(shots) / sizeof(shots[0]); i++) {
         FtEncounter e;

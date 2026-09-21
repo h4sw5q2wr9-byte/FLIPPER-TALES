@@ -9,6 +9,7 @@
 #include "ft_priority.h"
 #include "ft_progress.h"
 #include "ft_rng.h"
+#include "ft_tutorial.h"
 #include "ft_roll.h"
 #include "ft_signal.h"
 
@@ -824,6 +825,143 @@ static void test_encounter(void) {
     CHECK_EQ(FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attacks[1].klass, FT_CLASS_UNDODGEABLE);
 }
 
+
+static void test_tutorial(void) {
+    section("contextual coaching");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    FtEncounter e;
+    ft_encounter_init(&e, FT_ENEMY_STRAY_PACKET, &lo, 3);
+
+    /* On by default, and silent the moment it is turned off. */
+    CHECK(e.coach, "coaching starts on");
+    CHECK(ft_tutorial_hint(&e) != NULL, "the menu should be coached");
+
+    e.coach = false;
+    CHECK(ft_tutorial_hint(&e) == NULL, "coaching off means silence");
+    e.coach = true;
+
+    /* A locked module explains itself rather than just being struck through. */
+    FtEncounter beacon;
+    ft_encounter_init(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 3);
+    beacon.menu_index = FT_ACTION_CONTACT;
+    const char* flies = ft_tutorial_hint(&beacon);
+    CHECK(flies && strstr(flies, "SUBGHZ"), "an airborne lock should name the fix");
+
+    FtEncounter lock;
+    ft_encounter_init(&lock, FT_ENEMY_SEALED_LOCK, &lo, 3);
+    lock.menu_index = FT_ACTION_BROADCAST;
+    const char* enc = ft_tutorial_hint(&lock);
+    CHECK(enc && strstr(enc, "NFC"), "an encrypted lock should name the fix");
+
+    /* The line tracks the phase, including the ready beat. */
+    e.phase = FT_PHASE_PLAYER_ACT;
+    e.phase_ms = 100;
+    CHECK(ft_encounter_in_ready(&e), "still in the lead-in");
+    const char* wait = ft_tutorial_hint(&e);
+    CHECK(wait && strstr(wait, "Wait"), "the ready beat should say to wait");
+
+    e.phase_ms = FT_READY_MS + 100;
+    const char* now = ft_tutorial_hint(&e);
+    CHECK(now && strstr(now, "OK"), "the sweep should say to tap");
+    CHECK(now != wait, "the line must change when the cursor is released");
+
+    /* An UNDODGEABLE attack is called out as unguardable. */
+    FtEncounter undo;
+    ft_encounter_init(&undo, FT_ENEMY_SEALED_LOCK, &lo, 3);
+    undo.phase = FT_PHASE_TELEGRAPH;
+    undo.enemy_attack_index = 1;
+    CHECK_EQ(FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attacks[1].klass, FT_CLASS_UNDODGEABLE);
+    const char* brace = ft_tutorial_hint(&undo);
+    CHECK(brace && strstr(brace, "No guard"), "undodgeable should say so");
+
+    /* Feedback after a guard distinguishes a jam from a capture. */
+    FtEncounter jam;
+    ft_encounter_init(&jam, FT_ENEMY_DRIFT_BEACON, &lo, 3);
+    jam.phase = FT_PHASE_IMPACT;
+    jam.last_guard = FT_GUARD_JAM;
+    jam.last_enemy_hit.damage = 3;
+    const char* jam_line = ft_tutorial_hint(&jam);
+    CHECK(jam_line && strstr(jam_line, "later"), "a jam should point at the capture zone");
+
+    jam.last_enemy_hit.captured = true;
+    const char* cap_line = ft_tutorial_hint(&jam);
+    CHECK(cap_line && strstr(cap_line, "Kept"), "a capture should be celebrated");
+
+    /* Outcome screens stay quiet: they have their own copy. */
+    FtEncounter done;
+    ft_encounter_init(&done, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    done.phase = FT_PHASE_WIN;
+    CHECK(ft_tutorial_hint(&done) == NULL, "the win screen is not coached");
+
+    /* Every line the coach can produce must fit the panel. Walk the reachable
+     * states rather than trusting the literals by eye. */
+    int checked = 0;
+    for(int enemy = 0; enemy < FT_ENEMY_COUNT; enemy++) {
+        for(int phase = 0; phase <= FT_PHASE_LOSE; phase++) {
+            for(int menu = 0; menu < FT_ACTION_COUNT; menu++) {
+                for(int atk = 0; atk < FT_ENEMY_MAX_ATTACKS; atk++) {
+                    for(int ready = 0; ready < 2; ready++) {
+                        FtEncounter w;
+                        ft_encounter_init(&w, (FtEnemyId)enemy, &lo, 1);
+                        w.phase = (FtPhase)phase;
+                        w.menu_index = (uint8_t)menu;
+                        w.enemy_attack_index =
+                            (uint8_t)(atk % FT_ENEMIES[enemy].attack_count);
+                        w.phase_ms = ready ? 0u : (FT_READY_MS + 50u);
+
+                        const char* line = ft_tutorial_hint(&w);
+                        if(line) {
+                            checked++;
+                            CHECK(strlen(line) <= FT_TUTORIAL_MAX_CHARS,
+                                  "hint too long (%zu): \"%s\"", strlen(line), line);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    CHECK(checked > 50, "the sweep should have exercised many states");
+}
+
+static void test_anim(void) {
+    section("action animation");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    FtEncounter e;
+    ft_encounter_init(&e, FT_ENEMY_STRAY_PACKET, &lo, 5);
+
+    /* Phases without a resolved action never animate. */
+    CHECK(!ft_encounter_in_anim(&e), "the menu does not animate");
+    CHECK_EQ(ft_encounter_anim_progress(&e), 255);
+
+    e.phase = FT_PHASE_RESULT;
+    e.phase_ms = 0;
+    CHECK(ft_encounter_in_anim(&e), "a fresh result starts animating");
+    CHECK_EQ(ft_encounter_anim_progress(&e), 0);
+
+    e.phase_ms = FT_ANIM_MS / 2;
+    const uint8_t mid = ft_encounter_anim_progress(&e);
+    CHECK(mid > 100 && mid < 160, "progress should be about half way");
+
+    /* Once the animation is done the popup gets the arena, and progress
+     * saturates rather than wrapping. */
+    e.phase_ms = FT_ANIM_MS;
+    CHECK(!ft_encounter_in_anim(&e), "animation ends on time");
+    CHECK_EQ(ft_encounter_anim_progress(&e), 255);
+
+    e.phase_ms = FT_ANIM_MS * 10;
+    CHECK_EQ(ft_encounter_anim_progress(&e), 255);
+
+    /* The popup must still get a decent read after the animation. */
+    CHECK(FT_IMPACT_HOLD_MS - FT_ANIM_MS >= 300,
+          "the popup needs at least 300ms on screen");
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -845,6 +983,8 @@ int main(void) {
     test_rating_timing();
     test_ready_beat();
     test_encounter();
+    test_tutorial();
+    test_anim();
     test_rng();
 
     printf("\n%d checks, %d failures\n\n", checks, failures);

@@ -67,6 +67,10 @@ typedef struct {
     FtHitResult last_enemy_hit;
     bool        last_capture_was_new;
 
+    /* Contextual coaching on. Lives here so ft_tutorial can derive its line
+     * from battle state alone. */
+    bool coach;
+
     FtRng rng;
 } FtEncounter;
 
@@ -112,5 +116,12 @@ uint32_t ft_encounter_sweep_ms(const FtEncounter* e);
 
 /* Total length of the current phase's timing bar, ready beat excluded. */
 uint32_t ft_encounter_sweep_window(const FtEncounter* e);
+
+/* True while a resolved action is still playing out on the sprites, before the
+ * result popup takes over the arena. */
+bool ft_encounter_in_anim(const FtEncounter* e);
+
+/* Progress through that animation, 0..255. Saturates at the end. */
+uint8_t ft_encounter_anim_progress(const FtEncounter* e);
 
 #endif /* FT_ENCOUNTER_H */
