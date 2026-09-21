@@ -101,13 +101,28 @@ static void draw_header(Canvas* canvas, const FtEncounter* e) {
 
 /* ---- Arena ----------------------------------------------------------- */
 
-/* Blit a 16x16 sprite. Bit n of each row is column n from the left. */
+/* Blit a 16x16 sprite. Bit n of each row is column n from the left.
+ *
+ * Consecutive set bits are emitted as one box rather than a dot per pixel:
+ * these sprites are mostly solid runs, so this turns ~250 canvas calls per
+ * sprite into roughly 30. Draw cost matters here — the GUI thread is shared
+ * with input dispatch, and burying it is what wedged the app. */
 static void draw_sprite(Canvas* c, const uint16_t* rows, int32_t x, int32_t y) {
     for(int32_t sy = 0; sy < FT_SPRITE_H; sy++) {
-        const uint16_t bits = rows[sy];
+        uint16_t bits = rows[sy];
         if(!bits) continue;
-        for(int32_t sx = 0; sx < FT_SPRITE_W; sx++) {
-            if(bits & (1u << sx)) canvas_draw_dot(c, x + sx, y + sy);
+
+        int32_t sx = 0;
+        while(sx < FT_SPRITE_W) {
+            if(!(bits & (1u << sx))) {
+                sx++;
+                continue;
+            }
+            int32_t run = 0;
+            while(sx + run < FT_SPRITE_W && (bits & (1u << (sx + run)))) run++;
+
+            canvas_draw_box(c, x + sx, y + sy, (size_t)run, 1);
+            sx += run;
         }
     }
 }

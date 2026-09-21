@@ -96,4 +96,8 @@ typedef enum {
 
 extern const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT];
 
+/* Find an attack by its stable id, across every enemy. Used to replay a
+ * captured signal, which stores only the id. NULL if no such attack. */
+const FtAttack* ft_attack_by_id(uint16_t id);
+
 #endif /* FT_DATA_H */

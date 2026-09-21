@@ -69,7 +69,7 @@
 
 /* ---- Battle sizing --------------------------------------------------- */
 
-#define FT_MAX_ENEMIES   4
+#define FT_MAX_ENEMIES   3  /* what fits across a 128px arena at 16px each */
 #define FT_MAX_ACTORS    (FT_MAX_ENEMIES + 1)
 #define FT_MAX_INSTALLED 12
 
@@ -151,8 +151,16 @@ typedef enum {
 /* A resolved action plays out in two parts: the sprites act, and only then
  * does the result popup appear. Without the split the popup covers the arena
  * for the whole hold and the animation is never seen. */
-#define FT_ANIM_MS             320  /* lunge, travel and recoil */
-#define FT_IMPACT_HOLD_MS      760  /* animation, then the popup */
+/* Staged: wind-up, emit, travel, impact, recover. Slow enough to actually
+ * watch on a 128x64 panel — the first pass was a 320ms twitch. */
+#define FT_ANIM_MS             900
+#define FT_IMPACT_HOLD_MS     1450  /* animation, then the popup */
+
+/* Stage boundaries as a fraction of FT_ANIM_MS, in 0..255 progress units. */
+#define FT_ANIM_WINDUP  70
+#define FT_ANIM_EMIT    110
+#define FT_ANIM_STRIKE  195
+#define FT_ANIM_RECOVER 255
 #define FT_OUTCOME_HOLD_MS    1400  /* win/lose banner */
 
 #endif /* FT_TYPES_H */

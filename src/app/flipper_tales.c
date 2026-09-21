@@ -14,7 +14,14 @@
 #define FT_TAG        "FlipperTales"
 #define FT_TICK_MS    10   /* ~100 Hz: the capture window is only 50 ms, so the
                             * press must be timestamped finer than that */
-#define FT_QUEUE_SIZE 8
+#define FT_FRAME_MS   33   /* ~30 fps. The logic still ticks at FT_TICK_MS;
+                            * only drawing is capped. Redrawing a sprite-heavy
+                            * scene at 100 Hz saturates the GUI thread. */
+#define FT_QUEUE_SIZE 16
+
+/* A single tap produces Press, Release and Short, so the queue needs slack for
+ * bursts. Anything beyond that is dropped rather than blocking — see
+ * ft_input_callback. */
 
 typedef enum {
     FtEventInput = 0,
@@ -50,9 +57,9 @@ typedef struct {
 static void ft_draw_callback(Canvas* canvas, void* ctx) {
     FlipperTales* app = ctx;
 
-    /* Never block the GUI thread: if the state is mid-update, skip this frame
-     * rather than stall the compositor. */
-    if(furi_mutex_acquire(app->mutex, 25) != FuriStatusOk) return;
+    /* Never wait on the GUI thread. A skipped frame is invisible at 30 fps;
+     * a stalled compositor also stalls input dispatch. */
+    if(furi_mutex_acquire(app->mutex, 0) != FuriStatusOk) return;
 
     if(app->show_help) {
         ft_render_help(canvas, app->help_page);
@@ -66,7 +73,13 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
 static void ft_input_callback(InputEvent* event, void* ctx) {
     FlipperTales* app = ctx;
     const FtEvent msg = {.type = FtEventInput, .input = *event};
-    furi_message_queue_put(app->queue, &msg, FuriWaitForever);
+
+    /* Timeout 0, never FuriWaitForever. This runs on the GUI service thread:
+     * blocking here when the queue is full wedges that thread, which then
+     * stops dispatching input and stops running the draw callback, and nothing
+     * can recover it. Dropping an event is survivable — the player presses
+     * again — so the queue must never be allowed to block the caller. */
+    furi_message_queue_put(app->queue, &msg, 0);
 }
 
 /* ---- Input ----------------------------------------------------------- */
@@ -208,8 +221,11 @@ int32_t flipper_tales_app(void* p) {
 
     FlipperTales* app = ft_alloc();
 
-    const uint32_t tick_hz = furi_kernel_get_tick_frequency();
+    const uint32_t tick_hz = furi_kernel_get_tick_frequency() ?
+                                 furi_kernel_get_tick_frequency() :
+                                 1000u;
     uint32_t last_tick = furi_get_tick();
+    uint32_t last_draw = last_tick;
 
     while(app->running) {
         FtEvent event;
@@ -220,22 +236,36 @@ int32_t flipper_tales_app(void* p) {
          * queue wakes us early or late. */
         const uint32_t now = furi_get_tick();
         uint32_t dt_ms = 0;
-        if(now != last_tick && tick_hz > 0) {
+        if(now != last_tick) {
             dt_ms = ((now - last_tick) * 1000u) / tick_hz;
             last_tick = now;
         }
+
+        /* A long stall (debugger, SD access) must not teleport the battle
+         * through several phases at once. */
+        if(dt_ms > 250u) dt_ms = 250u;
+
+        bool acted = false;
 
         furi_mutex_acquire(app->mutex, FuriWaitForever);
 
         if(status == FuriStatusOk && event.type == FtEventInput) {
             ft_handle_input(app, &event.input);
+            acted = true;
         }
 
         if(dt_ms > 0) ft_encounter_tick(&app->encounter, dt_ms);
 
         furi_mutex_release(app->mutex);
 
-        view_port_update(app->view_port);
+        /* Draw on input immediately so the controls feel instant, otherwise at
+         * the frame cap. Asking for a redraw every 10 ms buries the GUI thread
+         * under work it cannot finish, which is what eventually backed the
+         * input queue up. */
+        if(acted || (uint32_t)(now - last_draw) >= FT_FRAME_MS) {
+            last_draw = now;
+            view_port_update(app->view_port);
+        }
     }
 
     ft_free(app);

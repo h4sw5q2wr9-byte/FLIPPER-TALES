@@ -174,3 +174,15 @@ const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT] = {
                      {FT_ATK_LOCK_SEAL, 4, 1, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_UNDODGEABLE, FT_PAYLOAD_DRAIN}}},
 };
+
+const FtAttack* ft_attack_by_id(uint16_t id) {
+    if(id == 0u) return NULL;
+
+    for(uint8_t e = 0; e < FT_ENEMY_COUNT; e++) {
+        const FtEnemy* en = &FT_ENEMIES[e];
+        for(uint8_t a = 0; a < en->attack_count; a++) {
+            if(en->attacks[a].id == id) return &en->attacks[a];
+        }
+    }
+    return NULL;
+}
