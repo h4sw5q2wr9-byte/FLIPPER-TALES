@@ -19,7 +19,8 @@ TILES["floor"] = """
 .....#..
 """
 
-# Wall. Offset brick courses, solid enough to read as impassable at a glance.
+# Wall FACE: the south-facing side, used where floor lies below. Brick courses
+# with a solid base row so the wall looks like it stands on the ground.
 TILES["wall"] = """
 ########
 #..#..##
@@ -28,7 +29,34 @@ TILES["wall"] = """
 ########
 ##..#..#
 ########
-#..#..##
+########
+"""
+
+# Wall TOP: the cap, used where the wall continues below. Near-solid so it
+# reads as mass rather than as another face — the contrast between this and
+# the brick face is what gives a wall run its height.
+TILES["wall_top"] = """
+########
+########
+###.####
+########
+########
+####.###
+########
+########
+"""
+
+# Shadow cast onto whatever tile sits under a wall. 50% dither, because on a
+# one-bit panel a solid band would just look like more wall.
+TILES["shadow"] = """
+#.#.#.#.
+.#.#.#.#
+........
+........
+........
+........
+........
+........
 """
 
 # Void / drop. Solid black: nothing there, and unmistakably not floor.
@@ -118,13 +146,15 @@ TILES["cable_v"] = """
 .#....#.
 """
 
-# Terminal: save point and full restore.
+# Terminal: save point and full restore. Deliberately a heavy, mostly-solid
+# monitor on a narrow post — an outlined box here is indistinguishable from a
+# crate at 8x8.
 TILES["term"] = """
+.######.
 .######.
 .#....#.
 .#.##.#.
-.#....#.
-..####..
+.######.
 ...##...
 ..####..
 ........
@@ -142,15 +172,16 @@ TILES["lock"] = """
 ########
 """
 
-# Crate: pushable, or just cover.
+# Crate: pushable, or just cover. X-braced so its silhouette is diagonal
+# rather than another concentric square.
 TILES["crate"] = """
 ########
-#......#
-#.####.#
+##....##
 #.#..#.#
+#..##..#
+#..##..#
 #.#..#.#
-#.####.#
-#......#
+##....##
 ########
 """
 
@@ -206,7 +237,7 @@ static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
 """)
     # Must match FtTile, then the orientation variants (FT_TILE_ART_*).
     order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock", "crate",
-             "door_side", "lock_side", "cable_v"]
+             "door_side", "lock_side", "cable_v", "wall_top", "shadow"]
     for name in order:
         fh.write("    /* %-6s */ {%s},\n" % (name, ", ".join("0x%02X" % b for b in data[name])))
     fh.write("};\n\n#endif /* FT_TILES_H */\n")

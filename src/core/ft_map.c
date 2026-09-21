@@ -41,10 +41,20 @@ static bool cable_is_vertical(const FtMap* m, int32_t tx, int32_t ty) {
     return (up || down) && !(left || right);
 }
 
+bool ft_map_has_shadow(const FtMap* m, int32_t tx, int32_t ty) {
+    if(ft_tile_solid(ft_map_tile(m, tx, ty))) return false;
+    return ft_tile_solid(ft_map_tile(m, tx, ty - 1));
+}
+
 uint8_t ft_map_art_index(const FtMap* m, int32_t tx, int32_t ty) {
     const FtTile t = ft_map_tile(m, tx, ty);
 
     switch(t) {
+    case FT_TILE_WALL:
+        /* Cap where the wall carries on downwards, face where it meets the
+         * floor and the player is looking at its side. */
+        return ft_tile_solid(ft_map_tile(m, tx, ty + 1)) ? FT_TILE_ART_WALL_TOP :
+                                                           (uint8_t)t;
     case FT_TILE_DOOR:
         return ft_map_side_passage(m, tx, ty) ? FT_TILE_ART_DOOR_SIDE : (uint8_t)t;
     case FT_TILE_LOCK:

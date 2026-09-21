@@ -119,17 +119,24 @@ void ft_overworld_render(
 
     for(int32_t ty = 0; ty <= FT_VIEW_H; ty++) {
         for(int32_t tx = 0; tx <= FT_VIEW_W; tx++) {
-            /* Art index, not the raw tile: doors, locked ports and conduit
-             * face the way their run does (see ft_map_art_index). */
-            const uint8_t art = ft_map_art_index(map, first_tx + tx, first_ty + ty);
+            const int32_t mx = first_tx + tx;
+            const int32_t my = first_ty + ty;
+            const int32_t sx = tx * FT_TILE_PX - off_x;
+            const int32_t sy = ty * FT_TILE_PX - off_y;
 
+            /* Art index, not the raw tile: walls, doors, locked ports and
+             * conduit all pick their art from their neighbours (see
+             * ft_map_art_index). */
             blit_rows(
-                canvas,
-                FT_TILE_ART[art],
-                FT_TILE_PX,
-                tx * FT_TILE_PX - off_x,
-                ty * FT_TILE_PX - off_y,
+                canvas, FT_TILE_ART[ft_map_art_index(map, mx, my)], FT_TILE_PX, sx, sy,
                 FT_TILE_PX);
+
+            /* Then the wall's shadow, over the top of whatever is below it. */
+            if(ft_map_has_shadow(map, mx, my)) {
+                blit_rows(
+                    canvas, FT_TILE_ART[FT_TILE_ART_SHADOW], FT_TILE_PX, sx, sy,
+                    FT_TILE_PX);
+            }
         }
     }
 

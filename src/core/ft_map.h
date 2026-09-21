@@ -41,7 +41,16 @@ typedef enum {
 #define FT_TILE_ART_DOOR_SIDE FT_TILE_COUNT
 #define FT_TILE_ART_LOCK_SIDE (FT_TILE_COUNT + 1)
 #define FT_TILE_ART_CABLE_V   (FT_TILE_COUNT + 2)
-#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 3)
+
+/* A wall shows its south-facing side where floor lies below it, and a flat cap
+ * where the wall continues. The contrast between the two is what gives a wall
+ * run apparent height on a flat grid. */
+#define FT_TILE_ART_WALL_TOP  (FT_TILE_COUNT + 3)
+
+/* Dithered band laid over whatever sits directly below a wall. */
+#define FT_TILE_ART_SHADOW    (FT_TILE_COUNT + 4)
+
+#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 5)
 
 /* Maps are stored as one byte per tile, streamed from the SD card. Kept as a
  * borrowed pointer so a map is never copied into RAM wholesale. */
@@ -80,6 +89,10 @@ FtPos ft_map_camera(const FtMap* m, FtPos focus);
 /* Which art to draw at this position, accounting for orientation. Always less
  * than FT_TILE_ART_COUNT. */
 uint8_t ft_map_art_index(const FtMap* m, int32_t tx, int32_t ty);
+
+/* Should a wall shadow be laid over this tile? True for walkable tiles with a
+ * solid tile directly above. */
+bool ft_map_has_shadow(const FtMap* m, int32_t tx, int32_t ty);
 
 /* Is the passage through this tile horizontal — that is, does solid wall sit
  * above and below it? Used to orient doors and locked ports. */

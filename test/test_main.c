@@ -1096,7 +1096,10 @@ static void test_tile_orientation(void) {
 
     /* Ordinary tiles are unaffected. */
     CHECK_EQ(ft_map_art_index(&m, 1, 1), FT_TILE_FLOOR);
-    CHECK_EQ(ft_map_art_index(&m, 0, 0), FT_TILE_WALL);
+
+    /* (0,0) is a wall with more wall beneath it, so it caps rather than
+     * showing a face — see the wall-depth checks below. */
+    CHECK_EQ(ft_map_art_index(&m, 0, 0), FT_TILE_ART_WALL_TOP);
 
     /* Locked ports orient the same way, since they are doors that are shut. */
     static const uint8_t LOCKED[5 * 3] = {
@@ -1136,6 +1139,44 @@ static void test_tile_orientation(void) {
     };
     const FtMap ln = {LONE, 3, 3, "Lone"};
     CHECK_EQ(ft_map_art_index(&ln, 1, 1), FT_TILE_CABLE);
+
+    /* Walls show a face where floor lies below and a cap where the wall
+     * carries on, which is what gives a run its apparent height.
+     *
+     *   # # #
+     *   # # #   <- (1,1) has wall below: cap
+     *   # . #   <- (1,2) has floor below: face
+     */
+    static const uint8_t WALLS[3 * 4] = {
+        1, 1, 1,
+        1, 1, 1,
+        1, 1, 1,
+        1, 0, 1,
+    };
+    const FtMap wl = {WALLS, 3, 4, "Walls"};
+
+    CHECK_EQ(ft_map_art_index(&wl, 1, 1), FT_TILE_ART_WALL_TOP);
+    CHECK_EQ(ft_map_art_index(&wl, 1, 2), FT_TILE_WALL);
+
+    /* A wall on the bottom row caps, because off-map reads as wall and the
+     * player never sees past the edge. */
+    CHECK_EQ(ft_map_art_index(&wl, 0, 3), FT_TILE_ART_WALL_TOP);
+
+    /* Shadow falls on the walkable tile under a wall, and nowhere else. */
+    CHECK(ft_map_has_shadow(&wl, 1, 3), "floor under a wall is shadowed");
+    CHECK(!ft_map_has_shadow(&wl, 1, 1), "a wall does not shadow itself");
+
+    static const uint8_t OPEN[3 * 3] = {
+        0, 0, 0,
+        0, 0, 0,
+        0, 0, 0,
+    };
+    const FtMap op = {OPEN, 3, 3, "Open"};
+    CHECK(!ft_map_has_shadow(&op, 1, 1), "open floor casts no shadow");
+
+    /* The top row has off-map wall above it, so it is shadowed too — the
+     * world's edge behaves like any other wall. */
+    CHECK(ft_map_has_shadow(&op, 1, 0), "the map edge shadows like a wall");
 
     /* Every index the renderer can be handed must be a real art entry. */
     for(int32_t y = 0; y < 6; y++) {
