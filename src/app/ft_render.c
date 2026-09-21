@@ -67,7 +67,12 @@ static void hatch(Canvas* c, int32_t x, int32_t y, int32_t w, int32_t h) {
 /* ---- Header ---------------------------------------------------------- */
 
 static void draw_header(Canvas* canvas, const FtEncounter* e) {
-    const FtEnemy* en = ft_encounter_enemy(e);
+    /* Name whoever matters right now: the foe you are aiming at while
+     * choosing, the foe swinging at you once one is. */
+    const bool their_turn =
+        (e->phase == FT_PHASE_TELEGRAPH || e->phase == FT_PHASE_IMPACT);
+    const uint8_t who = their_turn ? e->acting_foe : ft_encounter_target(e);
+    const FtEnemy* en = ft_encounter_foe(e, who);
 
     canvas_set_font(canvas, FontSecondary);
 
@@ -145,97 +150,173 @@ static const uint16_t* enemy_sprite(uint32_t attrs) {
     return FT_SPRITE_PACKET;
 }
 
-/* Lunge curve: out fast, hold briefly, ease back. Returns pixels of travel
- * for a progress value of 0..255. */
+/* Where each foe stands. Spread to fill the right of the arena so a lone foe
+ * still looks deliberate rather than crowded into a corner. */
+static int32_t foe_x(uint8_t i, uint8_t count) {
+    /* Grouped tightly on the right rather than spread across the arena: a
+     * scattered row reads as three separate fights instead of one crowd, and
+     * leaves the player marooned on the far side. */
+    static const int32_t LAYOUT[FT_MAX_ENEMIES][FT_MAX_ENEMIES] = {
+        {104, 0, 0},
+        {84, 106, 0},
+        {66, 86, 106},
+    };
+    if(count == 0u || count > FT_MAX_ENEMIES) count = 1u;
+    if(i >= count) i = 0;
+
+    return LAYOUT[count - 1u][i];
+}
+
+/* A small marker over whoever a single-target action would hit. */
+static void draw_target_caret(Canvas* c, int32_t x, int32_t y) {
+    canvas_draw_line(c, x + 5, y, x + 10, y);
+    canvas_draw_line(c, x + 6, y + 1, x + 9, y + 1);
+    canvas_draw_dot(c, x + 7, y + 2);
+    canvas_draw_dot(c, x + 8, y + 2);
+}
+
+/* A radio chevron, the visual vocabulary for anything broadcast. */
+static void draw_chevron(Canvas* c, int32_t x, int32_t y, int32_t dir, int32_t size) {
+    /* Apex at x, opening away from the direction of travel: the arms widen as
+     * they trail behind, so the shape points where the wave is going. */
+    for(int32_t i = 0; i <= size; i++) {
+        canvas_draw_dot(c, x - dir * i, y - (i + 1));
+        canvas_draw_dot(c, x - dir * i, y + (i + 1));
+    }
+    canvas_draw_dot(c, x, y);
+}
+
+/* Three chevrons leaving the emitter and crossing the gap, staggered so they
+ * read as a train of waves rather than one moving blob. */
+static void draw_broadcast(
+    Canvas* c, int32_t from_x, int32_t to_x, int32_t y, int32_t dir, uint8_t t) {
+    if(t >= FT_ANIM_STRIKE) return;
+
+    for(int32_t w = 0; w < 3; w++) {
+        const int32_t lead = (int32_t)t - FT_ANIM_EMIT - w * 34;
+        if(lead <= 0) continue;
+
+        const int32_t span = FT_ANIM_STRIKE - FT_ANIM_EMIT;
+        int32_t p = (lead * 100) / span;
+        if(p > 100) p = 100;
+
+        const int32_t x = from_x + ((to_x - from_x) * p) / 100;
+        draw_chevron(c, x, y, dir, 2 + w);
+    }
+}
+
+/* Contact: a tight field crackling between the two sprites. */
+static void draw_contact_spark(Canvas* c, int32_t x, int32_t y, uint8_t t) {
+    if(t < FT_ANIM_EMIT || t > FT_ANIM_STRIKE) return;
+
+    const int32_t n = 3;
+    for(int32_t i = 0; i < n; i++) {
+        const int32_t dy = (i - 1) * 4;
+        canvas_draw_line(c, x, y + dy, x + 4, y + dy + ((i % 2) ? 2 : -2));
+    }
+    canvas_draw_box(c, x + 1, y - 1, 3, 3);
+}
+
+/* Two-pixel judder for whoever just took damage. */
+static int32_t shake_px(uint8_t t) {
+    if(t < FT_ANIM_STRIKE || t >= FT_ANIM_RECOVER) return 0;
+    return (((t - FT_ANIM_STRIKE) / 12u) % 2u) ? 2 : -2;
+}
+
+/* Attacker travel: out during the emit window, back during recovery. */
 static int32_t lunge_px(uint8_t t, int32_t reach) {
-    if(t < 80u) return (reach * (int32_t)t) / 80;          /* strike out   */
-    if(t < 150u) return reach;                              /* connect      */
-    if(t < 255u) return (reach * (int32_t)(255u - t)) / 105; /* recover     */
+    if(t < FT_ANIM_WINDUP) return -(int32_t)t / 24;                 /* wind back */
+    if(t < FT_ANIM_STRIKE) {
+        return (reach * (int32_t)(t - FT_ANIM_WINDUP)) / (FT_ANIM_STRIKE - FT_ANIM_WINDUP);
+    }
+    if(t < FT_ANIM_RECOVER) {
+        return (reach * (int32_t)(FT_ANIM_RECOVER - t)) / (FT_ANIM_RECOVER - FT_ANIM_STRIKE);
+    }
     return 0;
 }
 
-/* Two-pixel judder, used on whoever just took damage. */
-static int32_t shake_px(uint8_t t) {
-    if(t >= 200u) return 0;
-    return ((t / 20u) % 2u) ? 2 : -2;
-}
+/* The antenna charging before a broadcast leaves the player. */
+static void draw_antenna_charge(Canvas* c, int32_t x, int32_t y, uint8_t t) {
+    if(t >= FT_ANIM_EMIT) return;
+    if(((t / 14u) % 2u) == 0u) return;
 
-/* A broadcast attack crossing the gap: a widening arc, so ranged reads
- * differently from a contact lunge. */
-static void draw_wave(Canvas* c, int32_t from_x, int32_t to_x, int32_t y, uint8_t t) {
-    if(t >= 200u) return;
-
-    const int32_t x = from_x + ((to_x - from_x) * (int32_t)t) / 200;
-    for(int32_t i = 0; i < 3; i++) {
-        const int32_t r = 2 + i * 2;
-        canvas_draw_dot(c, x, y - r);
-        canvas_draw_dot(c, x, y + r);
-        canvas_draw_dot(c, x + (from_x < to_x ? -i : i), y);
-    }
-}
-
-/* A capture bursts outward from the player. */
-static void draw_capture_burst(Canvas* c, int32_t cx, int32_t cy, uint8_t t) {
-    if(t >= 220u) return;
-    const int32_t r = 4 + ((int32_t)t * 10) / 220;
-
-    for(int32_t i = -1; i <= 1; i++) {
-        canvas_draw_dot(c, cx - r, cy + i * 3);
-        canvas_draw_dot(c, cx + r, cy + i * 3);
-        canvas_draw_dot(c, cx + i * 3, cy - r);
-        canvas_draw_dot(c, cx + i * 3, cy + r);
-    }
+    canvas_draw_box(c, x + 6, y - 3, 4, 3);
 }
 
 static void draw_arena(Canvas* canvas, const FtEncounter* e) {
     const int32_t floor_y = FT_ARENA_Y + 18;
+    const uint8_t t = ft_encounter_anim_progress(e);
+    const uint8_t count = e->foe_count;
 
-    /* A dashed ground line gives the sprites somewhere to stand and stops the
-     * arena reading as two shapes floating in a void. */
     for(int32_t x = 2; x < FT_SCREEN_W - 2; x += 3) canvas_draw_dot(canvas, x, floor_y);
 
-    const uint8_t t = ft_encounter_anim_progress(e);
-    int32_t px = 4, py = floor_y - 16;
-    int32_t ex = 106, ey = floor_y - 16;
+    int32_t px = 4;
+    int32_t py = floor_y - 16;
+    const uint8_t tgt = ft_encounter_target(e);
 
+    /* --- the player's action --- */
     if(e->phase == FT_PHASE_RESULT) {
-        const FtHitResult* r = &e->last_player_hit;
-        const bool contact =
-            (e->menu_index == FT_ACTION_CONTACT) && (r->outcome == FT_HIT_OK);
+        const FtAction2 act = (FtAction2)e->menu_index;
+        const bool broadcast = ft_encounter_action_is_broadcast(e, act);
+        const bool attacked =
+            (act == FT_ACTION_BROADCAST || act == FT_ACTION_CONTACT ||
+             act == FT_ACTION_SIGNAL) &&
+            e->last_player_hit.outcome != FT_HIT_MISSED;
 
-        if(contact) px += lunge_px(t, 70);
-        if(r->damage > 0) ex += shake_px(t);
-
-        if(!contact && r->outcome == FT_HIT_OK && e->menu_index == FT_ACTION_BROADCAST) {
-            draw_wave(canvas, 24, 102, floor_y - 8, t);
+        if(attacked && broadcast) {
+            draw_antenna_charge(canvas, px, py, t);
+            draw_broadcast(canvas, 24, 120, floor_y - 9, 1, t);
+        } else if(attacked) {
+            px += lunge_px(t, foe_x(tgt, count) - 22);
+            draw_contact_spark(canvas, px + 17, floor_y - 8, t);
+        } else if(act == FT_ACTION_FOCUS) {
+            draw_antenna_charge(canvas, px, py, t);
         }
-    } else if(e->phase == FT_PHASE_IMPACT) {
-        const FtAttack* atk = ft_encounter_incoming(e);
-        const bool contact = atk && atk->delivery == FT_DELIVERY_CONTACT;
-
-        if(contact) ex -= lunge_px(t, 70);
-        else if(atk) draw_wave(canvas, 102, 24, floor_y - 8, t);
-
-        if(e->last_enemy_hit.damage > 0) px += shake_px(t);
-        if(e->last_enemy_hit.captured) draw_capture_burst(canvas, 12, floor_y - 8, t);
-    } else if(e->phase == FT_PHASE_MENU) {
-        /* A slow idle bob, so the board is never completely still. */
-        if((e->phase_ms / 600u) % 2u) py -= 1;
-        if((e->phase_ms / 700u) % 2u) ey -= 1;
     }
 
+    /* --- the acting foe --- */
+    int32_t foe_shift = 0;
+    if(e->phase == FT_PHASE_IMPACT) {
+        const FtAttack* atk = ft_encounter_incoming(e);
+        const int32_t ax = foe_x(e->acting_foe, count);
+
+        if(atk && atk->delivery == FT_DELIVERY_CONTACT) {
+            foe_shift = -lunge_px(t, ax - 24);
+        } else if(atk) {
+            draw_broadcast(canvas, ax - 4, 20, floor_y - 9, -1, t);
+        }
+        if(e->last_enemy_hit.damage > 0) px += shake_px(t);
+        if(e->last_enemy_hit.captured) draw_broadcast(canvas, 20, 44, floor_y - 9, 1, t);
+    }
+
+    if(e->phase == FT_PHASE_MENU && ((e->phase_ms / 600u) % 2u)) py -= 1;
+
     draw_player(canvas, px, py, ft_roll_active(&e->roll));
-    draw_sprite(canvas, enemy_sprite(ft_encounter_enemy(e)->attrs), ex, ey);
 
-    /* Enemy health, directly under its sprite. */
-    const int32_t bw = 24;
-    const int32_t bx = 100;
-    const int32_t by = floor_y + 2;
+    /* --- the row of foes --- */
+    for(uint8_t i = 0; i < count; i++) {
+        if(!ft_encounter_foe_alive(e, i)) continue;
 
-    canvas_draw_frame(canvas, bx, by, (size_t)bw, 4);
-    {
-        const int32_t fill = ft_bar_fill(e->enemy_charge, e->enemy_charge_max, bw);
-        if(fill > 0) canvas_draw_box(canvas, bx + 1, by + 1, (size_t)fill, 2);
+        int32_t x = foe_x(i, count);
+        int32_t y = py;
+
+        if(e->phase == FT_PHASE_IMPACT && i == e->acting_foe) x += foe_shift;
+        if(e->phase == FT_PHASE_RESULT && e->foe_hit_valid[i] && e->foe_hits[i].damage > 0) {
+            x += shake_px(t);
+        }
+        if(e->phase == FT_PHASE_MENU && ((e->phase_ms / 700u) % 2u)) y -= 1;
+
+        draw_sprite(canvas, enemy_sprite(FT_ENEMIES[e->foes[i].id].attrs), x, y);
+
+        /* Health, directly beneath each foe. */
+        const int32_t bw = 16;
+        canvas_draw_frame(canvas, x, floor_y + 2, (size_t)bw, 4);
+        const int32_t fill = ft_bar_fill(e->foes[i].charge, e->foes[i].charge_max, bw);
+        if(fill > 0) canvas_draw_box(canvas, x + 1, floor_y + 3, (size_t)fill, 2);
+
+        if(e->phase == FT_PHASE_MENU && count > 1u && i == tgt) {
+            draw_target_caret(canvas, x, FT_ARENA_Y);
+        }
     }
 }
 
@@ -522,47 +603,62 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
 
 static const char* action_label(FtAction2 a) {
     switch(a) {
-    case FT_ACTION_BROADCAST: return "SUBGHZ";
+    case FT_ACTION_BROADCAST: return "SUB";
     case FT_ACTION_CONTACT:   return "NFC";
-    case FT_ACTION_DEFEND:    return "DEFEND";
-    case FT_ACTION_FOCUS:     return "FOCUS";
+    case FT_ACTION_DEFEND:    return "DEF";
+    case FT_ACTION_FOCUS:     return "FOC";
+    case FT_ACTION_SIGNAL:    return "SIG";
     default:                  return "?";
     }
 }
 
-/* Two rows of two. One row of four cannot hold these labels at this font
- * without either truncating them to initials or running off the panel. */
+/* What the highlighted action actually does. Five three-letter buttons are
+ * unreadable on their own — this row is why Defend and Focus stop looking
+ * like filler. */
+static const char* action_desc(const FtEncounter* e, FtAction2 a) {
+    /* A refusal is more useful than a description. */
+    const char* blocked = ft_encounter_action_block(e, a);
+    if(blocked) return blocked;
+
+    switch(a) {
+    case FT_ACTION_BROADCAST: return "All foes, weaker.";
+    case FT_ACTION_CONTACT:   return "One foe, strong.";
+    case FT_ACTION_DEFEND:    return "Shield 2, +1 RAM.";
+    case FT_ACTION_FOCUS:     return "Charge the S bar.";
+    case FT_ACTION_SIGNAL:    return "Replay a capture.";
+    default:                  return "";
+    }
+}
+
 static void draw_menu(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
 
-    for(uint8_t i = 0; i < FT_ACTION_COUNT; i++) {
-        const int32_t col = i % 2;
-        const int32_t row = i / 2;
-        const int32_t x = col ? 64 : 2;
-        const int32_t w = 61;
-        const int32_t y = FT_ACTION_Y + row * 9;
+    const int32_t cell = 25;
 
+    for(uint8_t i = 0; i < FT_ACTION_COUNT; i++) {
+        const int32_t x = 1 + (int32_t)i * cell;
         const bool selected = (i == e->menu_index);
         const bool available = ft_encounter_action_available(e, (FtAction2)i);
         const char* label = action_label((FtAction2)i);
 
         if(selected) {
-            canvas_draw_box(canvas, x, y, (size_t)w, 9);
+            canvas_draw_box(canvas, x, FT_ACTION_Y, (size_t)(cell - 1), 9);
             canvas_set_color(canvas, ColorWhite);
         }
 
-        if(selected) canvas_draw_str(canvas, x + 2, y + 7, ">");
-        draw_clipped(canvas, x + 9, y + 7, label, w - 12);
+        const int32_t lw = (int32_t)canvas_string_width(canvas, label);
+        const int32_t lx = x + (cell - 1 - lw) / 2;
+        canvas_draw_str(canvas, lx, FT_ACTION_Y + 7, label);
 
-        /* A locked module is struck through rather than hidden, so the player
-         * reads the attribute instead of wondering where the option went. */
-        if(!available) {
-            const int32_t lw = (int32_t)canvas_string_width(canvas, label);
-            canvas_draw_line(canvas, x + 9, y + 4, x + 9 + lw, y + 4);
-        }
+        /* Struck through rather than hidden: the option stays visible and the
+         * row below says why it is refused. */
+        if(!available) canvas_draw_line(canvas, lx, FT_ACTION_Y + 4, lx + lw, FT_ACTION_Y + 4);
 
         if(selected) canvas_set_color(canvas, ColorBlack);
     }
+
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 16,
+                 action_desc(e, (FtAction2)e->menu_index));
 }
 
 static void draw_prompt(Canvas* canvas, const char* s) {
@@ -580,18 +676,19 @@ void ft_render_help(Canvas* canvas, uint8_t page) {
     if(page >= FT_HELP_PAGES) page = 0;
 
     static const char* const TITLES[FT_HELP_PAGES] = {
-        "1/3  THE FIGHT",
-        "2/3  YOUR STRIKE",
-        "3/3  THEIR TURN",
+        "1/4  CONTROLS",
+        "2/4  YOUR STRIKE",
+        "3/4  THEIR TURN",
+        "4/4  MODULES",
     };
 
     /* Four lines per page, 21 characters each: the panel's width budget. */
     static const char* const BODY[FT_HELP_PAGES][4] = {
         {
-            "Turns alternate. You",
-            "pick a module, they",
-            "hit back. Read their",
-            "tags: AIR, ENC, SH2.",
+            "LEFT/RIGHT: action.",
+            "UP/DOWN: target.",
+            "The line below says",
+            "what each one does.",
         },
         {
             "A bar sweeps. Wait",
@@ -602,8 +699,14 @@ void ft_render_help(Canvas* canvas, uint8_t page) {
         {
             "Tap OK as the cursor",
             "reaches the far end.",
-            "Dots = jam, half hit.",
-            "Solid = capture, 0",
+            "Dots = jam (half).",
+            "Solid = capture (0).",
+        },
+        {
+            "SIG replays a kept",
+            "attack, costs 1 bar.",
+            "AIR blocks NFC.",
+            "ENC blocks SUB.",
         },
     };
 

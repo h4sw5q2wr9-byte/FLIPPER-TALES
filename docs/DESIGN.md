@@ -148,10 +148,20 @@ about five samples. These are the numbers most likely to need changing
 once the game is played on hardware — they are constants in `ft_types.h` for
 exactly that reason.
 
-A resolved action plays out in two parts: `FT_ANIM_MS` (320 ms) of sprite
-animation — a contact lunge, a travelling arc for broadcasts, a judder on
-whoever took damage, a burst on a capture — and only then does the result popup
-take the arena. Without the split the popup covers the sprites for the whole
+A resolved action plays out in two parts: `FT_ANIM_MS` (900 ms) of sprite
+animation, and only then does the result popup take the arena. The animation is
+staged — wind-up, emit, travel, strike, recover — and themed to the module
+rather than being one generic lunge:
+
+- **Broadcast** charges the antenna, then sends a train of three chevrons
+  across the arena, washing over every foe in turn.
+- **Contact** closes the gap to the target and crackles a field at the point of
+  contact.
+- **Enemy attacks** use the same vocabulary in reverse, chosen by their own
+  delivery, so a ranged foe reads differently from one that comes at you.
+
+A chevron's apex points where the wave is going and its arms trail behind; the
+first version had this inverted, so waves appeared to fly backwards. Without the split the popup covers the sprites for the whole
 hold and the animation is never seen.
 
 Both bars open with a **500 ms ready beat** (`FT_READY_MS`). The track and its
@@ -207,6 +217,29 @@ Integer centi-units, **100 = one bar**.
 The low-Charge bonus is deliberately load-bearing: charging faster the closer you are to dying is the
 solo risk/reward loop, and it pairs directly with being mid-roll (§4.6).
 
+### 4.7a The action set
+
+Five actions. The first pass had four, of which two were dead weight — Focus
+charged a meter nothing could spend, and Defend only slowed the Charge roll
+without reducing damage. Both are now real choices:
+
+| Action | Effect |
+|---|---|
+| **SUB** (Sub-GHz) | Broadcast: strikes every living foe, low power each |
+| **NFC** | Contact: one target, high power, halves its shield |
+| **DEF** | Brace: shield 2 for the turn, +1 RAM, slower Charge roll |
+| **FOC** | Charge the Signal meter |
+| **SIG** | Spend one bar to replay a captured attack at 75% power |
+
+`SIG` is what gives the Signal meter a sink, and so gives Focus and capture a
+point. A replayed broadcast still hits everything; a replayed contact attack
+still needs a target.
+
+Unusable actions are shown struck through, never hidden, and the row beneath
+the menu says **why** — naming the remedy ("Flying: use SUB."), not just the
+problem. That row is also what stops five three-letter buttons from being
+unreadable.
+
 ### 4.8 Enemy attributes — Milestone 1 subset
 
 | Attribute | Effect | Block Tales equivalent |
@@ -217,6 +250,21 @@ solo risk/reward loop, and it pairs directly with being mid-roll (§4.6).
 | `FAST` | Acts **before** the player | Mobile |
 
 Later: `JAMMER` (locks the Signal meter), `SHIELD`, deflection attributes.
+
+### 4.9 Multiple foes
+
+Up to `FT_MAX_ENEMIES` (3) foes, which is what fits across a 128px arena at
+16px each. They are laid out grouped on the right — a spread-out row reads as
+three separate fights rather than one crowd.
+
+Each foe acts in turn: the player moves, then every living foe telegraphs and
+strikes in order before the menu returns. Targeting is UP/DOWN, and the target
+automatically falls through to a living foe when the chosen one dies.
+
+This is what makes the broadcast-versus-contact tradeoff real. Against one foe,
+contact is simply better; against three, weaker-but-wider wins. The mixed
+group — airborne plus encrypted — is the first fight where neither module can
+cover the board alone.
 
 ## 5. Reading the screen in 1-bit
 

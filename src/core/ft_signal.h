@@ -58,4 +58,8 @@ bool ft_siglib_holds(const FtSignalLibrary* lib, uint16_t attack_id);
 /* Power of a replayed signal: a copy is weaker than the original. */
 int16_t ft_siglib_replay_power(int16_t base_power);
 
+/* The most recently captured id, or 0 when the library is empty. This is what
+ * a SIGNAL action replays. */
+uint16_t ft_siglib_latest(const FtSignalLibrary* lib);
+
 #endif /* FT_SIGNAL_H */

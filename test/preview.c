@@ -16,12 +16,20 @@ typedef struct {
     uint32_t    phase_ms;
     uint8_t     menu_index;
     int         variant;
+    uint8_t     extra_foes; /* 0 = duel, else a mixed group */
 } Shot;
 
 static void build(FtEncounter* e, const Shot* s) {
     FtLoadout lo;
     ft_loadout_init(&lo);
-    ft_encounter_init(e, s->enemy, &lo, 42);
+
+    if(s->extra_foes) {
+        const FtEnemyId group[FT_MAX_ENEMIES] = {
+            FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK};
+        ft_encounter_init(e, group, s->extra_foes, &lo, 42);
+    } else {
+        ft_encounter_init_single(e, s->enemy, &lo, 42);
+    }
 
     e->phase = s->phase;
     e->phase_ms = s->phase_ms;
@@ -33,8 +41,11 @@ static void build(FtEncounter* e, const Shot* s) {
     e->roll.current = 13;
     e->roll.target = 13;
     e->stats.charge = 13;
-    e->enemy_charge = (int16_t)(e->enemy_charge_max / 2);
     e->signal.value = 70;
+
+    for(uint8_t i = 0; i < e->foe_count; i++) {
+        e->foes[i].charge = (int16_t)((e->foes[i].charge_max * 2) / 3);
+    }
 
     /* Widest case for the pip row: four bars, three of them filled. */
     if(s->enemy == FT_ENEMY_SEALED_LOCK) {
@@ -45,7 +56,7 @@ static void build(FtEncounter* e, const Shot* s) {
     switch(s->phase) {
     case FT_PHASE_TELEGRAPH:
     case FT_PHASE_IMPACT:
-        e->enemy_attack_index = (uint8_t)s->variant;
+        e->foes[e->acting_foe].attack_index = (uint8_t)s->variant;
         break;
     case FT_PHASE_PLAYER_ACT:
         e->action_pressed = (s->variant != 0);
@@ -69,6 +80,20 @@ static void build(FtEncounter* e, const Shot* s) {
 
     if(s->variant == 9) e->coach = false;
 
+    /* A broadcast result needs per-foe outcomes filled in. */
+    if(s->phase == FT_PHASE_RESULT && s->menu_index == FT_ACTION_BROADCAST) {
+        for(uint8_t i = 0; i < e->foe_count; i++) {
+            const bool encrypted =
+                (FT_ENEMIES[e->foes[i].id].attrs & FT_ATTR_ENCRYPTED) != 0u;
+
+            e->foe_hit_valid[i] = true;
+            e->foe_hits[i].outcome = encrypted ? FT_HIT_LOCKED : FT_HIT_OK;
+            e->foe_hits[i].damage = encrypted ? 0 : 3;
+            e->foe_hits[i].ram_refund = encrypted ? 1 : 0;
+        }
+        e->last_player_hit = e->foe_hits[0];
+    }
+
     /* A couple of stored signals, so the win screen has something to report. */
     ft_siglib_capture(&e->lib, 10);
     ft_siglib_capture(&e->lib, 11);
@@ -76,29 +101,35 @@ static void build(FtEncounter* e, const Shot* s) {
 
 int main(void) {
     static const Shot shots[] = {
-        {"menu-plain",      FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    0, 0},
-        {"menu-airborne",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_MENU,       0,    1, 0},
-        {"menu-encrypted",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    0, 0},
-        {"menu-last",       FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    3, 0},
-        {"menu-nocoach",    FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    1, 9},
+        {"menu-plain",      FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    0, 0, 0},
+        {"menu-airborne",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_MENU,       0,    1, 0, 0},
+        {"menu-encrypted",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    0, 0, 0},
+        {"menu-last",       FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    3, 0, 0},
+        {"menu-nocoach",    FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    1, 9, 0},
         /* Phase times include the FT_READY_MS lead-in. */
-        {"strike-ready",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 200,  1, 0},
-        {"strike-early",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 620,  1, 0},
-        {"strike-perfect",  FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 850,  1, 0},
-        {"anim-strike",     FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     110,  1, 0},
-        {"result-hit",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     500,  1, 0},
-        {"result-locked",   FT_ENEMY_SEALED_LOCK,  FT_PHASE_RESULT,     500,  0, 1},
-        {"telegraph-ready", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  250,  0, 0},
-        {"telegraph-far",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  800,  0, 0},
-        {"telegraph-near",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1270, 0, 0},
-        {"telegraph-guard", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1240, 0, 1},
-        {"telegraph-undo",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_TELEGRAPH,  1100, 0, 1},
-        {"anim-incoming",   FT_ENEMY_SEALED_LOCK,  FT_PHASE_IMPACT,     110,  0, 1},
-        {"anim-capture",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     110,  0, 0},
-        {"impact-capture",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     500,  0, 0},
-        {"impact-jam",      FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     500,  0, 1},
-        {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0},
-        {"lose",            FT_ENEMY_SEALED_LOCK,  FT_PHASE_LOSE,       100,  0, 0},
+        {"strike-ready",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 200,  1, 0, 0},
+        {"strike-early",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 620,  1, 0, 0},
+        {"strike-perfect",  FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 850,  1, 0, 0},
+        {"anim-strike",     FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     110,  1, 0, 0},
+        {"result-hit",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,    1100,  1, 0, 0},
+        {"result-group",    FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,    1100,  0, 0, 3},
+        {"telegraph-ready", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  250,  0, 0, 0},
+        {"telegraph-far",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  800,  0, 0, 0},
+        {"telegraph-near",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1270, 0, 0, 0},
+        {"telegraph-guard", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1240, 0, 1, 0},
+        {"telegraph-undo",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_TELEGRAPH,  1100, 0, 1, 0},
+        {"anim-incoming",   FT_ENEMY_SEALED_LOCK,  FT_PHASE_IMPACT,     110,  0, 1, 0},
+        {"anim-capture",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     110,  0, 0, 0},
+        {"impact-capture",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  0, 0, 0},
+        {"impact-jam",      FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  0, 1, 0},
+        {"group3-menu",     FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    0, 0, 3},
+        {"group3-target",   FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    1, 0, 3},
+        {"group2-signal",   FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    4, 0, 2},
+        {"anim-bcast",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     560,  0, 0, 3},
+        {"anim-contact",    FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     560,  1, 0, 2},
+        {"anim-foe-bcast",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     560,  0, 1, 0},
+        {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0, 0},
+        {"lose",            FT_ENEMY_SEALED_LOCK,  FT_PHASE_LOSE,       100,  0, 0, 0},
     };
 
     Canvas* canvas = ft_stub_canvas_alloc();

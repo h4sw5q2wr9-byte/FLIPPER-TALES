@@ -5,15 +5,11 @@ const char* ft_tutorial_hint(const FtEncounter* e) {
 
     switch(e->phase) {
     case FT_PHASE_MENU:
-        /* Call out a locked module the moment it is highlighted: the strike
-         * through the label means nothing until someone says why. */
-        if(!ft_encounter_action_available(e, (FtAction2)e->menu_index)) {
-            const uint32_t attrs = ft_encounter_enemy(e)->attrs;
-            if(attrs & FT_ATTR_AIRBORNE) return "It flies: use SUBGHZ";
-            if(attrs & FT_ATTR_ENCRYPTED) return "Encrypted. Use NFC.";
-            return "That one won't work.";
-        }
-        return "Pick a module + OK";
+        /* The description row under the menu already names what each action
+         * does and why a refused one is refused, so the coach must not repeat
+         * it. It spends its line on the controls instead. */
+        if(ft_encounter_living(e) > 1u) return "UP/DOWN picks target";
+        return "LEFT/RIGHT, then OK";
 
     case FT_PHASE_PLAYER_ACT:
         if(ft_encounter_in_ready(e)) return "Wait for the pips...";
@@ -27,6 +23,7 @@ const char* ft_tutorial_hint(const FtEncounter* e) {
         case FT_HIT_MISSED:    return "Too early or late.";
         default:               break;
         }
+        if(e->last_was_replay) return "Their own signal!";
         if(e->last_rating == FT_RATING_EXCELLENT) return "Dead centre. Double!";
         if(e->last_rating == FT_RATING_MISS) return "Aim for the black.";
         return "Closer in = more.";
@@ -45,7 +42,7 @@ const char* ft_tutorial_hint(const FtEncounter* e) {
     }
 
     case FT_PHASE_IMPACT:
-        if(e->last_enemy_hit.captured) return "Kept it! See S pips";
+        if(e->last_enemy_hit.captured) return "Kept it! Try SIG.";
         if(e->last_guard == FT_GUARD_JAM) return "Halved. Tap later.";
         if(e->last_enemy_hit.damage > 0) return "Missed. Tap later.";
         return NULL;

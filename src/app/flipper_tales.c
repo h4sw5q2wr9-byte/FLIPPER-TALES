@@ -84,14 +84,32 @@ static void ft_input_callback(InputEvent* event, void* ctx) {
 
 /* ---- Input ----------------------------------------------------------- */
 
-static void ft_start_encounter(FlipperTales* app, uint8_t enemy_index) {
-    /* ft_encounter_init resets coaching to on, so carry the player's choice
+/* A short gauntlet: each fight introduces one more idea, ending with a mixed
+ * group so broadcast-versus-contact actually has to be chosen. */
+typedef struct {
+    uint8_t   count;
+    FtEnemyId foes[FT_MAX_ENEMIES];
+} FtRoster;
+
+static const FtRoster FT_ROSTERS[] = {
+    {1, {FT_ENEMY_STRAY_PACKET, 0, 0}},
+    {1, {FT_ENEMY_DRIFT_BEACON, 0, 0}},
+    {1, {FT_ENEMY_SEALED_LOCK, 0, 0}},
+    {2, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, 0}},
+    {2, {FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK, 0}},
+    {3, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK}},
+};
+#define FT_ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
+
+static void ft_start_encounter(FlipperTales* app, uint8_t index) {
+    /* ft_encounter_init resets coaching to on, so carry the player's state
      * across fights rather than nagging them again each time. */
     const bool coach = app->coach;
 
-    app->enemy_index = (uint8_t)(enemy_index % FT_ENEMY_COUNT);
-    ft_encounter_init(&app->encounter, (FtEnemyId)app->enemy_index, &app->loadout,
-                      furi_get_tick());
+    app->enemy_index = (uint8_t)(index % FT_ROSTER_COUNT);
+    const FtRoster* r = &FT_ROSTERS[app->enemy_index];
+
+    ft_encounter_init(&app->encounter, r->foes, r->count, &app->loadout, furi_get_tick());
 
     app->encounter.coach = coach;
 }
@@ -139,7 +157,9 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
 
     case InputKeyOk:
         if(ft_encounter_over(&app->encounter)) {
-            /* Cycle through the M1 enemies so all three locks are reachable. */
+            /* One fight is enough to learn the timings; the help deck stays
+             * reachable with UP rather than the coach nagging forever. */
+            app->coach = false;
             ft_start_encounter(app, (uint8_t)(app->enemy_index + 1u));
         } else {
             ft_encounter_press_ok(&app->encounter);
@@ -155,22 +175,17 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
         break;
 
     /* The menu is a 2x2 grid, so vertical movement is a step of two. */
+    /* The menu is a single row, so UP and DOWN are free to pick a target. */
     case InputKeyUp:
         if(ft_encounter_over(&app->encounter)) {
             app->show_help = true;
         } else {
-            ft_encounter_menu_move(&app->encounter, -2);
+            ft_encounter_target_move(&app->encounter, -1);
         }
         break;
 
     case InputKeyDown:
-        if(app->encounter.phase == FT_PHASE_MENU) {
-            ft_encounter_menu_move(&app->encounter, 2);
-        } else {
-            /* Outside the grid, DOWN silences or restores the coach. */
-            app->coach = !app->coach;
-            app->encounter.coach = app->coach;
-        }
+        ft_encounter_target_move(&app->encounter, 1);
         break;
 
     default:

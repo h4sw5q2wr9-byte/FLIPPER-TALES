@@ -19,20 +19,37 @@ typedef enum {
     FT_PHASE_MENU = 0,   /* choosing an action; the roll is paused here */
     FT_PHASE_PLAYER_ACT, /* action command sweeping */
     FT_PHASE_RESULT,     /* showing what the player's action did */
-    FT_PHASE_TELEGRAPH,  /* enemy winding up; the guard window is open */
-    FT_PHASE_IMPACT,     /* showing what the enemy's action did */
+    FT_PHASE_TELEGRAPH,  /* one foe winding up; the guard window is open */
+    FT_PHASE_IMPACT,     /* showing what that foe's action did */
     FT_PHASE_DRAIN,      /* rolling Charge settling toward its target */
     FT_PHASE_WIN,
     FT_PHASE_LOSE
 } FtPhase;
 
 typedef enum {
-    FT_ACTION_BROADCAST = 0,
-    FT_ACTION_CONTACT,
-    FT_ACTION_DEFEND,
-    FT_ACTION_FOCUS,
+    FT_ACTION_BROADCAST = 0, /* Sub-GHz: every foe, weaker per hit */
+    FT_ACTION_CONTACT,       /* NFC: one foe, strong, halves its shield */
+    FT_ACTION_DEFEND,        /* brace: shield for the turn, recover RAM */
+    FT_ACTION_FOCUS,         /* charge the Signal meter */
+    FT_ACTION_SIGNAL,        /* spend a bar to replay a captured attack */
     FT_ACTION_COUNT
 } FtAction2;
+
+/* Bracing grants a real shield for the turn, not just a slower drain. Without
+ * this, Defend is never worth a turn. */
+#define FT_DEFEND_SHIELD 2
+#define FT_DEFEND_RAM    1
+
+/* A replayed signal costs this many whole bars. */
+#define FT_SIGNAL_COST_BARS 1
+
+/* One enemy on the board. */
+typedef struct {
+    FtEnemyId id;
+    int16_t   charge;
+    int16_t   charge_max;
+    uint8_t   attack_index; /* what it is winding up, while it acts */
+} FtFoe;
 
 typedef struct {
     FtPhase  phase;
@@ -45,9 +62,10 @@ typedef struct {
     FtLoadout        loadout;
     FtLoadoutEffects fx;
 
-    FtEnemyId enemy_id;
-    int16_t   enemy_charge;
-    int16_t   enemy_charge_max;
+    FtFoe   foes[FT_MAX_ENEMIES];
+    uint8_t foe_count;
+    uint8_t target;     /* player's chosen foe for single-target actions */
+    uint8_t acting_foe; /* whose turn it is during TELEGRAPH and IMPACT */
 
     uint8_t menu_index;
     bool    defending;
@@ -58,70 +76,89 @@ typedef struct {
     FtRating last_rating;
 
     /* Guard state. */
-    uint8_t  enemy_attack_index;
     bool     guard_pressed;
     uint32_t guard_press_ms;
     FtGuard  last_guard;
 
-    FtHitResult last_player_hit;
+    /* Per-foe results, so a broadcast can show what it did to each of them. */
+    FtHitResult foe_hits[FT_MAX_ENEMIES];
+    bool        foe_hit_valid[FT_MAX_ENEMIES];
+
+    FtHitResult last_player_hit; /* headline result, for the popup */
     FtHitResult last_enemy_hit;
     bool        last_capture_was_new;
+    bool        last_was_replay;
+    int16_t     last_total_damage;
 
-    /* Contextual coaching on. Lives here so ft_tutorial can derive its line
-     * from battle state alone. */
     bool coach;
 
     FtRng rng;
 } FtEncounter;
 
-/* ---- Pure timing helpers (the part worth testing hardest) ------------- */
+/* ---- Pure timing helpers --------------------------------------------- */
 
-/* Which guard a press at this many ms before impact earns.
- * Negative means the press came after the hit landed. */
-FtGuard ft_guard_from_timing(int32_t ms_before_impact, bool hard_mode);
-
-/* Rating for an action command press this far from the perfect moment.
- * The sign of the offset does not matter, only the distance. */
+FtGuard  ft_guard_from_timing(int32_t ms_before_impact, bool hard_mode);
 FtRating ft_rating_from_timing(int32_t ms_from_perfect);
 
-/* ---- Encounter ------------------------------------------------------- */
+/* ---- Lifecycle ------------------------------------------------------- */
 
-void ft_encounter_init(FtEncounter* e, FtEnemyId enemy, const FtLoadout* lo, uint32_t seed);
+/* Up to FT_MAX_ENEMIES foes, laid out and resolved left to right. */
+void ft_encounter_init(
+    FtEncounter*     e,
+    const FtEnemyId* foes,
+    uint8_t          count,
+    const FtLoadout* lo,
+    uint32_t         seed);
 
-/* Advance by dt_ms. Drives every phase transition. */
+/* Convenience for a duel. */
+void ft_encounter_init_single(
+    FtEncounter* e, FtEnemyId foe, const FtLoadout* lo, uint32_t seed);
+
 void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms);
-
-/* OK pressed. Meaning depends on the phase: confirm, action command, or guard. */
 void ft_encounter_press_ok(FtEncounter* e);
 
-/* Move the action menu. Only meaningful during FT_PHASE_MENU. */
 void ft_encounter_menu_move(FtEncounter* e, int8_t delta);
 
-/* Is this menu entry usable right now? Locked modules are shown but refused,
- * so the player learns the attribute rather than being silently denied. */
+/* Cycle the target among living foes. Only meaningful during FT_PHASE_MENU. */
+void ft_encounter_target_move(FtEncounter* e, int8_t delta);
+
+/* Usable right now? Unusable entries are shown and refused, never hidden, so
+ * the player learns the rule instead of losing the option. */
 bool ft_encounter_action_available(const FtEncounter* e, FtAction2 action);
 
+/* Why an action is unusable, in at most 20 characters, or NULL if it is fine. */
+const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action);
+
+bool ft_encounter_over(const FtEncounter* e);
+
+/* ---- Foes ------------------------------------------------------------ */
+
+bool           ft_encounter_foe_alive(const FtEncounter* e, uint8_t i);
+uint8_t        ft_encounter_living(const FtEncounter* e);
+const FtEnemy* ft_encounter_foe(const FtEncounter* e, uint8_t i);
+
+/* The player's current target. Always a living foe while any remain. */
+uint8_t ft_encounter_target(const FtEncounter* e);
+
+/* The foe that is currently acting. */
 const FtEnemy* ft_encounter_enemy(const FtEncounter* e);
-bool           ft_encounter_over(const FtEncounter* e);
 
 /* The attack currently being telegraphed, or NULL outside the wind-up. */
 const FtAttack* ft_encounter_incoming(const FtEncounter* e);
 
-/* True during the "get set" beat, before the timing cursor is released. */
-bool ft_encounter_in_ready(const FtEncounter* e);
+/* The captured attack a SIGNAL action would replay, or NULL if none. */
+const FtAttack* ft_encounter_replay_attack(const FtEncounter* e);
 
-/* Milliseconds since the cursor started moving; zero during the ready beat.
- * This, not phase_ms, is what the timing windows are measured against. */
+/* Does this action strike every foe at once? */
+bool ft_encounter_action_is_broadcast(const FtEncounter* e, FtAction2 action);
+
+/* ---- Pacing ---------------------------------------------------------- */
+
+bool     ft_encounter_in_ready(const FtEncounter* e);
 uint32_t ft_encounter_sweep_ms(const FtEncounter* e);
-
-/* Total length of the current phase's timing bar, ready beat excluded. */
 uint32_t ft_encounter_sweep_window(const FtEncounter* e);
 
-/* True while a resolved action is still playing out on the sprites, before the
- * result popup takes over the arena. */
-bool ft_encounter_in_anim(const FtEncounter* e);
-
-/* Progress through that animation, 0..255. Saturates at the end. */
+bool    ft_encounter_in_anim(const FtEncounter* e);
 uint8_t ft_encounter_anim_progress(const FtEncounter* e);
 
 #endif /* FT_ENCOUNTER_H */

@@ -16,7 +16,7 @@ FtGuard ft_guard_from_timing(int32_t ms_before_impact, bool hard_mode) {
     if(ms_before_impact <= capture) return FT_GUARD_CAPTURE;
     if(ms_before_impact <= jam) return FT_GUARD_JAM;
 
-    /* Too early: the guard has already lapsed by the time the hit arrives. */
+    /* Too early: the guard has lapsed by the time the hit arrives. */
     return FT_GUARD_NONE;
 }
 
@@ -31,7 +31,7 @@ FtRating ft_rating_from_timing(int32_t ms_from_perfect) {
     return FT_RATING_MISS;
 }
 
-/* ---- Ready beat ------------------------------------------------------ */
+/* ---- Pacing ---------------------------------------------------------- */
 
 bool ft_encounter_in_ready(const FtEncounter* e) {
     if(e->phase != FT_PHASE_PLAYER_ACT && e->phase != FT_PHASE_TELEGRAPH) return false;
@@ -53,8 +53,6 @@ uint32_t ft_encounter_sweep_ms(const FtEncounter* e) {
     return (window && elapsed > window) ? window : elapsed;
 }
 
-/* ---- Action animation ------------------------------------------------- */
-
 bool ft_encounter_in_anim(const FtEncounter* e) {
     if(e->phase != FT_PHASE_RESULT && e->phase != FT_PHASE_IMPACT) return false;
     return e->phase_ms < FT_ANIM_MS;
@@ -67,18 +65,77 @@ uint8_t ft_encounter_anim_progress(const FtEncounter* e) {
     return (uint8_t)((e->phase_ms * 255u) / FT_ANIM_MS);
 }
 
-/* ---- Setup ----------------------------------------------------------- */
+/* ---- Foes ------------------------------------------------------------ */
+
+bool ft_encounter_foe_alive(const FtEncounter* e, uint8_t i) {
+    return i < e->foe_count && e->foes[i].charge > 0;
+}
+
+uint8_t ft_encounter_living(const FtEncounter* e) {
+    uint8_t n = 0;
+    for(uint8_t i = 0; i < e->foe_count; i++) {
+        if(e->foes[i].charge > 0) n++;
+    }
+    return n;
+}
+
+const FtEnemy* ft_encounter_foe(const FtEncounter* e, uint8_t i) {
+    if(i >= e->foe_count) i = 0;
+    return &FT_ENEMIES[e->foes[i].id];
+}
 
 const FtEnemy* ft_encounter_enemy(const FtEncounter* e) {
-    return &FT_ENEMIES[e->enemy_id];
+    return ft_encounter_foe(e, e->acting_foe);
+}
+
+/* Next living foe at or after `from`, or -1 when the row is clear. */
+static int next_living(const FtEncounter* e, uint8_t from) {
+    for(uint8_t i = from; i < e->foe_count; i++) {
+        if(e->foes[i].charge > 0) return (int)i;
+    }
+    return -1;
+}
+
+uint8_t ft_encounter_target(const FtEncounter* e) {
+    if(ft_encounter_foe_alive(e, e->target)) return e->target;
+
+    /* The chosen target died; fall through to whoever is left. */
+    const int n = next_living(e, 0);
+    return (n < 0) ? 0u : (uint8_t)n;
+}
+
+void ft_encounter_target_move(FtEncounter* e, int8_t delta) {
+    if(e->phase != FT_PHASE_MENU || e->foe_count == 0u) return;
+    if(ft_encounter_living(e) <= 1u) return;
+
+    const int8_t step = (delta < 0) ? -1 : 1;
+    uint8_t idx = ft_encounter_target(e);
+
+    /* Walk to the next living foe, wrapping. Bounded by foe_count so a board
+     * of corpses cannot spin here. */
+    for(uint8_t guard = 0; guard < e->foe_count; guard++) {
+        const int16_t next = (int16_t)(idx + step);
+        idx = (uint8_t)((next < 0) ? (e->foe_count - 1) : (next % e->foe_count));
+        if(ft_encounter_foe_alive(e, idx)) break;
+    }
+
+    e->target = idx;
 }
 
 bool ft_encounter_over(const FtEncounter* e) {
     return e->phase == FT_PHASE_WIN || e->phase == FT_PHASE_LOSE;
 }
 
-void ft_encounter_init(FtEncounter* e, FtEnemyId enemy, const FtLoadout* lo, uint32_t seed) {
-    const FtEnemy* proto = &FT_ENEMIES[enemy];
+/* ---- Setup ----------------------------------------------------------- */
+
+void ft_encounter_init(
+    FtEncounter*     e,
+    const FtEnemyId* foes,
+    uint8_t          count,
+    const FtLoadout* lo,
+    uint32_t         seed) {
+    if(count == 0u) count = 1u;
+    if(count > FT_MAX_ENEMIES) count = FT_MAX_ENEMIES;
 
     e->loadout = *lo;
     e->fx = ft_loadout_effects(&e->loadout);
@@ -93,12 +150,32 @@ void ft_encounter_init(FtEncounter* e, FtEnemyId enemy, const FtLoadout* lo, uin
     ft_signal_battle_start(&e->signal);
     ft_siglib_init(&e->lib);
 
-    /* A JAMMER present at the start locks the meter for the whole battle. */
-    e->signal.locked = (proto->attrs & FT_ATTR_JAMMER) != 0u;
+    e->foe_count = count;
+    bool jammer = false;
+    for(uint8_t i = 0; i < count; i++) {
+        const FtEnemy* proto = &FT_ENEMIES[foes[i]];
+        e->foes[i].id = foes[i];
+        e->foes[i].charge = proto->charge;
+        e->foes[i].charge_max = proto->charge;
+        e->foes[i].attack_index = 0;
+        if(proto->attrs & FT_ATTR_JAMMER) jammer = true;
 
-    e->enemy_id = enemy;
-    e->enemy_charge = proto->charge;
-    e->enemy_charge_max = proto->charge;
+        e->foe_hits[i] = (FtHitResult){FT_HIT_OK, 0, false, false, false, 0};
+        e->foe_hit_valid[i] = false;
+    }
+    for(uint8_t i = count; i < FT_MAX_ENEMIES; i++) {
+        e->foes[i].id = foes[0];
+        e->foes[i].charge = 0;
+        e->foes[i].charge_max = 0;
+        e->foes[i].attack_index = 0;
+        e->foe_hit_valid[i] = false;
+    }
+
+    /* Any jammer on the board locks the meter for the whole fight. */
+    e->signal.locked = jammer;
+
+    e->target = 0;
+    e->acting_foe = 0;
 
     e->phase = FT_PHASE_MENU;
     e->phase_ms = 0;
@@ -109,7 +186,6 @@ void ft_encounter_init(FtEncounter* e, FtEnemyId enemy, const FtLoadout* lo, uin
     e->action_press_ms = 0;
     e->last_rating = FT_RATING_MISS;
 
-    e->enemy_attack_index = 0;
     e->guard_pressed = false;
     e->guard_press_ms = 0;
     e->last_guard = FT_GUARD_NONE;
@@ -118,29 +194,70 @@ void ft_encounter_init(FtEncounter* e, FtEnemyId enemy, const FtLoadout* lo, uin
     e->last_player_hit = blank;
     e->last_enemy_hit = blank;
     e->last_capture_was_new = false;
+    e->last_was_replay = false;
+    e->last_total_damage = 0;
 
-    /* Coaching defaults on; the app turns it off once the player asks. */
     e->coach = true;
 
     ft_rng_seed(&e->rng, seed);
 }
 
-/* ---- Menu ------------------------------------------------------------ */
+void ft_encounter_init_single(
+    FtEncounter* e, FtEnemyId foe, const FtLoadout* lo, uint32_t seed) {
+    const FtEnemyId one[1] = {foe};
+    ft_encounter_init(e, one, 1u, lo, seed);
+}
 
-bool ft_encounter_action_available(const FtEncounter* e, FtAction2 action) {
-    const FtEnemy* en = ft_encounter_enemy(e);
+/* ---- Actions --------------------------------------------------------- */
 
+const FtAttack* ft_encounter_replay_attack(const FtEncounter* e) {
+    return ft_attack_by_id(ft_siglib_latest(&e->lib));
+}
+
+bool ft_encounter_action_is_broadcast(const FtEncounter* e, FtAction2 action) {
+    if(action == FT_ACTION_BROADCAST) return true;
+
+    if(action == FT_ACTION_SIGNAL) {
+        const FtAttack* atk = ft_encounter_replay_attack(e);
+        return atk && atk->delivery == FT_DELIVERY_BROADCAST;
+    }
+    return false;
+}
+
+const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
     switch(action) {
     case FT_ACTION_BROADCAST:
-        return (en->attrs & FT_ATTR_ENCRYPTED) == 0u;
+        /* Broadcast reaches everything unless every living foe ignores it. */
+        for(uint8_t i = 0; i < e->foe_count; i++) {
+            if(e->foes[i].charge > 0 &&
+               !(FT_ENEMIES[e->foes[i].id].attrs & FT_ATTR_ENCRYPTED)) {
+                return NULL;
+            }
+        }
+        return "Encrypted: use NFC";
+
     case FT_ACTION_CONTACT:
-        return (en->attrs & FT_ATTR_AIRBORNE) == 0u;
+        if(ft_encounter_foe(e, ft_encounter_target(e))->attrs & FT_ATTR_AIRBORNE) {
+            return "Flying: use SUB.";
+        }
+        return NULL;
+
+    case FT_ACTION_SIGNAL:
+        if(ft_encounter_replay_attack(e) == NULL) return "Capture one first.";
+        if(e->signal.locked) return "Signal jammed.";
+        if(ft_signal_bars(&e->signal) < FT_SIGNAL_COST_BARS) return "Need a full bar.";
+        return NULL;
+
     case FT_ACTION_DEFEND:
     case FT_ACTION_FOCUS:
-        return true;
     default:
-        return false;
+        return NULL;
     }
+}
+
+bool ft_encounter_action_available(const FtEncounter* e, FtAction2 action) {
+    if(action >= FT_ACTION_COUNT) return false;
+    return ft_encounter_action_block(e, action) == NULL;
 }
 
 void ft_encounter_menu_move(FtEncounter* e, int8_t delta) {
@@ -153,12 +270,6 @@ void ft_encounter_menu_move(FtEncounter* e, int8_t delta) {
     e->menu_index = (uint8_t)idx;
 }
 
-static const FtAttack* player_attack_for(FtAction2 action) {
-    if(action == FT_ACTION_BROADCAST) return &FT_MODULES[FT_MOD_SUBGHZ].attack;
-    if(action == FT_ACTION_CONTACT) return &FT_MODULES[FT_MOD_NFC].attack;
-    return NULL;
-}
-
 /* ---- Resolution ------------------------------------------------------ */
 
 static void enter_phase(FtEncounter* e, FtPhase phase) {
@@ -166,17 +277,44 @@ static void enter_phase(FtEncounter* e, FtPhase phase) {
     e->phase_ms = 0;
 }
 
+static void gain_ram(FtEncounter* e, int16_t amount) {
+    e->stats.ram = (int16_t)(e->stats.ram + amount);
+    if(e->stats.ram > e->stats.ram_max) e->stats.ram = e->stats.ram_max;
+    if(e->stats.ram < 0) e->stats.ram = 0;
+}
+
+/* Apply one attack to one foe, recording the per-foe result. */
+static void strike_foe(FtEncounter* e, uint8_t i, const FtAttack* atk, FtRating rating) {
+    const FtEnemy* proto = &FT_ENEMIES[e->foes[i].id];
+    const FtDefender def = {proto->shielded, proto->attrs};
+    const FtHitParams p = {e->fx.atk_up, 0, rating, false, FT_GUARD_NONE, 0};
+
+    const FtHitResult r = ft_resolve_hit(atk, &def, &p);
+
+    e->foe_hits[i] = r;
+    e->foe_hit_valid[i] = true;
+
+    if(r.ram_refund > 0) gain_ram(e, r.ram_refund);
+
+    if(r.damage > 0) {
+        e->foes[i].charge = (int16_t)(e->foes[i].charge - r.damage);
+        if(e->foes[i].charge < 0) e->foes[i].charge = 0;
+        e->last_total_damage = (int16_t)(e->last_total_damage + r.damage);
+    }
+}
+
 static void resolve_player_action(FtEncounter* e) {
     const FtAction2 action = (FtAction2)e->menu_index;
-    const FtEnemy* en = ft_encounter_enemy(e);
 
     const FtHitResult blank = {FT_HIT_OK, 0, false, false, false, 0};
     e->last_player_hit = blank;
+    e->last_total_damage = 0;
+    e->last_was_replay = false;
+    for(uint8_t i = 0; i < FT_MAX_ENEMIES; i++) e->foe_hit_valid[i] = false;
 
     if(action == FT_ACTION_DEFEND) {
         e->defending = true;
-        e->stats.ram = (int16_t)(e->stats.ram + 1);
-        if(e->stats.ram > e->stats.ram_max) e->stats.ram = e->stats.ram_max;
+        gain_ram(e, FT_DEFEND_RAM);
         return;
     }
 
@@ -185,55 +323,82 @@ static void resolve_player_action(FtEncounter* e) {
         return;
     }
 
-    const FtAttack* atk = player_attack_for(action);
+    const FtAttack* atk = NULL;
+    FtAttack replay;
+
+    if(action == FT_ACTION_SIGNAL) {
+        const FtAttack* src = ft_encounter_replay_attack(e);
+        if(src == NULL) return;
+        if(!ft_signal_spend_bars(&e->signal, FT_SIGNAL_COST_BARS)) return;
+
+        /* A replay is the enemy's own attack at reduced power. */
+        replay = *src;
+        replay.base_power = ft_siglib_replay_power(src->base_power);
+        atk = &replay;
+        e->last_was_replay = true;
+    } else if(action == FT_ACTION_BROADCAST) {
+        atk = &FT_MODULES[FT_MOD_SUBGHZ].attack;
+    } else if(action == FT_ACTION_CONTACT) {
+        atk = &FT_MODULES[FT_MOD_NFC].attack;
+    }
+
     if(atk == NULL) return;
 
-    /* No press at all during the sweep is a miss. */
+    /* A replay carries the original's timing, so it takes an action command
+     * like anything else. */
     const FtRating rating =
         e->action_pressed ?
             ft_rating_from_timing((int32_t)e->action_press_ms - (FT_ACTION_WINDOW_MS / 2)) :
             FT_RATING_MISS;
     e->last_rating = rating;
 
-    const FtDefender def = {en->shielded, en->attrs};
-    const FtHitParams p = {e->fx.atk_up, 0, rating, false, FT_GUARD_NONE, 0};
-
-    e->last_player_hit = ft_resolve_hit(atk, &def, &p);
-
-    if(e->last_player_hit.ram_refund > 0) {
-        e->stats.ram = (int16_t)(e->stats.ram + e->last_player_hit.ram_refund);
-        if(e->stats.ram > e->stats.ram_max) e->stats.ram = e->stats.ram_max;
+    if(atk->delivery == FT_DELIVERY_BROADCAST) {
+        for(uint8_t i = 0; i < e->foe_count; i++) {
+            if(e->foes[i].charge > 0) strike_foe(e, i, atk, rating);
+        }
+        /* Headline the first foe that was actually reached. */
+        for(uint8_t i = 0; i < e->foe_count; i++) {
+            if(e->foe_hit_valid[i]) {
+                e->last_player_hit = e->foe_hits[i];
+                if(e->foe_hits[i].outcome == FT_HIT_OK) break;
+            }
+        }
+    } else {
+        const uint8_t t = ft_encounter_target(e);
+        strike_foe(e, t, atk, rating);
+        e->last_player_hit = e->foe_hits[t];
     }
 
-    if(e->last_player_hit.damage > 0) {
-        e->enemy_charge = (int16_t)(e->enemy_charge - e->last_player_hit.damage);
+    if(e->last_total_damage > 0) {
         ft_signal_add(&e->signal, ft_signal_attack_gain(e->roll.current, e->stats.charge_max));
     }
 }
 
 static void choose_enemy_attack(FtEncounter* e) {
     const FtEnemy* en = ft_encounter_enemy(e);
-    e->enemy_attack_index = (uint8_t)ft_rng_below(&e->rng, en->attack_count);
+    e->foes[e->acting_foe].attack_index = (uint8_t)ft_rng_below(&e->rng, en->attack_count);
     e->guard_pressed = false;
     e->guard_press_ms = 0;
 }
 
 const FtAttack* ft_encounter_incoming(const FtEncounter* e) {
     if(e->phase != FT_PHASE_TELEGRAPH && e->phase != FT_PHASE_IMPACT) return NULL;
-    return &ft_encounter_enemy(e)->attacks[e->enemy_attack_index];
+    return &ft_encounter_enemy(e)->attacks[e->foes[e->acting_foe].attack_index];
 }
 
 static void resolve_enemy_action(FtEncounter* e) {
-    const FtAttack* atk = &ft_encounter_enemy(e)->attacks[e->enemy_attack_index];
+    const FtAttack* atk = ft_encounter_incoming(e);
+    if(atk == NULL) return;
 
-    /* The press is recorded as a time within the telegraph; convert it to a
+    /* The press is recorded as a time within the sweep; convert it to a
      * distance before impact, which is what the guard windows are defined in. */
     const int32_t before_impact =
         e->guard_pressed ? (int32_t)FT_TELEGRAPH_MS - (int32_t)e->guard_press_ms : -1;
 
     e->last_guard = ft_guard_from_timing(before_impact, e->fx.hard_mode);
 
-    const FtDefender def = {0, 0};
+    /* Bracing is a real shield, so it can blunt or even deflect a hit. */
+    const FtDefender def = {e->defending ? FT_DEFEND_SHIELD : 0, 0};
     const FtHitParams p = {0, 0, FT_RATING_MISS, false, e->last_guard,
                            e->fx.jam_reduction_pct};
 
@@ -255,21 +420,23 @@ static void resolve_enemy_action(FtEncounter* e) {
 
 void ft_encounter_press_ok(FtEncounter* e) {
     switch(e->phase) {
-    case FT_PHASE_MENU:
-        if(!ft_encounter_action_available(e, (FtAction2)e->menu_index)) return;
+    case FT_PHASE_MENU: {
+        const FtAction2 action = (FtAction2)e->menu_index;
+        if(!ft_encounter_action_available(e, action)) return;
 
         e->action_pressed = false;
         e->action_press_ms = 0;
         e->defending = false;
 
-        /* Defend and Focus take no action command, so skip the sweep. */
-        if(e->menu_index == FT_ACTION_DEFEND || e->menu_index == FT_ACTION_FOCUS) {
+        /* Defend and Focus have nothing to time, so they skip the sweep. */
+        if(action == FT_ACTION_DEFEND || action == FT_ACTION_FOCUS) {
             resolve_player_action(e);
             enter_phase(e, FT_PHASE_RESULT);
         } else {
             enter_phase(e, FT_PHASE_PLAYER_ACT);
         }
         break;
+    }
 
     case FT_PHASE_PLAYER_ACT:
         /* Presses during the ready beat are ignored, not penalised. Mashing
@@ -277,7 +444,6 @@ void ft_encounter_press_ok(FtEncounter* e) {
          * very start of the sweep, nowhere near the target. */
         if(ft_encounter_in_ready(e)) break;
 
-        /* Only the first press counts. */
         if(!e->action_pressed) {
             e->action_pressed = true;
             e->action_press_ms = ft_encounter_sweep_ms(e);
@@ -300,11 +466,20 @@ void ft_encounter_press_ok(FtEncounter* e) {
 
 /* ---- Tick ------------------------------------------------------------ */
 
-/* Milestone 1 simplification: the phase machine always resolves the player
- * before the enemy, so ft_priority (and with it the FAST attribute) does not
- * yet drive turn order. Ordering only becomes observable with more than one
- * enemy on the board, which arrives with the overworld in M2. Tracked in
- * DESIGN.md 7. */
+/* Hand the turn to the next foe, or back to the player when the row is done. */
+static void advance_foe_turn(FtEncounter* e, uint8_t from) {
+    const int n = next_living(e, from);
+
+    if(n < 0) {
+        e->defending = false;
+        enter_phase(e, FT_PHASE_MENU);
+        return;
+    }
+
+    e->acting_foe = (uint8_t)n;
+    choose_enemy_attack(e);
+    enter_phase(e, FT_PHASE_TELEGRAPH);
+}
 
 void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
     if(ft_encounter_over(e)) return;
@@ -326,11 +501,10 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
 
     case FT_PHASE_RESULT:
         if(e->phase_ms >= FT_IMPACT_HOLD_MS) {
-            if(e->enemy_charge <= 0) {
+            if(ft_encounter_living(e) == 0u) {
                 enter_phase(e, FT_PHASE_WIN);
             } else {
-                choose_enemy_attack(e);
-                enter_phase(e, FT_PHASE_TELEGRAPH);
+                advance_foe_turn(e, 0);
             }
         }
         break;
@@ -347,8 +521,7 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         break;
 
     case FT_PHASE_DRAIN: {
-        const uint32_t interval =
-            ft_roll_interval_ms(0, e->defending, e->fx.hard_mode);
+        const uint32_t interval = ft_roll_interval_ms(0, e->defending, e->fx.hard_mode);
         ft_roll_tick(&e->roll, dt_ms, interval);
 
         e->stats.charge = e->roll.current;
@@ -356,8 +529,8 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         if(ft_roll_down(&e->roll)) {
             enter_phase(e, FT_PHASE_LOSE);
         } else if(!ft_roll_active(&e->roll)) {
-            e->defending = false;
-            enter_phase(e, FT_PHASE_MENU);
+            /* Each foe acts in turn before the player moves again. */
+            advance_foe_turn(e, (uint8_t)(e->acting_foe + 1u));
         }
         break;
     }

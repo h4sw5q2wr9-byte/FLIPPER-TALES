@@ -636,7 +636,7 @@ static void test_ready_beat(void) {
     ft_loadout_init(&lo);
 
     FtEncounter e;
-    ft_encounter_init(&e, FT_ENEMY_STRAY_PACKET, &lo, 2);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 2);
     e.menu_index = FT_ACTION_CONTACT;
     ft_encounter_press_ok(&e);
     CHECK_EQ(e.phase, FT_PHASE_PLAYER_ACT);
@@ -661,7 +661,7 @@ static void test_ready_beat(void) {
     /* The guard sweep gets the same lead-in, and a press during it is ignored
      * rather than counting as a wildly early guard. */
     FtEncounter g;
-    ft_encounter_init(&g, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    ft_encounter_init_single(&g, FT_ENEMY_STRAY_PACKET, &lo, 4);
     g.phase = FT_PHASE_TELEGRAPH;
     g.phase_ms = 0;
     CHECK(ft_encounter_in_ready(&g), "guard sweep also starts with a beat");
@@ -671,7 +671,7 @@ static void test_ready_beat(void) {
 
     /* Phases without a timing bar never report a ready beat. */
     FtEncounter m;
-    ft_encounter_init(&m, FT_ENEMY_STRAY_PACKET, &lo, 6);
+    ft_encounter_init_single(&m, FT_ENEMY_STRAY_PACKET, &lo, 6);
     CHECK(!ft_encounter_in_ready(&m), "the menu is not a ready beat");
     CHECK_EQ(ft_encounter_sweep_window(&m), 0);
 }
@@ -683,14 +683,17 @@ static void test_encounter(void) {
     ft_loadout_init(&lo);
 
     FtEncounter e;
-    ft_encounter_init(&e, FT_ENEMY_STRAY_PACKET, &lo, 7);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 7);
 
     CHECK_EQ(e.phase, FT_PHASE_MENU);
-    CHECK_EQ(e.enemy_charge, FT_ENEMIES[FT_ENEMY_STRAY_PACKET].charge);
+    CHECK_EQ(e.foes[0].charge, FT_ENEMIES[FT_ENEMY_STRAY_PACKET].charge);
+    CHECK_EQ(e.foe_count, 1);
+    CHECK_EQ(ft_encounter_living(&e), 1);
     CHECK(!ft_encounter_over(&e), "a fresh encounter is not over");
     CHECK(ft_encounter_incoming(&e) == NULL, "nothing incoming during the menu");
 
-    /* The menu wraps in both directions. */
+    /* The menu wraps in both directions across all five actions. */
+    CHECK_EQ(FT_ACTION_COUNT, 5);
     ft_encounter_menu_move(&e, -1);
     CHECK_EQ(e.menu_index, FT_ACTION_COUNT - 1);
     ft_encounter_menu_move(&e, 1);
@@ -705,13 +708,13 @@ static void test_encounter(void) {
 
     /* Attribute locks are surfaced as unavailable menu entries. */
     FtEncounter beacon;
-    ft_encounter_init(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 1);
+    ft_encounter_init_single(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 1);
     CHECK(ft_encounter_action_available(&beacon, FT_ACTION_BROADCAST), "broadcast reaches AIRBORNE");
     CHECK(!ft_encounter_action_available(&beacon, FT_ACTION_CONTACT), "contact cannot reach AIRBORNE");
     CHECK(ft_encounter_action_available(&beacon, FT_ACTION_DEFEND), "Defend is always available");
 
     FtEncounter lock;
-    ft_encounter_init(&lock, FT_ENEMY_SEALED_LOCK, &lo, 1);
+    ft_encounter_init_single(&lock, FT_ENEMY_SEALED_LOCK, &lo, 1);
     CHECK(!ft_encounter_action_available(&lock, FT_ACTION_BROADCAST), "broadcast is refused by ENCRYPTED");
     CHECK(ft_encounter_action_available(&lock, FT_ACTION_CONTACT), "contact works on ENCRYPTED");
 
@@ -722,7 +725,7 @@ static void test_encounter(void) {
 
     /* A perfectly timed action command earns the top rating. */
     FtEncounter fight;
-    ft_encounter_init(&fight, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&fight, FT_ENEMY_STRAY_PACKET, &lo, 3);
     fight.menu_index = FT_ACTION_CONTACT;
     ft_encounter_press_ok(&fight);
     CHECK_EQ(fight.phase, FT_PHASE_PLAYER_ACT);
@@ -752,7 +755,7 @@ static void test_encounter(void) {
 
     /* Focus feeds the Signal meter without an action command. */
     FtEncounter focus;
-    ft_encounter_init(&focus, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&focus, FT_ENEMY_STRAY_PACKET, &lo, 5);
     const int16_t sig_before = focus.signal.value;
     focus.menu_index = FT_ACTION_FOCUS;
     ft_encounter_press_ok(&focus);
@@ -763,12 +766,12 @@ static void test_encounter(void) {
      * full-battle run uses the toughest M1 enemy to guarantee the player is
      * actually attacked. */
     FtEncounter quick;
-    ft_encounter_init(&quick, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&quick, FT_ENEMY_STRAY_PACKET, &lo, 3);
     CHECK(FT_ENEMIES[FT_ENEMY_STRAY_PACKET].charge <= 8, "tutorial enemy stays one-shottable");
 
     /* A whole battle terminates rather than spinning forever. */
     FtEncounter run;
-    ft_encounter_init(&run, FT_ENEMY_SEALED_LOCK, &lo, 11);
+    ft_encounter_init_single(&run, FT_ENEMY_SEALED_LOCK, &lo, 11);
     int guard_ticks = 0;
     for(int i = 0; i < 20000 && !ft_encounter_over(&run); i++) {
         if(run.phase == FT_PHASE_MENU) {
@@ -794,7 +797,7 @@ static void test_encounter(void) {
      * is capturable; skipping the action command keeps the player's damage low
      * enough that the enemy actually gets a turn. */
     FtEncounter cap;
-    ft_encounter_init(&cap, FT_ENEMY_STRAY_PACKET, &lo, 11);
+    ft_encounter_init_single(&cap, FT_ENEMY_STRAY_PACKET, &lo, 11);
     bool faced_attack = false;
     for(int i = 0; i < 20000 && !ft_encounter_over(&cap); i++) {
         if(cap.phase == FT_PHASE_MENU) {
@@ -816,9 +819,9 @@ static void test_encounter(void) {
 
     /* An UNDODGEABLE attack can never be captured, however well timed. */
     FtEncounter undo;
-    ft_encounter_init(&undo, FT_ENEMY_SEALED_LOCK, &lo, 11);
+    ft_encounter_init_single(&undo, FT_ENEMY_SEALED_LOCK, &lo, 11);
     undo.phase = FT_PHASE_TELEGRAPH;
-    undo.enemy_attack_index = 1; /* Seal: UNDODGEABLE */
+    undo.foes[0].attack_index = 1; /* Seal: UNDODGEABLE */
     undo.guard_pressed = true;
     undo.guard_press_ms = FT_TELEGRAPH_MS; /* frame perfect on the sweep clock */
     ft_encounter_tick(&undo, 0);
@@ -833,7 +836,7 @@ static void test_tutorial(void) {
     ft_loadout_init(&lo);
 
     FtEncounter e;
-    ft_encounter_init(&e, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 3);
 
     /* On by default, and silent the moment it is turned off. */
     CHECK(e.coach, "coaching starts on");
@@ -843,18 +846,26 @@ static void test_tutorial(void) {
     CHECK(ft_tutorial_hint(&e) == NULL, "coaching off means silence");
     e.coach = true;
 
-    /* A locked module explains itself rather than just being struck through. */
+    /* A refused action explains itself, and names the remedy rather than just
+     * stating the problem. This is shown in the menu's description row, so the
+     * reason lives on the action rather than in the coach line. */
     FtEncounter beacon;
-    ft_encounter_init(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 3);
-    beacon.menu_index = FT_ACTION_CONTACT;
-    const char* flies = ft_tutorial_hint(&beacon);
-    CHECK(flies && strstr(flies, "SUBGHZ"), "an airborne lock should name the fix");
+    ft_encounter_init_single(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 3);
+    const char* flies = ft_encounter_action_block(&beacon, FT_ACTION_CONTACT);
+    CHECK(flies && strstr(flies, "SUB"), "an airborne lock should name the fix");
+    CHECK(!ft_encounter_action_available(&beacon, FT_ACTION_CONTACT),
+          "contact cannot reach an airborne target");
 
     FtEncounter lock;
-    ft_encounter_init(&lock, FT_ENEMY_SEALED_LOCK, &lo, 3);
-    lock.menu_index = FT_ACTION_BROADCAST;
-    const char* enc = ft_tutorial_hint(&lock);
+    ft_encounter_init_single(&lock, FT_ENEMY_SEALED_LOCK, &lo, 3);
+    const char* enc = ft_encounter_action_block(&lock, FT_ACTION_BROADCAST);
     CHECK(enc && strstr(enc, "NFC"), "an encrypted lock should name the fix");
+
+    /* The coach must not simply echo that reason back. */
+    beacon.menu_index = FT_ACTION_CONTACT;
+    const char* coached = ft_tutorial_hint(&beacon);
+    CHECK(coached && !strstr(coached, "Flying"),
+          "the coach should not duplicate the description row");
 
     /* The line tracks the phase, including the ready beat. */
     e.phase = FT_PHASE_PLAYER_ACT;
@@ -870,16 +881,16 @@ static void test_tutorial(void) {
 
     /* An UNDODGEABLE attack is called out as unguardable. */
     FtEncounter undo;
-    ft_encounter_init(&undo, FT_ENEMY_SEALED_LOCK, &lo, 3);
+    ft_encounter_init_single(&undo, FT_ENEMY_SEALED_LOCK, &lo, 3);
     undo.phase = FT_PHASE_TELEGRAPH;
-    undo.enemy_attack_index = 1;
+    undo.foes[0].attack_index = 1;
     CHECK_EQ(FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attacks[1].klass, FT_CLASS_UNDODGEABLE);
     const char* brace = ft_tutorial_hint(&undo);
     CHECK(brace && strstr(brace, "No guard"), "undodgeable should say so");
 
     /* Feedback after a guard distinguishes a jam from a capture. */
     FtEncounter jam;
-    ft_encounter_init(&jam, FT_ENEMY_DRIFT_BEACON, &lo, 3);
+    ft_encounter_init_single(&jam, FT_ENEMY_DRIFT_BEACON, &lo, 3);
     jam.phase = FT_PHASE_IMPACT;
     jam.last_guard = FT_GUARD_JAM;
     jam.last_enemy_hit.damage = 3;
@@ -892,7 +903,7 @@ static void test_tutorial(void) {
 
     /* Outcome screens stay quiet: they have their own copy. */
     FtEncounter done;
-    ft_encounter_init(&done, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&done, FT_ENEMY_STRAY_PACKET, &lo, 3);
     done.phase = FT_PHASE_WIN;
     CHECK(ft_tutorial_hint(&done) == NULL, "the win screen is not coached");
 
@@ -905,10 +916,10 @@ static void test_tutorial(void) {
                 for(int atk = 0; atk < FT_ENEMY_MAX_ATTACKS; atk++) {
                     for(int ready = 0; ready < 2; ready++) {
                         FtEncounter w;
-                        ft_encounter_init(&w, (FtEnemyId)enemy, &lo, 1);
+                        ft_encounter_init_single(&w, (FtEnemyId)enemy, &lo, 1);
                         w.phase = (FtPhase)phase;
                         w.menu_index = (uint8_t)menu;
-                        w.enemy_attack_index =
+                        w.foes[0].attack_index =
                             (uint8_t)(atk % FT_ENEMIES[enemy].attack_count);
                         w.phase_ms = ready ? 0u : (FT_READY_MS + 50u);
 
@@ -933,7 +944,7 @@ static void test_anim(void) {
     ft_loadout_init(&lo);
 
     FtEncounter e;
-    ft_encounter_init(&e, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 5);
 
     /* Phases without a resolved action never animate. */
     CHECK(!ft_encounter_in_anim(&e), "the menu does not animate");

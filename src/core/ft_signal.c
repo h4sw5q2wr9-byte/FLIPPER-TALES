@@ -84,6 +84,15 @@ bool ft_siglib_capture(FtSignalLibrary* lib, uint16_t attack_id) {
     return true;
 }
 
+uint16_t ft_siglib_latest(const FtSignalLibrary* lib) {
+    if(lib->count == 0u) return 0u;
+
+    /* next points at the slot that will be written, so the newest entry is
+     * the one before it, wrapping. */
+    const uint8_t newest = (uint8_t)((lib->next + FT_SIGLIB_SLOTS - 1u) % FT_SIGLIB_SLOTS);
+    return lib->ids[newest];
+}
+
 int16_t ft_siglib_replay_power(int16_t base_power) {
     if(base_power <= 0) return 0;
 
