@@ -5,11 +5,13 @@
 #include <stdio.h>
 
 #include "ft_maps.h"
+#include "../core/ft_world.h"
 #include "ft_overworld.h"
 #include "ft_tiles.h"
 
 typedef struct {
     const char*  name;
+    uint8_t      room;
     const FtMap* map;
     int32_t      px, py;
     FtFacing     facing;
@@ -65,16 +67,16 @@ static void write_whole_map(const FtMap* m, const char* path) {
 
 int main(void) {
     static const Shot shots[] = {
-        {"cb1-wake",     &FT_MAP_CB1, 32,  28, FT_FACE_RIGHT, false, 0},
-        {"cb1-terminal", &FT_MAP_CB1, 36,  20, FT_FACE_UP,    false, 9000},
-        {"cb1-exit",     &FT_MAP_CB1, 112, 28, FT_FACE_RIGHT, true,  9000},
-        {"cb2-foe",      &FT_MAP_CB2, 48,  28, FT_FACE_RIGHT, true,  0},
-        {"cb2-mid",      &FT_MAP_CB2, 96,  36, FT_FACE_RIGHT, true,  9000},
-        {"cb3-shelf",    &FT_MAP_CB3, 48,  28, FT_FACE_DOWN,  true,  0},
-        {"cb3-ladder",   &FT_MAP_CB3, 40,  36, FT_FACE_DOWN,  true,  9000},
-        {"cb3-lower",    &FT_MAP_CB3, 80,  68, FT_FACE_RIGHT, true,  9000},
-        {"cb4-lock",     &FT_MAP_CB4, 40,  44, FT_FACE_RIGHT, false, 0},
-        {"cb4-exit",     &FT_MAP_CB4, 120, 68, FT_FACE_RIGHT, true,  9000},
+        {"cb1-wake",     0, &FT_MAP_CB1, 32,  28, FT_FACE_RIGHT, false, 0},
+        {"cb1-terminal", 0, &FT_MAP_CB1, 36,  20, FT_FACE_UP,    false, 9000},
+        {"cb1-exit",     0, &FT_MAP_CB1, 112, 28, FT_FACE_RIGHT, true,  9000},
+        {"cb2-foe",      1, &FT_MAP_CB2, 48,  28, FT_FACE_RIGHT, true,  0},
+        {"cb2-mid",      1, &FT_MAP_CB2, 96,  36, FT_FACE_RIGHT, true,  9000},
+        {"cb3-shelf",    2, &FT_MAP_CB3, 48,  28, FT_FACE_DOWN,  true,  0},
+        {"cb3-ladder",   2, &FT_MAP_CB3, 40,  36, FT_FACE_DOWN,  true,  9000},
+        {"cb3-lower",    2, &FT_MAP_CB3, 80,  68, FT_FACE_RIGHT, true,  9000},
+        {"cb4-lock",     3, &FT_MAP_CB4, 40,  44, FT_FACE_RIGHT, false, 0},
+        {"cb4-exit",     3, &FT_MAP_CB4, 120, 68, FT_FACE_RIGHT, true,  9000},
     };
 
     Canvas* canvas = ft_stub_canvas_alloc();
@@ -84,7 +86,16 @@ int main(void) {
         const Shot* s = &shots[i];
         const FtPos p = {s->px, s->py};
 
-        ft_overworld_render(canvas, s->map, p, s->facing, 200, s->moving, s->area_ms);
+        FtWorld w;
+        ft_world_init(&w);
+        w.room = s->room;
+        w.pos = p;
+        w.facing = s->facing;
+        w.moving = s->moving;
+        w.step_ms = 200;
+        w.area_ms = s->area_ms;
+
+        ft_overworld_render(canvas, &w);
 
         char path[128];
         snprintf(path, sizeof(path), "preview/map_%02zu_%s.pbm", i, s->name);

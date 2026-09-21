@@ -7,29 +7,22 @@
 
 #include <gui/gui.h>
 
-#include "../core/ft_map.h"
-
-typedef enum {
-    FT_FACE_DOWN = 0,
-    FT_FACE_UP,
-    FT_FACE_LEFT,
-    FT_FACE_RIGHT
-} FtFacing;
+#include "../core/ft_world.h"
 
 /* How long the area name stays up after entering. */
 #define FT_AREA_BANNER_MS 2200
 
-/* Draw the map through a camera centred on the player, then the avatar, then
- * the area banner while it is still due.
+/* A brief one-line message, drawn over the map. */
+void ft_overworld_toast(Canvas* canvas, const char* text);
+
+/* Draw the current room through a camera centred on the player: tiles, then
+ * the foes still standing, then the avatar, then the area banner while it is
+ * still due.
  *
- * `step_ms` drives the walk cycle; `area_ms` is time since entering the area. */
-void ft_overworld_render(
-    Canvas*      canvas,
-    const FtMap* map,
-    FtPos        player,
-    FtFacing     facing,
-    uint32_t     step_ms,
-    bool         moving,
-    uint32_t     area_ms);
+ * Takes the world rather than loose parameters because it needs the room, the
+ * position, the walk clock and which foes are already defeated — passing those
+ * separately meant threading a callback just to ask the last question. */
+void ft_overworld_render(Canvas* canvas, const FtWorld* w);
+
 
 #endif /* FT_OVERWORLD_H */

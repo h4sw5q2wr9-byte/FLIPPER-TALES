@@ -18,6 +18,17 @@
 #define FT_AVATAR_W 8
 #define FT_AVATAR_H 12
 
+/* Walk speed. Fast enough that a room is not a chore, slow enough that an
+ * 8px tile is still a meaningful unit of positioning. */
+#define FT_WALK_PX_PER_S 44
+
+typedef enum {
+    FT_FACE_DOWN = 0,
+    FT_FACE_UP,
+    FT_FACE_LEFT,
+    FT_FACE_RIGHT
+} FtFacing;
+
 typedef enum {
     FT_TILE_FLOOR = 0,
     FT_TILE_WALL,

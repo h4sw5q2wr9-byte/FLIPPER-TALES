@@ -1,5 +1,6 @@
 #include "ft_overworld.h"
 
+#include "ft_sprites.h"
 #include "ft_tiles.h"
 
 /* The overworld avatar, 8x12: the same handheld device as the battle sprite,
@@ -100,18 +101,58 @@ static void draw_avatar(Canvas* c, int32_t x, int32_t y, FtFacing facing, int32_
     blit_rows(c, rows, FT_AVATAR_H, x, y, FT_AVATAR_W);
 }
 
-void ft_overworld_render(
-    Canvas*      canvas,
-    const FtMap* map,
-    FtPos        player,
-    FtFacing     facing,
-    uint32_t     step_ms,
-    bool         moving,
-    uint32_t     area_ms) {
+/* Foes standing in the room. Drawn at half the battle sprite's size by
+ * sampling every other pixel — a 16x16 enemy would dwarf an 8x12 player. */
+static void draw_foe(Canvas* c, const uint16_t* rows, int32_t x, int32_t y) {
+    /* A foe on the far side of a room is off-panel, and drawing it there is
+     * both wasted work and, in the preview harness, a clipping failure. */
+    if(x + FT_SPRITE_W / 2 < 0 || x >= FT_SCREEN_PX_W) return;
+    if(y + FT_SPRITE_H / 2 < 0 || y >= FT_SCREEN_PX_H) return;
+
+    for(int32_t sy = 0; sy < FT_SPRITE_H; sy += 2) {
+        const uint16_t bits = rows[sy];
+        if(!bits) continue;
+
+        const int32_t py = y + sy / 2;
+        if(py < 0 || py >= FT_SCREEN_PX_H) continue;
+
+        for(int32_t sx = 0; sx < FT_SPRITE_W; sx += 2) {
+            const int32_t px = x + sx / 2;
+            if(px < 0 || px >= FT_SCREEN_PX_W) continue;
+            if(bits & (1u << sx)) canvas_draw_dot(c, px, py);
+        }
+    }
+}
+
+static const uint16_t* foe_sprite(uint32_t attrs) {
+    if(attrs & FT_ATTR_AIRBORNE) return FT_SPRITE_BEACON;
+    if(attrs & FT_ATTR_ENCRYPTED) return FT_SPRITE_LOCK;
+    return FT_SPRITE_PACKET;
+}
+
+void ft_overworld_toast(Canvas* canvas, const char* text) {
+    if(!text) return;
+
+    canvas_set_font(canvas, FontSecondary);
+    const int32_t w = (int32_t)canvas_string_width(canvas, text) + 8;
+    const int32_t x = (FT_SCREEN_PX_W - w) / 2;
+    const int32_t y = FT_SCREEN_PX_H - 14;
+
+    canvas_set_color(canvas, ColorWhite);
+    canvas_draw_box(canvas, x, y, (size_t)w, 12);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_draw_frame(canvas, x, y, (size_t)w, 12);
+    canvas_draw_str(canvas, x + 4, y + 9, text);
+}
+
+void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
 
-    const FtPos cam = ft_map_camera(map, player);
+    const FtMap*  map = ft_world_map(w);
+    const FtPos   player = w->pos;
+    const FtPos   cam = ft_map_camera(map, player);
+    const FtRoom* room = ft_room(w->room);
 
     /* One extra column and row so a half-scrolled tile still draws. */
     const int32_t first_tx = cam.x / FT_TILE_PX;
@@ -149,17 +190,31 @@ void ft_overworld_render(
         }
     }
 
-    const int32_t bob = moving ? (int32_t)((step_ms / 140u) % 2u) : 0;
+    /* Foes before the avatar, so the player is never hidden behind one. */
+    for(uint8_t i = 0; i < room->ent_count; i++) {
+        if(room->ents[i].kind != FT_ENT_FOE) continue;
+        if(ft_world_entity_gone(w, i)) continue;
+
+        const FtRoster* roster = ft_roster(room->ents[i].roster);
+        const uint32_t attrs = FT_ENEMIES[roster->foes[0]].attrs;
+
+        draw_foe(
+            canvas, foe_sprite(attrs),
+            (int32_t)room->ents[i].tx * FT_TILE_PX - cam.x,
+            (int32_t)room->ents[i].ty * FT_TILE_PX - cam.y - 2);
+    }
+
+    const int32_t bob = w->moving ? (int32_t)((w->step_ms / 140u) % 2u) : 0;
     const int32_t ax = player.x - cam.x;
     const int32_t ay = player.y - cam.y;
 
     draw_avatar_halo(canvas, ax, ay);
-    draw_avatar(canvas, ax, ay, facing, bob);
+    draw_avatar(canvas, ax, ay, w->facing, bob);
 
     /* Area name, in a cleared strip so it stays legible over any tile. It
      * retires after a couple of seconds rather than occupying the corner for
      * the whole visit. */
-    if(map->name && area_ms < FT_AREA_BANNER_MS) {
+    if(map->name && w->area_ms < FT_AREA_BANNER_MS) {
         canvas_set_font(canvas, FontSecondary);
         const int32_t w = (int32_t)canvas_string_width(canvas, map->name) + 6;
 

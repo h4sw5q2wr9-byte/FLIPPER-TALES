@@ -11,6 +11,7 @@
 #include "ft_map.h"
 #include "ft_rng.h"
 #include "ft_tutorial.h"
+#include "ft_world.h"
 #include "ft_roll.h"
 #include "ft_signal.h"
 
@@ -1238,6 +1239,139 @@ static void test_tile_orientation(void) {
     }
 }
 
+
+static void test_world(void) {
+    section("overworld world state");
+
+    FtWorld w;
+    ft_world_init(&w);
+
+    CHECK_EQ(w.room, 0);
+    CHECK(ft_world_map(&w) != NULL, "the first room has a map");
+    CHECK(w.stats.charge > 0, "the player starts with charge");
+
+    /* Walking moves, and facing follows intent even when blocked. */
+    const FtPos before = w.pos;
+    ft_world_walk(&w, 1, 0, 100);
+    CHECK_EQ(w.facing, FT_FACE_RIGHT);
+    CHECK(w.pos.x > before.x, "walking right moves right");
+    CHECK(w.moving, "walking sets the walk flag");
+
+    ft_world_walk(&w, 0, 0, 100);
+    CHECK(!w.moving, "standing still clears it");
+    CHECK_EQ(w.facing, FT_FACE_RIGHT); /* facing persists */
+
+    /* Walk speed must match the constant regardless of tick size. At a 10ms
+     * tick the naive integer division floors to zero, and rounding that up to
+     * one pixel per tick ran the player at 100 px/s instead of 44. */
+    for(int tick = 1; tick <= 40; tick++) {
+        FtWorld s2;
+        ft_world_init(&s2);
+        /* Row 6 of Boot Corridor is clear floor end to end; row 3 has a crate
+         * in it, which measures collision rather than speed. */
+        ft_world_enter(&s2, 1, 2, 6);
+
+        const int32_t x0 = s2.pos.x;
+        for(uint32_t elapsed = 0; elapsed < 1000u; elapsed += (uint32_t)tick) {
+            ft_world_walk(&s2, 1, 0, (uint32_t)tick);
+        }
+        const int32_t travelled = s2.pos.x - x0;
+
+        /* Within a pixel or two of the intended distance, whatever the tick. */
+        CHECK(travelled >= FT_WALK_PX_PER_S - 3 && travelled <= FT_WALK_PX_PER_S + 3,
+              "tick %dms travelled %d px in a second, expected ~%d", tick,
+              (int)travelled, FT_WALK_PX_PER_S);
+    }
+
+    /* A wall stops movement but still turns you, which is what lets you
+     * strike a foe you cannot walk into. */
+    ft_world_enter(&w, 0, 1, 1);
+    const FtPos corner = w.pos;
+    for(int i = 0; i < 40; i++) ft_world_walk(&w, -1, 0, 50);
+    CHECK_EQ(w.facing, FT_FACE_LEFT);
+    CHECK(w.pos.x >= 0, "the wall holds");
+    CHECK(w.pos.x <= corner.x, "and did not push through it");
+
+    /* Entity clearing is per room, so beating a foe in one room must not
+     * silently remove one in another. */
+    ft_world_enter(&w, 1, 2, 2);
+    CHECK(!ft_world_entity_gone(&w, 0), "foes start alive");
+    ft_world_clear_entity(&w, 0);
+    CHECK(ft_world_entity_gone(&w, 0), "and stay cleared");
+
+    ft_world_enter(&w, 2, 2, 2);
+    CHECK(!ft_world_entity_gone(&w, 0), "a different room is unaffected");
+
+    ft_world_enter(&w, 1, 2, 2);
+    CHECK(ft_world_entity_gone(&w, 0), "and the first room remembers");
+}
+
+static void test_world_links(void) {
+    section("room links");
+
+    /* Every exit must sit on a real door, and every destination must be
+     * somewhere the player can actually stand. A wrong coordinate here is an
+     * unreachable exit or a spawn inside a wall — found on hardware, minutes
+     * wasted, so it is checked here instead. */
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        const FtRoom* room = ft_room(r);
+        CHECK(room->map != NULL, "room %u has a map", r);
+
+        for(uint8_t e = 0; e < room->exit_count; e++) {
+            const FtExit* x = &room->exits[e];
+
+            const FtTile here = ft_map_tile(room->map, x->tx, x->ty);
+            CHECK(here == FT_TILE_DOOR, "room %u exit %u stands on a door (got %d)",
+                  r, e, (int)here);
+
+            CHECK(x->dest_room < ft_room_count(), "room %u exit %u leads somewhere",
+                  r, e);
+
+            /* The landing spot must be walkable for the whole footprint. */
+            const FtRoom* dest = ft_room(x->dest_room);
+            FtWorld probe;
+            ft_world_init(&probe);
+            ft_world_enter(&probe, x->dest_room, x->dest_tx, x->dest_ty);
+
+            CHECK(!ft_map_blocked(dest->map, probe.pos),
+                  "room %u exit %u lands somewhere standable", r, e);
+        }
+
+        /* Foes must stand on walkable ground, or they can never be reached. */
+        for(uint8_t i = 0; i < room->ent_count; i++) {
+            const FtEntity* ent = &room->ents[i];
+            const FtTile t = ft_map_tile(room->map, ent->tx, ent->ty);
+            CHECK(!ft_tile_solid(t), "room %u entity %u stands on open ground", r, i);
+
+            CHECK(ft_roster(ent->roster)->count > 0, "room %u entity %u has a group",
+                  r, i);
+        }
+    }
+
+    /* The chain must be connected both ways: every room reachable from the
+     * first, and no exit leading into a room that cannot get back. */
+    bool seen[16] = {false};
+    uint8_t stack[16];
+    uint8_t top = 0;
+    stack[top++] = 0;
+    seen[0] = true;
+
+    while(top > 0) {
+        const uint8_t r = stack[--top];
+        const FtRoom* room = ft_room(r);
+        for(uint8_t e = 0; e < room->exit_count; e++) {
+            const uint8_t d = room->exits[e].dest_room;
+            if(!seen[d]) {
+                seen[d] = true;
+                stack[top++] = d;
+            }
+        }
+    }
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        CHECK(seen[r], "room %u is reachable from the start", r);
+    }
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -1263,6 +1397,8 @@ int main(void) {
     test_anim();
     test_map();
     test_tile_orientation();
+    test_world();
+    test_world_links();
     test_rng();
 
     printf("\n%d checks, %d failures\n\n", checks, failures);

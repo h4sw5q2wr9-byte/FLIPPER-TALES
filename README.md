@@ -10,9 +10,9 @@ NFC, RFID, Infrared, iButton, BadUSB, GPIO, U2F, BLE**.
 > radios, NFC, IR or USB hardware, and never transmits anything. It reads and writes nothing but its
 > own save file.
 
-> **Status: Milestone 1 playable.** Combat core, battle screen and input are
-> implemented and the `.fap` builds against official firmware. Not yet run on
-> real hardware. See [`docs/DESIGN.md`](docs/DESIGN.md).
+> **Status: the loop runs.** Walk a four-room prologue, meet foes, fight them,
+> and come back out. Not yet built: foe movement, items, the pause menu and
+> saving. See [`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## What it is
 
@@ -66,9 +66,20 @@ docs/        design bible and research notes
 
 ## Controls
 
+**Overworld**
+
 | Button | Action |
 |---|---|
-| ← / → | choose a module |
+| D-pad | walk |
+| OK | strike a foe you are facing, use a terminal, or take a door |
+| Back | quit |
+
+**Battle**
+
+| Button | Action |
+|---|---|
+| ← / → | choose an action |
+| ↑ / ↓ | choose a target |
 | OK | confirm; then time the action command, and time your guard |
 | Back | quit |
 

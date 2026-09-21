@@ -9,6 +9,8 @@
 #include <input/input.h>
 
 #include "../core/ft_encounter.h"
+#include "../core/ft_world.h"
+#include "ft_overworld.h"
 #include "ft_render.h"
 
 #define FT_TAG        "FlipperTales"
@@ -19,9 +21,11 @@
                             * scene at 100 Hz saturates the GUI thread. */
 #define FT_QUEUE_SIZE 16
 
-/* A single tap produces Press, Release and Short, so the queue needs slack for
- * bursts. Anything beyond that is dropped rather than blocking — see
- * ft_input_callback. */
+/* Damage a foe takes for being hit in the overworld before the fight. */
+#define FT_FIRST_STRIKE_DAMAGE 3
+
+/* How long a one-line overworld message stays up. */
+#define FT_TOAST_MS 1400
 
 typedef enum {
     FtEventInput = 0,
@@ -33,24 +37,42 @@ typedef struct {
     InputEvent  input;
 } FtEvent;
 
+typedef enum {
+    FT_MODE_OVERWORLD = 0,
+    FT_MODE_BATTLE
+} FtMode;
+
 typedef struct {
     FuriMessageQueue* queue;
     FuriMutex*        mutex;
     ViewPort*         view_port;
     Gui*              gui;
 
-    FtLoadout   loadout;
+    FtMode      mode;
+    FtWorld     world;
     FtEncounter encounter;
-    uint8_t     enemy_index;
-    bool        coach;
 
-    /* Shown on launch: the timing windows are the whole game and are not
-     * self-evident, so the rules go up before the first turn rather than
-     * hiding behind a hint in the corner. */
+    /* Which entity started the current battle, so it can be removed on a win. */
+    int  battle_entity;
+    bool battle_first_strike;
+
+    /* D-pad is level-triggered: the queue gives presses and releases, and the
+     * walk needs to know what is held right now. */
+    uint8_t held;
+
+    const char* toast;
+    uint32_t    toast_ms;
+
     bool    show_help;
     uint8_t help_page;
+    bool    coach;
     bool    running;
 } FlipperTales;
+
+#define HELD_UP    (1u << 0)
+#define HELD_DOWN  (1u << 1)
+#define HELD_LEFT  (1u << 2)
+#define HELD_RIGHT (1u << 3)
 
 /* ---- GUI callbacks --------------------------------------------------- */
 
@@ -63,8 +85,12 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
 
     if(app->show_help) {
         ft_render_help(canvas, app->help_page);
-    } else {
+    } else if(app->mode == FT_MODE_BATTLE) {
         ft_render_battle(canvas, &app->encounter);
+    } else {
+        ft_overworld_render(canvas, &app->world);
+
+        if(app->toast_ms > 0) ft_overworld_toast(canvas, app->toast);
     }
 
     furi_mutex_release(app->mutex);
@@ -82,55 +108,120 @@ static void ft_input_callback(InputEvent* event, void* ctx) {
     furi_message_queue_put(app->queue, &msg, 0);
 }
 
+/* ---- Mode changes ---------------------------------------------------- */
+
+static void ft_toast(FlipperTales* app, const char* text) {
+    app->toast = text;
+    app->toast_ms = FT_TOAST_MS;
+}
+
+static void ft_begin_battle(FlipperTales* app, int entity, bool first_strike) {
+    const FtRoom* room = ft_room(app->world.room);
+    const FtRoster* roster = ft_roster(room->ents[entity].roster);
+
+    ft_encounter_init(
+        &app->encounter, roster->foes, roster->count, &app->world.loadout,
+        furi_get_tick());
+
+    /* Carry the player across: an encounter builds a level-one character on
+     * its own, which is right for a standalone fight and wrong here. */
+    app->encounter.stats = app->world.stats;
+    ft_roll_init(&app->encounter.roll, app->world.stats.charge);
+    app->encounter.lib = app->world.lib;
+    app->encounter.coach = app->coach;
+
+    if(first_strike) {
+        /* Hitting it out here means it enters already hurt. */
+        app->encounter.foes[0].charge =
+            (int16_t)(app->encounter.foes[0].charge - FT_FIRST_STRIKE_DAMAGE);
+        if(app->encounter.foes[0].charge < 1) app->encounter.foes[0].charge = 1;
+    }
+
+    app->battle_entity = entity;
+    app->battle_first_strike = first_strike;
+    app->mode = FT_MODE_BATTLE;
+}
+
+static void ft_end_battle(FlipperTales* app, bool won) {
+    /* Carry the player back out, including anything captured in the fight. */
+    app->world.stats = app->encounter.stats;
+    app->world.stats.charge = app->encounter.roll.current;
+    app->world.lib = app->encounter.lib;
+    app->coach = false;
+
+    if(won) {
+        if(app->battle_entity >= 0) {
+            ft_world_clear_entity(&app->world, (uint8_t)app->battle_entity);
+        }
+        if(app->world.stats.charge < 1) app->world.stats.charge = 1;
+        ft_toast(app, "Cleared.");
+    } else {
+        /* Downed: back to the first terminal, patched up. Terminals are the
+         * only save point, so they are also where you come back. */
+        app->world.stats.charge = app->world.stats.charge_max;
+        ft_world_enter(&app->world, 0, 5, 3);
+        ft_toast(app, "Rebooted.");
+    }
+
+    app->battle_entity = -1;
+    app->mode = FT_MODE_OVERWORLD;
+}
+
 /* ---- Input ----------------------------------------------------------- */
 
-/* A short gauntlet: each fight introduces one more idea, ending with a mixed
- * group so broadcast-versus-contact actually has to be chosen. */
-typedef struct {
-    uint8_t   count;
-    FtEnemyId foes[FT_MAX_ENEMIES];
-} FtRoster;
+static void ft_overworld_ok(FlipperTales* app) {
+    /* A foe you are facing is struck before it can react. */
+    const int ahead = ft_world_foe_ahead(&app->world);
+    if(ahead >= 0) {
+        ft_begin_battle(app, ahead, true);
+        return;
+    }
 
-static const FtRoster FT_ROSTERS[] = {
-    {1, {FT_ENEMY_STRAY_PACKET, 0, 0}},
-    {1, {FT_ENEMY_DRIFT_BEACON, 0, 0}},
-    {1, {FT_ENEMY_SEALED_LOCK, 0, 0}},
-    {2, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, 0}},
-    {2, {FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK, 0}},
-    {3, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK}},
-};
-#define FT_ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
+    if(ft_world_terminal_near(&app->world)) {
+        app->world.stats.charge = app->world.stats.charge_max;
+        app->world.stats.ram = app->world.stats.ram_max;
+        ft_toast(app, "Restored + saved.");
+        return;
+    }
 
-static void ft_start_encounter(FlipperTales* app, uint8_t index) {
-    /* ft_encounter_init resets coaching to on, so carry the player's state
-     * across fights rather than nagging them again each time. */
-    const bool coach = app->coach;
+    const FtExit* exit = ft_world_exit_under(&app->world);
+    if(exit) {
+        ft_world_enter(&app->world, exit->dest_room, exit->dest_tx, exit->dest_ty);
+        return;
+    }
 
-    app->enemy_index = (uint8_t)(index % FT_ROSTER_COUNT);
-    const FtRoster* r = &FT_ROSTERS[app->enemy_index];
-
-    ft_encounter_init(&app->encounter, r->foes, r->count, &app->loadout, furi_get_tick());
-
-    app->encounter.coach = coach;
+    ft_toast(app, "Nothing here.");
 }
 
 static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
-    /* Guard and action timing must react to the physical press, not the
-     * debounced short-press, or the 50 ms capture window is unreachable. */
     const bool pressed = (event->type == InputTypePress);
+    const bool released = (event->type == InputTypeRelease);
     const bool repeated = (event->type == InputTypeRepeat);
+
+    /* Track the d-pad as held state so the overworld can walk continuously. */
+    if(pressed || released) {
+        uint8_t bit = 0;
+        switch(event->key) {
+        case InputKeyUp:    bit = HELD_UP; break;
+        case InputKeyDown:  bit = HELD_DOWN; break;
+        case InputKeyLeft:  bit = HELD_LEFT; break;
+        case InputKeyRight: bit = HELD_RIGHT; break;
+        default: break;
+        }
+        if(bit) {
+            if(pressed) app->held |= bit;
+            else app->held &= (uint8_t)~bit;
+        }
+    }
 
     if(!pressed && !repeated) return;
 
     /* OK acts on the physical press only. Holding it emits Repeat events, and
-     * accepting those would let a held confirm in the menu fall straight
-     * through into the action command and register a press at t=0 — an
-     * automatic miss for anyone who does not tap cleanly. */
+     * accepting those would let a held confirm in a menu fall straight through
+     * into an action command and register a press at t=0. */
     if(event->key == InputKeyOk && !pressed) return;
 
     if(app->show_help) {
-        if(!pressed && !repeated) return;
-
         switch(event->key) {
         case InputKeyRight:
             if(app->help_page + 1 < FT_HELP_PAGES) app->help_page++;
@@ -149,48 +240,68 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
         return;
     }
 
-    switch(event->key) {
-    case InputKeyBack:
-        if(!pressed) return;
-        app->running = false;
-        break;
+    if(event->key == InputKeyBack) {
+        if(pressed) app->running = false;
+        return;
+    }
 
+    if(app->mode == FT_MODE_OVERWORLD) {
+        if(event->key == InputKeyOk) ft_overworld_ok(app);
+        return;
+    }
+
+    /* --- battle --- */
+    switch(event->key) {
     case InputKeyOk:
         if(ft_encounter_over(&app->encounter)) {
-            /* One fight is enough to learn the timings; the help deck stays
-             * reachable with UP rather than the coach nagging forever. */
-            app->coach = false;
-            ft_start_encounter(app, (uint8_t)(app->enemy_index + 1u));
+            ft_end_battle(app, app->encounter.phase == FT_PHASE_WIN);
         } else {
             ft_encounter_press_ok(&app->encounter);
         }
         break;
-
     case InputKeyLeft:
         ft_encounter_menu_move(&app->encounter, -1);
         break;
-
     case InputKeyRight:
         ft_encounter_menu_move(&app->encounter, 1);
         break;
-
-    /* The menu is a 2x2 grid, so vertical movement is a step of two. */
-    /* The menu is a single row, so UP and DOWN are free to pick a target. */
     case InputKeyUp:
-        if(ft_encounter_over(&app->encounter)) {
-            app->show_help = true;
-        } else {
-            ft_encounter_target_move(&app->encounter, -1);
-        }
+        if(ft_encounter_over(&app->encounter)) app->show_help = true;
+        else ft_encounter_target_move(&app->encounter, -1);
         break;
-
     case InputKeyDown:
         ft_encounter_target_move(&app->encounter, 1);
         break;
-
     default:
         break;
     }
+}
+
+/* ---- Update ---------------------------------------------------------- */
+
+static void ft_update(FlipperTales* app, uint32_t dt_ms) {
+    if(app->toast_ms > 0) {
+        app->toast_ms = (app->toast_ms > dt_ms) ? app->toast_ms - dt_ms : 0u;
+    }
+
+    if(app->show_help) return;
+
+    if(app->mode == FT_MODE_BATTLE) {
+        ft_encounter_tick(&app->encounter, dt_ms);
+        return;
+    }
+
+    int8_t dx = 0, dy = 0;
+    if(app->held & HELD_LEFT) dx -= 1;
+    if(app->held & HELD_RIGHT) dx += 1;
+    if(app->held & HELD_UP) dy -= 1;
+    if(app->held & HELD_DOWN) dy += 1;
+
+    ft_world_walk(&app->world, dx, dy, dt_ms);
+
+    /* Walking into a foe starts the fight without the free hit. */
+    const int touched = ft_world_foe_contact(&app->world);
+    if(touched >= 0) ft_begin_battle(app, touched, false);
 }
 
 /* ---- Lifecycle ------------------------------------------------------- */
@@ -208,10 +319,15 @@ static FlipperTales* ft_alloc(void) {
     app->gui = furi_record_open(RECORD_GUI);
     gui_add_view_port(app->gui, app->view_port, GuiLayerFullscreen);
 
-    ft_loadout_init(&app->loadout);
-    app->enemy_index = 0;
+    ft_world_init(&app->world);
+
+    app->mode = FT_MODE_OVERWORLD;
+    app->battle_entity = -1;
+    app->battle_first_strike = false;
+    app->held = 0;
+    app->toast = NULL;
+    app->toast_ms = 0;
     app->coach = true;
-    ft_start_encounter(app, 0);
 
     app->show_help = true;
     app->help_page = 0;
@@ -256,7 +372,7 @@ int32_t flipper_tales_app(void* p) {
             last_tick = now;
         }
 
-        /* A long stall (debugger, SD access) must not teleport the battle
+        /* A long stall (debugger, SD access) must not teleport the game
          * through several phases at once. */
         if(dt_ms > 250u) dt_ms = 250u;
 
@@ -269,14 +385,14 @@ int32_t flipper_tales_app(void* p) {
             acted = true;
         }
 
-        if(dt_ms > 0) ft_encounter_tick(&app->encounter, dt_ms);
+        if(dt_ms > 0) ft_update(app, dt_ms);
 
         furi_mutex_release(app->mutex);
 
         /* Draw on input immediately so the controls feel instant, otherwise at
          * the frame cap. Asking for a redraw every 10 ms buries the GUI thread
-         * under work it cannot finish, which is what eventually backed the
-         * input queue up. */
+         * under work it cannot finish, which is what backed the input queue up
+         * and wedged an earlier build. */
         if(acted || (uint32_t)(now - last_draw) >= FT_FRAME_MS) {
             last_draw = now;
             view_port_update(app->view_port);
