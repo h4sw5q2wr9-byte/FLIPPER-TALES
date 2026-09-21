@@ -176,14 +176,22 @@ static void draw_target_caret(Canvas* c, int32_t x, int32_t y) {
 }
 
 /* A radio chevron, the visual vocabulary for anything broadcast. */
+/* A travelling signal is meant to leave the arena, so the apex runs past the
+ * right edge on purpose. Clipping here keeps the exit clean for every caller
+ * rather than making each one guess a safe stopping point. */
+static void chevron_dot(Canvas* c, int32_t x, int32_t y) {
+    if(x < 0 || x >= FT_SCREEN_W || y < 0 || y >= FT_SCREEN_H) return;
+    canvas_draw_dot(c, x, y);
+}
+
 static void draw_chevron(Canvas* c, int32_t x, int32_t y, int32_t dir, int32_t size) {
     /* Apex at x, opening away from the direction of travel: the arms widen as
      * they trail behind, so the shape points where the wave is going. */
     for(int32_t i = 0; i <= size; i++) {
-        canvas_draw_dot(c, x - dir * i, y - (i + 1));
-        canvas_draw_dot(c, x - dir * i, y + (i + 1));
+        chevron_dot(c, x - dir * i, y - (i + 1));
+        chevron_dot(c, x - dir * i, y + (i + 1));
     }
-    canvas_draw_dot(c, x, y);
+    chevron_dot(c, x, y);
 }
 
 /* Three chevrons leaving the emitter and crossing the gap, staggered so they
@@ -217,10 +225,17 @@ static void draw_contact_spark(Canvas* c, int32_t x, int32_t y, uint8_t t) {
     canvas_draw_box(c, x + 1, y - 1, 3, 3);
 }
 
-/* Two-pixel judder for whoever just took damage. */
+/* Two-pixel judder for whoever just took damage, `since` units after its own
+ * strike moment. Per-foe rather than global, so a signal crossing the row
+ * shakes each one as it arrives. */
+static int32_t shake_since(uint32_t since) {
+    if(since >= 60u) return 0;
+    return ((since / 12u) % 2u) ? 2 : -2;
+}
+
 static int32_t shake_px(uint8_t t) {
-    if(t < FT_ANIM_STRIKE || t >= FT_ANIM_RECOVER) return 0;
-    return (((t - FT_ANIM_STRIKE) / 12u) % 2u) ? 2 : -2;
+    if(t < FT_ANIM_STRIKE) return 0;
+    return shake_since((uint32_t)(t - FT_ANIM_STRIKE));
 }
 
 /* Attacker travel: out during the emit window, back during recovery. */
@@ -241,6 +256,27 @@ static void draw_antenna_charge(Canvas* c, int32_t x, int32_t y, uint8_t t) {
     if(((t / 14u) % 2u) == 0u) return;
 
     canvas_draw_box(c, x + 6, y - 3, 4, 3);
+}
+
+/* The signal crossing the arena, for a broadcast. It keeps travelling until it
+ * leaves the screen, striking each foe as it arrives rather than damaging the
+ * whole row at once. */
+static void draw_travelling_signal(Canvas* c, int32_t y, uint8_t t) {
+    if(t < FT_ANIM_EMIT) return;
+
+    const int32_t from = 22, to = FT_SCREEN_W + 10;
+    const int32_t span = FT_ANIM_RECOVER - FT_ANIM_EMIT;
+    const int32_t lead = (int32_t)t - FT_ANIM_EMIT;
+
+    for(int32_t wv = 0; wv < 3; wv++) {
+        const int32_t p = lead - wv * 26;
+        if(p < 0) continue;
+
+        const int32_t x = from + ((to - from) * p) / span;
+        if(x > FT_SCREEN_W + 6) continue;
+
+        draw_chevron(c, x, y, 1, 2 + wv);
+    }
 }
 
 static void draw_arena(Canvas* canvas, const FtEncounter* e) {
@@ -265,9 +301,13 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
         if(attacked && broadcast) {
             draw_antenna_charge(canvas, px, py, t);
-            draw_broadcast(canvas, 24, 120, floor_y - 9, 1, t);
+            draw_travelling_signal(canvas, floor_y - 9, t);
         } else if(attacked) {
-            px += lunge_px(t, foe_x(tgt, count) - 22);
+            /* Close the real distance to the target: a foe on the far side of
+             * a three-wide row is a longer walk than one standing next to you,
+             * and the approach should show that. */
+            const int32_t reach = foe_x(tgt, count) - 4 - (FT_SPRITE_W - 2);
+            px += lunge_px(t, reach > 0 ? reach : 0);
             draw_contact_spark(canvas, px + 17, floor_y - 8, t);
         } else if(act == FT_ACTION_FOCUS) {
             draw_antenna_charge(canvas, px, py, t);
@@ -291,7 +331,18 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
     if(e->phase == FT_PHASE_MENU && ((e->phase_ms / 600u) % 2u)) py -= 1;
 
+    /* Both fighters strobe on the frame the hit lands, before the iris. The
+     * XOR goes over the drawn sprite: inverting the empty space first and
+     * then drawing black on black just gives a solid brick. */
+    const FtHitFx arena_fx = ft_encounter_hit_fx(e);
+
     draw_player(canvas, px, py, ft_roll_active(&e->roll));
+
+    if(arena_fx.strobe) {
+        canvas_set_color(canvas, ColorXOR);
+        canvas_draw_box(canvas, px, py, FT_SPRITE_W, FT_SPRITE_H);
+        canvas_set_color(canvas, ColorBlack);
+    }
 
     /* --- the row of foes --- */
     for(uint8_t i = 0; i < count; i++) {
@@ -302,11 +353,20 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
         if(e->phase == FT_PHASE_IMPACT && i == e->acting_foe) x += foe_shift;
         if(e->phase == FT_PHASE_RESULT && e->foe_hit_valid[i] && e->foe_hits[i].damage > 0) {
-            x += shake_px(t);
+            /* Each foe reacts when the signal reaches it, not in unison. */
+            const uint8_t at = ft_encounter_foe_hit_at(e, i);
+            if(t >= at) x += shake_since((uint32_t)(t - at));
         }
         if(e->phase == FT_PHASE_MENU && ((e->phase_ms / 700u) % 2u)) y -= 1;
 
         draw_sprite(canvas, enemy_sprite(FT_ENEMIES[e->foes[i].id].attrs), x, y);
+
+        /* Only the foe that actually landed the hit flickers with you. */
+        if(arena_fx.strobe && e->phase == FT_PHASE_IMPACT && i == e->acting_foe) {
+            canvas_set_color(canvas, ColorXOR);
+            canvas_draw_box(canvas, x, y, FT_SPRITE_W, FT_SPRITE_H);
+            canvas_set_color(canvas, ColorBlack);
+        }
 
         /* Health, directly beneath each foe. */
         const int32_t bw = 16;
@@ -613,17 +673,6 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
 
 /* ---- Action row ------------------------------------------------------ */
 
-static const char* action_label(FtAction2 a) {
-    switch(a) {
-    case FT_ACTION_BROADCAST: return "SUB";
-    case FT_ACTION_CONTACT:   return "NFC";
-    case FT_ACTION_DEFEND:    return "DEF";
-    case FT_ACTION_FOCUS:     return "FOC";
-    case FT_ACTION_SIGNAL:    return "SIG";
-    default:                  return "?";
-    }
-}
-
 /* What the highlighted action actually does. Five three-letter buttons are
  * unreadable on their own — this row is why Defend and Focus stop looking
  * like filler. */
@@ -642,40 +691,79 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
     }
 }
 
+/* The root bar: three items, small. Everything else moved into the panel, so
+ * the battle screen is not five abbreviations wide. */
 static void draw_menu(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
 
-    /* Each action gets its own framed cell rather than sitting as loose text:
-     * five bare three-letter labels in a row read as one cramped string. */
-    const int32_t cell = 25;
-    const int32_t h = 11;
+    static const char* const ROOT[FT_ROOT_COUNT] = {"ATTACK", "PROTECT", "FOCUS"};
+    static const int32_t X[FT_ROOT_COUNT] = {2, 46, 92};
+    static const int32_t W[FT_ROOT_COUNT] = {42, 44, 34};
 
-    for(uint8_t i = 0; i < FT_ACTION_COUNT; i++) {
-        const int32_t x = 1 + (int32_t)i * cell;
-        const bool selected = (i == e->menu_index);
-        const bool available = ft_encounter_action_available(e, (FtAction2)i);
-        const char* label = action_label((FtAction2)i);
+    for(uint8_t i = 0; i < FT_ROOT_COUNT; i++) {
+        const bool on = (i == e->root_index) && (e->menu_level == FT_MENU_ROOT);
 
-        if(selected) {
-            canvas_draw_box(canvas, x, FT_ACTION_Y, (size_t)(cell - 2), (size_t)h);
+        if(on) {
+            canvas_draw_box(canvas, X[i], FT_ACTION_Y, (size_t)W[i], 10);
             canvas_set_color(canvas, ColorWhite);
         } else {
-            canvas_draw_frame(canvas, x, FT_ACTION_Y, (size_t)(cell - 2), (size_t)h);
+            canvas_draw_frame(canvas, X[i], FT_ACTION_Y, (size_t)W[i], 10);
         }
 
-        const int32_t lw = (int32_t)canvas_string_width(canvas, label);
-        const int32_t lx = x + (cell - 2 - lw) / 2;
-        canvas_draw_str(canvas, lx, FT_ACTION_Y + 8, label);
+        const int32_t lw = (int32_t)canvas_string_width(canvas, ROOT[i]);
+        canvas_draw_str(canvas, X[i] + (W[i] - lw) / 2, FT_ACTION_Y + 7, ROOT[i]);
 
-        /* Struck through rather than hidden: the option stays visible and the
-         * row below says why it is refused. */
-        if(!available) canvas_draw_line(canvas, lx, FT_ACTION_Y + 5, lx + lw, FT_ACTION_Y + 5);
-
-        if(selected) canvas_set_color(canvas, ColorBlack);
+        if(on) canvas_set_color(canvas, ColorBlack);
     }
 
+    /* One line about whatever is highlighted. It stays in this one place at
+     * both menu levels, so opening the Attack panel moves the cursor without
+     * moving the explanation. */
     draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 17,
                  action_desc(e, (FtAction2)e->menu_index));
+}
+
+/* The attack panel, over the player's half. The player does not need to be
+ * visible while choosing, but the foes do — that is the whole point of the
+ * panel sitting on the left rather than filling the screen. */
+static void draw_attack_panel(Canvas* canvas, const FtEncounter* e) {
+    /* Stops short of the leftmost foe (x=66 in a three-wide row) so the crowd
+     * you are aiming at is never hidden behind the list. */
+    const int32_t w = 62;
+    const int32_t x = 1;
+    const int32_t y = FT_ARENA_Y - 2;
+    const int32_t h = FT_ACTION_Y - y - 2;
+
+    canvas_set_color(canvas, ColorWhite);
+    canvas_draw_box(canvas, x, y, (size_t)w, (size_t)h);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_draw_frame(canvas, x, y, (size_t)w, (size_t)h);
+    canvas_draw_line(canvas, x + 2, y + h, x + w, y + h);
+    canvas_draw_line(canvas, x + w, y + 2, x + w, y + h);
+
+    canvas_set_font(canvas, FontSecondary);
+
+    for(uint8_t i = 0; i < FT_ATTACK_COUNT; i++) {
+        const FtAction2 act = FT_ATTACK_ITEMS[i];
+        const int32_t ry = y + 2 + (int32_t)i * 10;
+        const bool on = (i == e->attack_index);
+
+        if(on) {
+            canvas_draw_box(canvas, x + 2, ry, (size_t)(w - 4), 9);
+            canvas_set_color(canvas, ColorWhite);
+        }
+
+        draw_clipped(canvas, x + 5, ry + 7, ft_action_name(act), w - 10);
+
+        /* Unusable entries stay listed and struck through, so the reason can
+         * be read rather than the option quietly vanishing. */
+        if(!ft_encounter_action_available(e, act)) {
+            const int32_t lw = (int32_t)canvas_string_width(canvas, ft_action_name(act));
+            canvas_draw_line(canvas, x + 5, ry + 4, x + 5 + lw, ry + 4);
+        }
+
+        if(on) canvas_set_color(canvas, ColorBlack);
+    }
 }
 
 static void draw_prompt(Canvas* canvas, const char* s) {
@@ -778,6 +866,37 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
 
 /* ---- Entry ----------------------------------------------------------- */
 
+/* The iris: a closing ring of black drawn from the screen edges inward, then
+ * reopened. Implemented as four growing bars rather than a filled circle
+ * because at 128x64 a true circle's corners are the whole effect. */
+static void draw_iris(Canvas* canvas, uint8_t amount) {
+    if(amount == 0u) return;
+
+    if(amount >= 250u) {
+        canvas_draw_box(canvas, 0, 0, FT_SCREEN_W, FT_SCREEN_H);
+        return;
+    }
+
+    const int32_t hx = (FT_SCREEN_W / 2) * amount / 255;
+    const int32_t hy = (FT_SCREEN_H / 2) * amount / 255;
+
+    canvas_draw_box(canvas, 0, 0, (size_t)hx, FT_SCREEN_H);
+    canvas_draw_box(canvas, FT_SCREEN_W - hx, 0, (size_t)hx, FT_SCREEN_H);
+    canvas_draw_box(canvas, 0, 0, FT_SCREEN_W, (size_t)hy);
+    canvas_draw_box(canvas, 0, FT_SCREEN_H - hy, FT_SCREEN_W, (size_t)hy);
+
+    /* Bevel the corners so the closing edge reads as a ring rather than a
+     * rectangle shrinking. */
+    for(int32_t i = 0; i < 6; i++) {
+        const int32_t cx = hx + i;
+        const int32_t cy = hy + (5 - i);
+        canvas_draw_box(canvas, cx, 0, 2, (size_t)cy);
+        canvas_draw_box(canvas, FT_SCREEN_W - cx - 2, 0, 2, (size_t)cy);
+        canvas_draw_box(canvas, cx, FT_SCREEN_H - cy, 2, (size_t)cy);
+        canvas_draw_box(canvas, FT_SCREEN_W - cx - 2, FT_SCREEN_H - cy, 2, (size_t)cy);
+    }
+}
+
 void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
@@ -819,9 +938,17 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
         break;
     }
 
+    const FtHitFx fx = ft_encounter_hit_fx(e);
+
+    /* Fully black: nothing else is worth drawing under it. */
+    if(fx.stage == FT_HIT_FX_BLACK) {
+        draw_iris(canvas, 255);
+        return;
+    }
+
     /* The popup waits for the animation, or it would cover the arena for the
      * whole hold and the sprites would never be seen to act. */
-    if(!ft_encounter_in_anim(e)) {
+    if(!ft_encounter_in_anim(e) && fx.stage == FT_HIT_FX_NONE) {
         if(e->phase == FT_PHASE_RESULT) draw_player_result(canvas, e);
         if(e->phase == FT_PHASE_IMPACT) draw_enemy_result(canvas, e);
     }
@@ -831,17 +958,25 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
     const char* hint = ft_tutorial_hint(e);
 
     if(e->phase == FT_PHASE_MENU) {
-        if(hint) draw_coach_callout(canvas, hint);
+        if(e->menu_level == FT_MENU_ATTACK) {
+            draw_attack_panel(canvas, e);
+        } else if(hint) {
+            draw_coach_callout(canvas, hint);
+        }
         draw_menu(canvas, e);
-        return;
-    }
-
-    /* Everywhere else the action row is free, so the coach speaks there. */
-    if(hint) {
+    } else if(hint) {
+        /* Everywhere else the action row is free, so the coach speaks there. */
         draw_prompt(canvas, hint);
     } else if(e->phase == FT_PHASE_PLAYER_ACT) {
         draw_prompt(canvas, "OK to strike");
     } else if(e->phase == FT_PHASE_TELEGRAPH) {
         draw_prompt(canvas, "OK to guard");
+    }
+
+    /* The closing and opening ring goes over the finished frame, status row
+     * and all: an iris that only covered the arena would read as a window
+     * shutting rather than the screen doing it. */
+    if(fx.stage == FT_HIT_FX_CLOSING || fx.stage == FT_HIT_FX_OPENING) {
+        draw_iris(canvas, fx.amount);
     }
 }

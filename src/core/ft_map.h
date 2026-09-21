@@ -23,9 +23,13 @@
  * to tiles — so doorways and foes line up without fighting the controls —
  * while still looking like walking rather than hopping. */
 #define FT_STEP_MS      210 /* per tile; ~38 px/s */
-#define FT_FOE_STEP_MS  330 /* foes are slower, so you can outrun them */
-#define FT_FOE_THINK_MS 240
-#define FT_FOE_ALERT    5   /* tiles */
+#define FT_FOE_STEP_MS  240 /* still slower than the player, but not a crawl */
+#define FT_FOE_THINK_MS 150
+#define FT_FOE_ALERT    5   /* tiles: how far a foe can notice you */
+
+/* How far a foe will drift from where it was placed. Without a leash an idle
+ * room slowly empties as everything random-walks into a corner. */
+#define FT_FOE_LEASH    4
 
 typedef enum {
     FT_FACE_DOWN = 0,

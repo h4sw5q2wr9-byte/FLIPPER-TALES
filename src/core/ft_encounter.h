@@ -26,6 +26,23 @@ typedef enum {
     FT_PHASE_LOSE
 } FtPhase;
 
+/* The action menu is two levels: a minimal bar of three, and an attack panel
+ * listing the modules by full name. Five bare abbreviations in a row read as
+ * one cramped string and hid what each actually was. */
+typedef enum {
+    FT_MENU_ROOT = 0,
+    FT_MENU_ATTACK
+} FtMenuLevel;
+
+typedef enum {
+    FT_ROOT_ATTACK = 0,
+    FT_ROOT_DEFEND,
+    FT_ROOT_FOCUS,
+    FT_ROOT_COUNT
+} FtRootItem;
+
+#define FT_ATTACK_COUNT 3
+
 typedef enum {
     FT_ACTION_BROADCAST = 0, /* Sub-GHz: every foe, weaker per hit */
     FT_ACTION_CONTACT,       /* NFC: one foe, strong, halves its shield */
@@ -34,6 +51,9 @@ typedef enum {
     FT_ACTION_SIGNAL,        /* spend a bar to replay a captured attack */
     FT_ACTION_COUNT
 } FtAction2;
+
+/* Attack-panel entries, in order. */
+extern const FtAction2 FT_ATTACK_ITEMS[FT_ATTACK_COUNT];
 
 /* Bracing grants a real shield for the turn, not just a slower drain. Without
  * this, Defend is never worth a turn. */
@@ -67,8 +87,14 @@ typedef struct {
     uint8_t target;     /* player's chosen foe for single-target actions */
     uint8_t acting_foe; /* whose turn it is during TELEGRAPH and IMPACT */
 
-    uint8_t menu_index;
-    bool    defending;
+    /* menu_index is the resolved FtAction2 the player is about to take.
+     * menu_level and the two cursors are what the UI is actually showing. */
+    uint8_t     menu_index;
+    FtMenuLevel menu_level;
+    uint8_t     root_index;
+    uint8_t     attack_index;
+
+    bool defending;
 
     /* Player actions taken this battle. Foes only act on every other one —
      * see FT_PLAYER_TURNS_PER_ROUND. */
@@ -136,7 +162,18 @@ void ft_encounter_init_single(
 void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms);
 void ft_encounter_press_ok(FtEncounter* e);
 
+/* Move within the current menu level. */
 void ft_encounter_menu_move(FtEncounter* e, int8_t delta);
+
+/* Open the attack panel, or take the highlighted root action. */
+void ft_encounter_menu_confirm(FtEncounter* e);
+
+/* Close the attack panel. Returns false when already at the root, so the app
+ * knows the press should open the pause menu instead. */
+bool ft_encounter_menu_back(FtEncounter* e);
+
+/* Full name of an attack-panel entry, for the panel. */
+const char* ft_action_name(FtAction2 action);
 
 /* Cycle the target among living foes. Only meaningful during FT_PHASE_MENU. */
 void ft_encounter_target_move(FtEncounter* e, int8_t delta);
@@ -170,6 +207,37 @@ const FtAttack* ft_encounter_replay_attack(const FtEncounter* e);
 
 /* Does this action strike every foe at once? */
 bool ft_encounter_action_is_broadcast(const FtEncounter* e, FtAction2 action);
+
+/* ---- Hit transition ---------------------------------------------------- */
+
+typedef enum {
+    FT_HIT_FX_NONE = 0,
+    FT_HIT_FX_FLICKER, /* both fighters strobe */
+    FT_HIT_FX_CLOSING, /* iris shrinking toward the fighters */
+    FT_HIT_FX_BLACK,   /* held */
+    FT_HIT_FX_OPENING  /* iris widening again */
+} FtHitFxStage;
+
+typedef struct {
+    FtHitFxStage stage;
+    uint8_t      amount; /* 0 fully open, 255 fully closed */
+    bool         strobe; /* invert the fighters this frame */
+} FtHitFx;
+
+/* The hit transition's state right now. Only a hit that actually landed gets
+ * one — a jam or a capture returns FT_HIT_FX_NONE. */
+FtHitFx ft_encounter_hit_fx(const FtEncounter* e);
+
+/* How long the current impact holds. A landed hit runs the iris, so it needs
+ * longer than a jam. */
+uint32_t ft_encounter_impact_hold(const FtEncounter* e);
+
+/* ---- Per-foe hit timing ------------------------------------------------ */
+
+/* Anim progress (0-255) at which foe `i` takes the current action's damage.
+ * A broadcast sweeps across the row, so foes are struck in order as the
+ * signal reaches them rather than all at once. */
+uint8_t ft_encounter_foe_hit_at(const FtEncounter* e, uint8_t i);
 
 /* Charge to draw for a foe right now — its pre-hit value while the attack is
  * still travelling, its real value afterwards. */

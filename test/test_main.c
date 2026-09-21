@@ -797,12 +797,41 @@ static void test_encounter(void) {
     CHECK(!ft_encounter_over(&e), "a fresh encounter is not over");
     CHECK(ft_encounter_incoming(&e) == NULL, "nothing incoming during the menu");
 
-    /* The menu wraps in both directions across all five actions. */
+    /* The root bar is three entries wide and wraps both ways. menu_index is
+     * no longer the cursor: it is the action the cursors currently resolve
+     * to, so every rule written against it still applies. */
     CHECK_EQ(FT_ACTION_COUNT, 5);
+    CHECK_EQ(FT_ROOT_COUNT, 3);
+    CHECK_EQ(e.menu_level, FT_MENU_ROOT);
+    CHECK_EQ(e.root_index, FT_ROOT_ATTACK);
     ft_encounter_menu_move(&e, -1);
-    CHECK_EQ(e.menu_index, FT_ACTION_COUNT - 1);
+    CHECK_EQ(e.root_index, FT_ROOT_COUNT - 1);
+    CHECK_EQ(e.menu_index, FT_ACTION_FOCUS);
     ft_encounter_menu_move(&e, 1);
-    CHECK_EQ(e.menu_index, 0);
+    CHECK_EQ(e.root_index, FT_ROOT_ATTACK);
+    CHECK_EQ(e.menu_index, (uint8_t)FT_ATTACK_ITEMS[0]);
+
+    /* Attack drills into the module panel instead of spending the turn. */
+    ft_encounter_menu_confirm(&e);
+    CHECK_EQ(e.menu_level, FT_MENU_ATTACK);
+    CHECK_EQ(e.phase, FT_PHASE_MENU);
+    ft_encounter_menu_move(&e, -1);
+    CHECK_EQ(e.attack_index, FT_ATTACK_COUNT - 1);
+    CHECK_EQ(e.menu_index, (uint8_t)FT_ATTACK_ITEMS[FT_ATTACK_COUNT - 1]);
+
+    /* Back closes the panel and keeps the module it left selected, so the
+     * root row previews what Attack would fire. */
+    CHECK(ft_encounter_menu_back(&e), "Back leaves the attack panel");
+    CHECK_EQ(e.menu_level, FT_MENU_ROOT);
+    CHECK_EQ(e.menu_index, (uint8_t)FT_ATTACK_ITEMS[FT_ATTACK_COUNT - 1]);
+    CHECK(!ft_encounter_menu_back(&e), "Back at the root is the caller's to handle");
+
+    /* Defend and Focus commit on a single press, as they always did. */
+    ft_encounter_menu_move(&e, 1);
+    CHECK_EQ(e.menu_index, FT_ACTION_DEFEND);
+    e.attack_index = 0;
+    ft_encounter_menu_move(&e, -1);
+    CHECK_EQ(e.menu_index, (uint8_t)FT_ATTACK_ITEMS[0]);
 
     /* Thinking must never cost Charge: the roll is paused in the menu. */
     e.roll.target = 0;
@@ -1410,6 +1439,210 @@ static void test_world(void) {
     CHECK(ft_world_entity_gone(&w, 0), "and the first room remembers");
 }
 
+static int32_t abs_i32(int32_t v) { return v < 0 ? -v : v; }
+
+static void test_foe_ai(void) {
+    section("foe patrol and pursuit");
+
+    /* Room 2 (The Drop) is the first room carrying two encounter markers, so
+     * it is the one that can show them moving independently. */
+    const uint8_t ROOM = 2;
+    const FtRoom* room = ft_room(ROOM);
+    CHECK(room->ent_count >= 2, "the AI test needs at least two foes");
+
+    FtWorld w;
+    ft_world_init(&w);
+    ft_world_enter(&w, ROOM, room->exits[0].tx, room->exits[0].ty);
+
+    /* Each foe remembers where it was placed. That home tile is what the
+     * leash pulls it back to. */
+    for(uint8_t i = 0; i < room->ent_count; i++) {
+        CHECK_EQ(w.foes[i].home_tx, room->ents[i].tx);
+        CHECK_EQ(w.foes[i].home_ty, room->ents[i].ty);
+        CHECK(!w.foes[i].alert, "a foe starts unaware");
+    }
+
+    /* Idling far away: they wander on their own seeds rather than in step.
+     * Standing still is not drifting, so the interesting check is that the
+     * set of positions stops being the set they started in. */
+    uint8_t sx[FT_MAX_ROOM_ENTS], sy[FT_MAX_ROOM_ENTS];
+    for(uint8_t i = 0; i < room->ent_count; i++) {
+        sx[i] = w.foes[i].mv.tx;
+        sy[i] = w.foes[i].mv.ty;
+    }
+
+    for(int t = 0; t < 400; t++) ft_world_update(&w, 0, 0, 20);
+
+    int moved = 0, in_lockstep = 1;
+    int32_t d0x = 0, d0y = 0;
+    for(uint8_t i = 0; i < room->ent_count; i++) {
+        const int32_t dx = (int32_t)w.foes[i].mv.tx - (int32_t)sx[i];
+        const int32_t dy = (int32_t)w.foes[i].mv.ty - (int32_t)sy[i];
+        if(dx || dy) moved++;
+        if(i == 0) { d0x = dx; d0y = dy; }
+        else if(dx != d0x || dy != d0y) in_lockstep = 0;
+    }
+    CHECK(moved > 0, "an idle room is not frozen");
+    CHECK(!in_lockstep, "foes drift independently, not as one block");
+
+    /* The leash: however long they wander, none of them abandons its post. */
+    for(int t = 0; t < 2000; t++) {
+        ft_world_update(&w, 0, 0, 20);
+        for(uint8_t i = 0; i < room->ent_count; i++) {
+            if(w.foes[i].alert) continue; /* only the idle rule leashes */
+            const int32_t hx = (int32_t)w.foes[i].mv.tx - (int32_t)w.foes[i].home_tx;
+            const int32_t hy = (int32_t)w.foes[i].mv.ty - (int32_t)w.foes[i].home_ty;
+            const int32_t dist = (hx < 0 ? -hx : hx) + (hy < 0 ? -hy : hy);
+            /* One step of overshoot past the leash is the turnaround itself. */
+            CHECK(dist <= FT_FOE_LEASH + 1, "foe %u stays in its region (%d)",
+                  i, (int)dist);
+        }
+    }
+
+    /* Aggro is shared. Walking into one foe's range must alert the room, not
+     * just the one that saw you. */
+    FtWorld c;
+    ft_world_init(&c);
+    ft_world_enter(&c, ROOM, room->ents[0].tx, (uint8_t)(room->ents[0].ty + 1u));
+    ft_world_update(&c, 0, 0, 1);
+
+    CHECK(c.foes[0].alert, "the foe you walked up to notices");
+    for(uint8_t i = 0; i < room->ent_count; i++) {
+        CHECK(c.foes[i].alert, "foe %u is brought along by the alarm", i);
+    }
+
+    /* And an alerted foe closes the distance instead of milling about. */
+    FtWorld chase;
+    ft_world_init(&chase);
+    ft_world_enter(&chase, ROOM, room->ents[0].tx, (uint8_t)(room->ents[0].ty + 1u));
+
+    const int32_t before = (int32_t)chase.foes[0].mv.tx - (int32_t)chase.mv.tx;
+    const int32_t before_d =
+        (before < 0 ? -before : before) +
+        abs_i32((int32_t)chase.foes[0].mv.ty - (int32_t)chase.mv.ty);
+
+    for(int t = 0; t < 60; t++) ft_world_update(&chase, 0, 0, 20);
+
+    const int32_t after_d =
+        abs_i32((int32_t)chase.foes[0].mv.tx - (int32_t)chase.mv.tx) +
+        abs_i32((int32_t)chase.foes[0].mv.ty - (int32_t)chase.mv.ty);
+    CHECK(after_d <= before_d, "a chaser does not wander away (%d -> %d)",
+          (int)before_d, (int)after_d);
+
+    /* Chasing is faster than patrolling: the foe steps every think tick
+     * instead of idling through most of them. */
+    CHECK(FT_FOE_STEP_MS <= FT_STEP_MS + 40,
+          "a chase can nearly keep pace with the player");
+}
+
+static void test_hit_fx(void) {
+    section("hit iris");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    FtEncounter e;
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 4);
+
+    /* Nothing outside an impact that actually hurt. */
+    CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
+    CHECK_EQ(ft_encounter_impact_hold(&e), FT_IMPACT_HOLD_MS);
+
+    e.phase = FT_PHASE_IMPACT;
+    e.last_enemy_hit.damage = 0;
+    e.phase_ms = 1000;
+    CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
+    CHECK_EQ(ft_encounter_impact_hold(&e), FT_IMPACT_HOLD_MS);
+
+    /* A landed hit runs flicker, close, hold, open, and then hands the arena
+     * back — in that order, without skipping a stage. */
+    e.last_enemy_hit.damage = 3;
+    CHECK_EQ(ft_encounter_impact_hold(&e), FT_IMPACT_HOLD_HIT_MS);
+
+    const uint32_t start = ((uint32_t)FT_ANIM_MS * FT_ANIM_STRIKE) / 255u;
+    e.phase_ms = start - 1;
+    CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
+
+    int seen[5] = {0, 0, 0, 0, 0};
+    int order_ok = 1, last = -1;
+    uint8_t close_peak = 0, open_low = 255;
+
+    for(uint32_t t = start; t < FT_IMPACT_HOLD_HIT_MS; t += 5) {
+        e.phase_ms = t;
+        const FtHitFx fx = ft_encounter_hit_fx(&e);
+
+        /* The stage index only ever climbs, then falls back to NONE once. */
+        const int idx = (fx.stage == FT_HIT_FX_NONE) ? 5 : (int)fx.stage;
+        if(idx < last) order_ok = 0;
+        last = idx;
+
+        if(fx.stage != FT_HIT_FX_NONE) seen[fx.stage] = 1;
+        if(fx.stage == FT_HIT_FX_CLOSING && fx.amount > close_peak) close_peak = fx.amount;
+        if(fx.stage == FT_HIT_FX_OPENING && fx.amount < open_low) open_low = fx.amount;
+        if(fx.stage == FT_HIT_FX_BLACK) CHECK_EQ(fx.amount, 255);
+    }
+
+    CHECK(order_ok, "the iris runs its stages in order");
+    CHECK(seen[FT_HIT_FX_FLICKER], "the hit flickers first");
+    CHECK(seen[FT_HIT_FX_CLOSING], "then the iris closes");
+    CHECK(seen[FT_HIT_FX_BLACK], "then it holds black");
+    CHECK(seen[FT_HIT_FX_OPENING], "then it opens again");
+    CHECK(close_peak > 200, "the close reaches nearly shut (%u)", close_peak);
+    CHECK(open_low < 40, "the open reaches nearly clear (%u)", open_low);
+
+    /* The whole effect must finish inside the hold, or the fight resumes
+     * behind a black screen. */
+    e.phase_ms = FT_IMPACT_HOLD_HIT_MS - 1;
+    CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
+
+    /* The flicker strobes rather than sitting inverted for its whole length. */
+    int on = 0, off = 0;
+    for(uint32_t t = start; t < start + FT_FLICKER_MS; t += 5) {
+        e.phase_ms = t;
+        if(ft_encounter_hit_fx(&e).strobe) on++;
+        else off++;
+    }
+    CHECK(on > 0 && off > 0, "the flicker alternates (%d on, %d off)", on, off);
+}
+
+static void test_broadcast_sweep(void) {
+    section("broadcast reaches foes in order");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    const FtEnemyId group[FT_MAX_ENEMIES] = {
+        FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET};
+
+    FtEncounter e;
+    ft_encounter_init(&e, group, 3, &lo, 9);
+
+    /* A single-target attack lands on one frame, on everybody it touches. */
+    e.menu_index = FT_ACTION_CONTACT;
+    for(uint8_t i = 0; i < e.foe_count; i++) {
+        CHECK_EQ(ft_encounter_foe_hit_at(&e, i), FT_ANIM_STRIKE);
+    }
+
+    /* A broadcast is a wave crossing the arena, so the nearest foe is struck
+     * first and the far one last. Before this, a three-foe group died all at
+     * once while the signal was still leaving the player. */
+    e.menu_index = FT_ACTION_BROADCAST;
+    uint8_t prev = 0;
+    for(uint8_t i = 0; i < e.foe_count; i++) {
+        const uint8_t at = ft_encounter_foe_hit_at(&e, i);
+        CHECK(at >= FT_ANIM_EMIT, "foe %u is hit after the signal leaves", i);
+        CHECK(at < FT_ANIM_RECOVER, "foe %u is hit before the recovery", i);
+        if(i) CHECK(at > prev, "foe %u is reached after foe %u", i, i - 1u);
+        prev = at;
+    }
+
+    /* A duel has nothing to sweep across. */
+    FtEncounter duel;
+    ft_encounter_init_single(&duel, FT_ENEMY_STRAY_PACKET, &lo, 9);
+    duel.menu_index = FT_ACTION_BROADCAST;
+    CHECK_EQ(ft_encounter_foe_hit_at(&duel, 0), FT_ANIM_STRIKE);
+}
+
 static void test_world_links(void) {
     section("room links");
 
@@ -1503,6 +1736,9 @@ int main(void) {
     test_map();
     test_tile_orientation();
     test_world();
+    test_foe_ai();
+    test_hit_fx();
+    test_broadcast_sweep();
     test_world_links();
     test_rng();
 

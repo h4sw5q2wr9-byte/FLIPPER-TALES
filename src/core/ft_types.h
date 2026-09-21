@@ -168,6 +168,16 @@ typedef enum {
  * it was stopped, before the action resolves. */
 #define FT_LOCK_HOLD_MS        420
 
+/* Taking a hit: both fighters flicker, then an iris closes to black, holds,
+ * and opens again onto the same fight. Measured from the strike frame. */
+#define FT_FLICKER_MS   180
+#define FT_IRIS_CLOSE_MS 220
+#define FT_IRIS_HOLD_MS  500
+#define FT_IRIS_OPEN_MS  220
+
+/* A hit therefore holds longer than a jam or a capture, which show no iris. */
+#define FT_IMPACT_HOLD_HIT_MS 2400
+
 /* Stage boundaries as a fraction of FT_ANIM_MS, in 0..255 progress units. */
 #define FT_ANIM_WINDUP  70
 #define FT_ANIM_EMIT    110

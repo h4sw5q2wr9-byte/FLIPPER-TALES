@@ -278,9 +278,13 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
         return;
     }
 
-    /* Back opens the menu rather than quitting outright — quitting by accident
-     * in the middle of a fight is not a feature. */
+    /* Back closes the attack panel first, and only then opens the pause menu:
+     * backing out of a submenu should not quit the game. */
     if(event->key == InputKeyBack) {
+        if(pressed && app->mode == FT_MODE_BATTLE &&
+           ft_encounter_menu_back(&app->encounter)) {
+            return;
+        }
         if(pressed) {
             app->paused_from = app->mode;
             app->pause_item = FT_PAUSE_RESUME;
@@ -299,6 +303,9 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
     case InputKeyOk:
         if(ft_encounter_over(&app->encounter)) {
             ft_end_battle(app, app->encounter.phase == FT_PHASE_WIN);
+        } else if(app->encounter.phase == FT_PHASE_MENU) {
+            /* Attack opens the panel; anything else commits. */
+            ft_encounter_menu_confirm(&app->encounter);
         } else {
             ft_encounter_press_ok(&app->encounter);
         }
@@ -310,11 +317,20 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
         ft_encounter_menu_move(&app->encounter, 1);
         break;
     case InputKeyUp:
-        if(ft_encounter_over(&app->encounter)) app->show_help = true;
-        else ft_encounter_target_move(&app->encounter, -1);
+        if(ft_encounter_over(&app->encounter)) {
+            app->show_help = true;
+        } else if(app->encounter.menu_level == FT_MENU_ATTACK) {
+            ft_encounter_menu_move(&app->encounter, -1);
+        } else {
+            ft_encounter_target_move(&app->encounter, -1);
+        }
         break;
     case InputKeyDown:
-        ft_encounter_target_move(&app->encounter, 1);
+        if(app->encounter.menu_level == FT_MENU_ATTACK) {
+            ft_encounter_menu_move(&app->encounter, 1);
+        } else {
+            ft_encounter_target_move(&app->encounter, 1);
+        }
         break;
     default:
         break;

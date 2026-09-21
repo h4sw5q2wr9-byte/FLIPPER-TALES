@@ -236,9 +236,35 @@ point. A replayed broadcast still hits everything; a replayed contact attack
 still needs a target.
 
 Unusable actions are shown struck through, never hidden, and the row beneath
-the menu says **why** — naming the remedy ("Flying: use SUB."), not just the
-problem. That row is also what stops five three-letter buttons from being
-unreadable.
+the menu says **why** — naming the remedy ("Flying: use NFC."), not just the
+problem.
+
+#### The menu is two levels deep
+
+Five three-letter buttons in one row were unreadable, and there was nothing to
+tell the three attacks apart from the two turn options. The menu is now a root
+bar of three full words — **ATTACK / PROTECT / FOCUS** — and ATTACK opens a
+panel listing the modules by name:
+
+```
+┌─────────────────┐
+│ Sub-GHz         │   ← the panel sits on the player's half only, so the
+│ NFC             │     foes you are aiming at stay visible beside it
+│ Signal          │
+└─────────────────┘
+[ATTACK][PROTECT][FOCUS]
+  All foes, weaker.        ← one description line, fixed in place
+```
+
+BACK closes the panel without spending a turn; it only reaches the pause menu
+from the root bar.
+
+`menu_index` is no longer a cursor. It is **derived** from `root_index` and
+`attack_index` by `sync_menu_index()`, and still resolves to a single
+`FtAction2` — so every availability, description and resolution rule written
+against it carries over unchanged. The description line reads the derived
+action, which is why it stays in one place at both levels instead of moving
+when the panel opens.
 
 ### 4.8 Enemy attributes — Milestone 1 subset
 
@@ -266,6 +292,17 @@ contact is simply better; against three, weaker-but-wider wins. The mixed
 group — airborne plus encrypted — is the first fight where neither module can
 cover the board alone.
 
+**A broadcast reaches them in order.** `ft_encounter_foe_hit_at(e, i)` returns
+the animation frame at which foe `i` is struck, spread across `FT_ANIM_EMIT`
+→ `FT_ANIM_RECOVER` by position: nearest first, furthest last. The three foes
+used to flinch and die in unison while the signal was still leaving the
+player. A contact attack has nothing to sweep across and lands on
+`FT_ANIM_STRIKE`, as before.
+
+**A contact attack closes the real distance.** The lunge is scaled to
+`foe_x(target) - reach`, so striking the far side of a three-wide row is a
+longer approach than striking the one standing next to you.
+
 ## 5. Reading the screen in 1-bit
 
 The hardest port problem: Block Tales telegraphs attack class **with colour** (yellow GUARDED, red
@@ -292,11 +329,34 @@ invert-on-frame pulse. Arguably clearer than colour.
 │                                            │
 ├────────────────────────────────────────────┤  y=44
 │ CHG 18/25  RAM 7  SIG ▮▮▯                  │  player bars, 10px
-│ > SUBGHZ  NFC   CARDS   ITEM               │  action menu, 10px
+│ [ATTACK] [PROTECT] [FOCUS]                 │  root menu, 10px
+│  One foe, strong.                          │  description, 8px
 └────────────────────────────────────────────┘  y=63
 ```
 
-The attack-telegraph banner overlays the battle scene, centred.
+The attack-telegraph banner overlays the battle scene, centred. So does the
+module panel, on the left half only.
+
+#### The hit transition
+
+A foe attack that actually takes Charge off you does not just print a number.
+`ft_encounter_hit_fx()` runs a four-stage timeline from the strike frame:
+
+| Stage | Length | What is on screen |
+|---|---|---|
+| `FLICKER` | `FT_FLICKER_MS` | both fighters XOR-inverted, strobing at 45ms |
+| `CLOSING` | `FT_IRIS_CLOSE_MS` | a bevelled ring closing over the whole panel |
+| `BLACK` | `FT_IRIS_HOLD_MS` | nothing |
+| `OPENING` | `FT_IRIS_OPEN_MS` | the ring opening again |
+
+The whole timeline is asserted to finish inside `FT_IMPACT_HOLD_HIT_MS`, or
+the fight would resume behind a black screen. A jam or a capture is its own
+reward and gets the shorter `FT_IMPACT_HOLD_MS` with no iris at all — the
+interruption is the punishment, so it is spent only on being hit.
+
+The XOR goes **over** the drawn sprite. Inverting the empty space first and
+then drawing the sprite black-on-black just yields a solid brick, which is
+what the first pass did.
 
 ### 5.0 Teaching the game
 
@@ -421,10 +481,10 @@ Open balance watch-items:
 
 ### M2 — Overworld *(partly built)*
 
-Built: tiles, collision, camera, renderer, and a four-room prologue chain.
+Built: tiles, collision, camera, renderer, grid stepping, a four-room prologue
+chain, room transitions, the pause menu, and patrolling foes.
 `make -C test map` renders every room at panel resolution and whole.
-Still to build: entities, room transitions, the strike, terminals, the pause
-menu, and saving.
+Still to build: the strike, terminals, items, and saving.
 
 #### Tiles and the viewport
 
@@ -569,6 +629,30 @@ what the multi-foe battle work feeds.
 Persistent flags (an item taken, a port unlocked, a boss beaten) live in the
 save as a bitfield keyed by room and entity index, so the world remembers what
 you did without storing the world.
+
+#### Foe behaviour
+
+Each foe carries its spawn tile as `home_tx/home_ty`, its own xorshift `seed`,
+and an `alert` flag. `foe_think()` runs on a `FT_FOE_THINK_MS` clock, once per
+foe, so they move **independently** rather than as one block — which is how
+the first pass read, and why walking into a room felt like being charged by a
+single object.
+
+Unaware, a foe wanders on its own seed and idles through most ticks. Once it
+is more than `FT_FOE_LEASH` tiles from home it heads back, so an idle room
+does not slowly empty itself into a corner. This is what keeps a foe in the
+region it was placed in without fencing it in with collision.
+
+**Alert is shared.** If any foe in the room has the player within
+`FT_FOE_ALERT` tiles, every foe in the room is alerted. A group that reacts
+one at a time reads as three oblivious animals instead of something that has
+seen you.
+
+An alerted foe closes the larger gap first, with a one-in-five jitter so
+several chasers do not stack into a single column. `FT_FOE_STEP_MS` is close
+enough to `FT_STEP_MS` that a chase is a real threat, but not so close that
+you can never break away — the player reported the first version as
+inescapable.
 
 #### The world
 

@@ -61,6 +61,17 @@ typedef struct {
     FtStepper mv;
     uint32_t  think_ms;
     bool      alive;
+
+    /* Where this one was placed. It drifts around here rather than wandering
+     * off, so a room keeps its shape. */
+    uint8_t home_tx, home_ty;
+
+    /* Its own wander state, so foes in a room do not move in lockstep. */
+    uint32_t seed;
+
+    /* Alerted foes head for the player. Alert is shared across the room: one
+     * of them noticing you brings the rest. */
+    bool alert;
 } FtFoeState;
 
 typedef struct {

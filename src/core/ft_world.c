@@ -158,13 +158,21 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
         w->foes[i].mv.dx = 0;
         w->foes[i].mv.dy = 0;
         w->foes[i].mv.step_ms = 0;
-        w->foes[i].think_ms = (uint32_t)(i * 70u); /* stagger, so they do not march in lockstep */
+        w->foes[i].think_ms = (uint32_t)(i * 53u); /* stagger, so they do not think in lockstep */
         w->foes[i].alive = false;
+        w->foes[i].alert = false;
 
         if(i < r->ent_count && r->ents[i].kind == FT_ENT_FOE) {
             w->foes[i].mv.tx = r->ents[i].tx;
             w->foes[i].mv.ty = r->ents[i].ty;
+            w->foes[i].home_tx = r->ents[i].tx;
+            w->foes[i].home_ty = r->ents[i].ty;
             w->foes[i].alive = !ft_world_entity_gone(w, i);
+
+            /* Each foe wanders on its own stream. Sharing one made a room of
+             * them shuffle identically, which reads as a single organism. */
+            w->foes[i].seed = 0x2545F491u ^ ((uint32_t)room * 2654435761u) ^
+                              ((uint32_t)i * 40503u) ^ ((uint32_t)r->ents[i].tx << 8);
         }
     }
 }
@@ -192,29 +200,62 @@ static int32_t abs32(int32_t v) {
     return v < 0 ? -v : v;
 }
 
+/* Each foe's own xorshift, so a room does not shuffle in unison. */
+static uint32_t foe_rand(FtFoeState* f) {
+    uint32_t x = f->seed ? f->seed : 0x9E3779B9u;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    f->seed = x;
+    return x;
+}
+
+/* Can this foe see the player? */
+static bool foe_spots(const FtWorld* w, const FtFoeState* f) {
+    const int32_t dx = (int32_t)w->mv.tx - (int32_t)f->mv.tx;
+    const int32_t dy = (int32_t)w->mv.ty - (int32_t)f->mv.ty;
+    return (abs32(dx) + abs32(dy)) <= FT_FOE_ALERT;
+}
+
 static void foe_think(FtWorld* w, uint8_t i, const FtMap* map) {
     FtFoeState* f = &w->foes[i];
 
     const int32_t dx = (int32_t)w->mv.tx - (int32_t)f->mv.tx;
     const int32_t dy = (int32_t)w->mv.ty - (int32_t)f->mv.ty;
-    const int32_t dist = abs32(dx) + abs32(dy);
 
     int8_t sx = 0, sy = 0;
 
-    if(dist > 0 && dist <= FT_FOE_ALERT) {
-        /* Close the larger gap first, so a chase reads as deliberate. */
-        if(abs32(dx) >= abs32(dy)) sx = (dx > 0) ? 1 : -1;
-        else sy = (dy > 0) ? 1 : -1;
+    if(f->alert) {
+        /* Close the larger gap first, so a chase reads as deliberate rather
+         * than as a diagonal stagger. A little jitter keeps several chasers
+         * from stacking into one column. */
+        const bool prefer_x = (abs32(dx) >= abs32(dy));
+        const bool jitter = (foe_rand(f) % 5u) == 0u;
+
+        if(prefer_x != jitter) {
+            if(dx) sx = (dx > 0) ? 1 : -1;
+            else if(dy) sy = (dy > 0) ? 1 : -1;
+        } else {
+            if(dy) sy = (dy > 0) ? 1 : -1;
+            else if(dx) sx = (dx > 0) ? 1 : -1;
+        }
     } else {
-        /* Otherwise drift, using the step counter as a cheap shuffle rather
-         * than burning RNG state the battle also uses. */
-        const uint32_t r = (w->area_ms / 97u) + i * 13u + f->mv.tx + f->mv.ty;
-        switch(r % 6u) {
-        case 0: sx = 1; break;
-        case 1: sx = -1; break;
-        case 2: sy = 1; break;
-        case 3: sy = -1; break;
-        default: break; /* stand still half the time */
+        const int32_t hx = (int32_t)f->home_tx - (int32_t)f->mv.tx;
+        const int32_t hy = (int32_t)f->home_ty - (int32_t)f->mv.ty;
+
+        if(abs32(hx) + abs32(hy) > FT_FOE_LEASH) {
+            /* On the leash: head back, so an idle room does not slowly empty
+             * itself into a corner. */
+            if(abs32(hx) >= abs32(hy)) sx = (hx > 0) ? 1 : -1;
+            else sy = (hy > 0) ? 1 : -1;
+        } else {
+            switch(foe_rand(f) % 8u) {
+            case 0: sx = 1; break;
+            case 1: sx = -1; break;
+            case 2: sy = 1; break;
+            case 3: sy = -1; break;
+            default: break; /* idle half the time, at its own rhythm */
+            }
         }
     }
 
@@ -261,6 +302,20 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
 
     /* --- foes --- */
     const FtRoom* room = ft_room(w->room);
+
+    /* Alert is shared: one of them noticing you brings the whole room. A group
+     * that reacts individually reads as three oblivious animals rather than
+     * something that has seen you. */
+    bool any_spotted = false;
+    for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(w->foes[i].alive && foe_spots(w, &w->foes[i])) any_spotted = true;
+    }
+    if(any_spotted) {
+        for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+            w->foes[i].alert = true;
+        }
+    }
+
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
         FtFoeState* f = &w->foes[i];
         if(!f->alive) continue;

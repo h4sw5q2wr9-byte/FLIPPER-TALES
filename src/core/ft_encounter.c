@@ -194,6 +194,9 @@ void ft_encounter_init(
     e->phase = FT_PHASE_MENU;
     e->phase_ms = 0;
     e->menu_index = 0;
+    e->menu_level = FT_MENU_ROOT;
+    e->root_index = FT_ROOT_ATTACK;
+    e->attack_index = 0;
     e->defending = false;
     e->player_turns = 0;
 
@@ -276,14 +279,80 @@ bool ft_encounter_action_available(const FtEncounter* e, FtAction2 action) {
     return ft_encounter_action_block(e, action) == NULL;
 }
 
+const FtAction2 FT_ATTACK_ITEMS[FT_ATTACK_COUNT] = {
+    FT_ACTION_BROADCAST,
+    FT_ACTION_CONTACT,
+    FT_ACTION_SIGNAL,
+};
+
+const char* ft_action_name(FtAction2 action) {
+    switch(action) {
+    case FT_ACTION_BROADCAST: return "Sub-GHz";
+    case FT_ACTION_CONTACT:   return "NFC";
+    case FT_ACTION_SIGNAL:    return "Signal";
+    case FT_ACTION_DEFEND:    return "Protect";
+    case FT_ACTION_FOCUS:     return "Focus";
+    default:                  return "?";
+    }
+}
+
+/* Keep menu_index in step with whatever the cursors are pointing at, so every
+ * existing rule (availability, descriptions, resolution) keeps working. */
+static void sync_menu_index(FtEncounter* e) {
+    if(e->menu_level == FT_MENU_ATTACK) {
+        e->menu_index = (uint8_t)FT_ATTACK_ITEMS[e->attack_index % FT_ATTACK_COUNT];
+        return;
+    }
+
+    switch((FtRootItem)e->root_index) {
+    case FT_ROOT_DEFEND: e->menu_index = (uint8_t)FT_ACTION_DEFEND; break;
+    case FT_ROOT_FOCUS:  e->menu_index = (uint8_t)FT_ACTION_FOCUS; break;
+    case FT_ROOT_ATTACK:
+    default:
+        /* Highlighting Attack previews whichever module is selected. */
+        e->menu_index = (uint8_t)FT_ATTACK_ITEMS[e->attack_index % FT_ATTACK_COUNT];
+        break;
+    }
+}
+
 void ft_encounter_menu_move(FtEncounter* e, int8_t delta) {
     if(e->phase != FT_PHASE_MENU) return;
 
-    int16_t idx = (int16_t)(e->menu_index + delta);
-    while(idx < 0) idx = (int16_t)(idx + FT_ACTION_COUNT);
-    while(idx >= FT_ACTION_COUNT) idx = (int16_t)(idx - FT_ACTION_COUNT);
+    if(e->menu_level == FT_MENU_ATTACK) {
+        int16_t idx = (int16_t)(e->attack_index + delta);
+        while(idx < 0) idx = (int16_t)(idx + FT_ATTACK_COUNT);
+        while(idx >= FT_ATTACK_COUNT) idx = (int16_t)(idx - FT_ATTACK_COUNT);
+        e->attack_index = (uint8_t)idx;
+    } else {
+        int16_t idx = (int16_t)(e->root_index + delta);
+        while(idx < 0) idx = (int16_t)(idx + FT_ROOT_COUNT);
+        while(idx >= FT_ROOT_COUNT) idx = (int16_t)(idx - FT_ROOT_COUNT);
+        e->root_index = (uint8_t)idx;
+    }
 
-    e->menu_index = (uint8_t)idx;
+    sync_menu_index(e);
+}
+
+void ft_encounter_menu_confirm(FtEncounter* e) {
+    if(e->phase != FT_PHASE_MENU) return;
+
+    /* Attack opens the panel rather than committing; everything else is a
+     * single press as before. */
+    if(e->menu_level == FT_MENU_ROOT && e->root_index == FT_ROOT_ATTACK) {
+        e->menu_level = FT_MENU_ATTACK;
+        sync_menu_index(e);
+        return;
+    }
+
+    ft_encounter_press_ok(e);
+}
+
+bool ft_encounter_menu_back(FtEncounter* e) {
+    if(e->menu_level != FT_MENU_ATTACK) return false;
+
+    e->menu_level = FT_MENU_ROOT;
+    sync_menu_index(e);
+    return true;
 }
 
 /* ---- Resolution ------------------------------------------------------ */
@@ -300,15 +369,30 @@ static void gain_ram(FtEncounter* e, int16_t amount) {
 }
 
 /* Apply one attack to one foe, recording the per-foe result. */
-/* True while an action is still visibly travelling toward its target. */
-static bool pre_strike(const FtEncounter* e) {
+uint8_t ft_encounter_foe_hit_at(const FtEncounter* e, uint8_t i) {
+    /* A single-target attack lands on the strike frame. A broadcast is a
+     * signal crossing the arena, so each foe is struck as it is reached:
+     * leftmost first, rightmost last, spread across the strike window. */
+    if(!ft_encounter_action_is_broadcast(e, (FtAction2)e->menu_index)) {
+        return FT_ANIM_STRIKE;
+    }
+    if(e->foe_count <= 1u || i >= e->foe_count) return FT_ANIM_STRIKE;
+
+    const uint32_t span = FT_ANIM_RECOVER - FT_ANIM_EMIT;
+    const uint32_t at = FT_ANIM_EMIT + (span * i) / e->foe_count;
+
+    return (uint8_t)at;
+}
+
+/* True while the current action has not yet reached this particular foe. */
+static bool pre_strike_for(const FtEncounter* e, uint8_t i) {
     if(e->phase != FT_PHASE_RESULT && e->phase != FT_PHASE_IMPACT) return false;
-    return ft_encounter_anim_progress(e) < FT_ANIM_STRIKE;
+    return ft_encounter_anim_progress(e) < ft_encounter_foe_hit_at(e, i);
 }
 
 int16_t ft_encounter_foe_shown_charge(const FtEncounter* e, uint8_t i) {
     if(i >= FT_MAX_ENEMIES) return 0;
-    if(e->phase == FT_PHASE_RESULT && pre_strike(e)) return e->foe_charge_before[i];
+    if(e->phase == FT_PHASE_RESULT && pre_strike_for(e, i)) return e->foe_charge_before[i];
     return e->foes[i].charge;
 }
 
@@ -316,8 +400,64 @@ bool ft_encounter_foe_visible(const FtEncounter* e, uint8_t i) {
     if(i >= e->foe_count) return false;
     if(e->foes[i].charge > 0) return true;
 
-    /* Killed by the attack currently in flight: keep it up until impact. */
-    return e->phase == FT_PHASE_RESULT && pre_strike(e) && e->foe_charge_before[i] > 0;
+    /* Killed by the attack currently in flight: keep it up until the signal
+     * actually reaches it. */
+    return e->phase == FT_PHASE_RESULT && pre_strike_for(e, i) &&
+           e->foe_charge_before[i] > 0;
+}
+
+/* ---- Hit transition ---------------------------------------------------- */
+
+/* When the iris starts, in ms from the beginning of FT_PHASE_IMPACT. */
+static uint32_t iris_start_ms(void) {
+    return ((uint32_t)FT_ANIM_MS * FT_ANIM_STRIKE) / 255u;
+}
+
+uint32_t ft_encounter_impact_hold(const FtEncounter* e) {
+    const bool landed = (e->phase == FT_PHASE_IMPACT) && (e->last_enemy_hit.damage > 0);
+    return landed ? FT_IMPACT_HOLD_HIT_MS : FT_IMPACT_HOLD_MS;
+}
+
+FtHitFx ft_encounter_hit_fx(const FtEncounter* e) {
+    FtHitFx fx = {FT_HIT_FX_NONE, 0, false};
+
+    /* Only a hit that landed. Jamming or capturing is its own reward and does
+     * not deserve a two-second interruption. */
+    if(e->phase != FT_PHASE_IMPACT || e->last_enemy_hit.damage <= 0) return fx;
+
+    const uint32_t start = iris_start_ms();
+    if(e->phase_ms < start) return fx;
+
+    uint32_t t = e->phase_ms - start;
+
+    if(t < FT_FLICKER_MS) {
+        fx.stage = FT_HIT_FX_FLICKER;
+        fx.strobe = ((t / 45u) % 2u) != 0u;
+        return fx;
+    }
+    t -= FT_FLICKER_MS;
+
+    if(t < FT_IRIS_CLOSE_MS) {
+        fx.stage = FT_HIT_FX_CLOSING;
+        fx.amount = (uint8_t)((t * 255u) / FT_IRIS_CLOSE_MS);
+        return fx;
+    }
+    t -= FT_IRIS_CLOSE_MS;
+
+    if(t < FT_IRIS_HOLD_MS) {
+        fx.stage = FT_HIT_FX_BLACK;
+        fx.amount = 255u;
+        return fx;
+    }
+    t -= FT_IRIS_HOLD_MS;
+
+    if(t < FT_IRIS_OPEN_MS) {
+        fx.stage = FT_HIT_FX_OPENING;
+        fx.amount = (uint8_t)(255u - (t * 255u) / FT_IRIS_OPEN_MS);
+        return fx;
+    }
+
+    return fx; /* NONE: back to the fight */
 }
 
 static void strike_foe(FtEncounter* e, uint8_t i, const FtAttack* atk, FtRating rating) {
@@ -467,6 +607,7 @@ void ft_encounter_press_ok(FtEncounter* e) {
         e->action_press_ms = 0;
         e->action_locked_ms = 0;
         e->defending = false;
+        e->menu_level = FT_MENU_ROOT;
 
         e->player_turns++;
 
@@ -572,7 +713,7 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         break;
 
     case FT_PHASE_IMPACT:
-        if(e->phase_ms >= FT_IMPACT_HOLD_MS) enter_phase(e, FT_PHASE_DRAIN);
+        if(e->phase_ms >= ft_encounter_impact_hold(e)) enter_phase(e, FT_PHASE_DRAIN);
         break;
 
     case FT_PHASE_DRAIN: {
