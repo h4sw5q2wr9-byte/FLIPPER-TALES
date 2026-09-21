@@ -10,8 +10,12 @@
 /* 8px tiles give a 16x8 viewport on a 128x64 panel: coarse enough to read at
  * one bit, fine enough that a room is more than a few steps across. */
 #define FT_TILE_PX  8
-#define FT_VIEW_W   16
-#define FT_VIEW_H   8
+
+/* The viewport, in tiles. The overworld renderer draws at 2x, so a 128x64
+ * panel shows 8x4 of them — the world is still authored, stepped and
+ * collided in 8px tiles; only the drawing is scaled. */
+#define FT_VIEW_W   8
+#define FT_VIEW_H   4
 
 /* The overworld avatar is deliberately smaller than the battle sprite: a
  * 16x16 character would fill a quarter of the viewport's height. */

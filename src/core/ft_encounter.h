@@ -84,7 +84,6 @@ typedef struct {
 
     FtFoe   foes[FT_MAX_ENEMIES];
     uint8_t foe_count;
-    uint8_t target;     /* player's chosen foe for single-target actions */
     uint8_t acting_foe; /* whose turn it is during TELEGRAPH and IMPACT */
 
     /* menu_index is the resolved FtAction2 the player is about to take.
@@ -175,8 +174,6 @@ bool ft_encounter_menu_back(FtEncounter* e);
 /* Full name of an attack-panel entry, for the panel. */
 const char* ft_action_name(FtAction2 action);
 
-/* Cycle the target among living foes. Only meaningful during FT_PHASE_MENU. */
-void ft_encounter_target_move(FtEncounter* e, int8_t delta);
 
 /* Usable right now? Unusable entries are shown and refused, never hidden, so
  * the player learns the rule instead of losing the option. */
@@ -193,8 +190,6 @@ bool           ft_encounter_foe_alive(const FtEncounter* e, uint8_t i);
 uint8_t        ft_encounter_living(const FtEncounter* e);
 const FtEnemy* ft_encounter_foe(const FtEncounter* e, uint8_t i);
 
-/* The player's current target. Always a living foe while any remain. */
-uint8_t ft_encounter_target(const FtEncounter* e);
 
 /* The foe that is currently acting. */
 const FtEnemy* ft_encounter_enemy(const FtEncounter* e);
@@ -236,8 +231,8 @@ uint32_t ft_encounter_impact_hold(const FtEncounter* e);
  * answer whether the action may be chosen. */
 bool ft_encounter_can_reach(const FtEncounter* e, FtAction2 action, uint8_t i);
 
-/* The foe a single-target action will really hit: the chosen one, or the next
- * one along the row that the action can reach. */
+/* The foe a single-target action will really hit: the nearest living one the
+ * action can reach. There is no cursor — targeting is automatic. */
 uint8_t ft_encounter_effective_target(const FtEncounter* e, FtAction2 action);
 
 /* ---- The scene wipe ---------------------------------------------------- */
@@ -275,6 +270,11 @@ int16_t ft_encounter_foe_shown_charge(const FtEncounter* e, uint8_t i);
 
 /* Should this foe still be drawn? A foe killed by the action in flight stays
  * on screen until the strike frame. */
+/* How far through falling over a foe this attack just killed is: 0 before the
+ * hit reaches it and for anything still standing, 255 once it is gone. A foe
+ * used to simply blink out of existence on the frame its bar emptied. */
+uint8_t ft_encounter_foe_defeat(const FtEncounter* e, uint8_t i);
+
 bool ft_encounter_foe_visible(const FtEncounter* e, uint8_t i);
 
 /* ---- Pacing ---------------------------------------------------------- */

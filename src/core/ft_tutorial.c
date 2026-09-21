@@ -4,21 +4,12 @@ const char* ft_tutorial_hint(const FtEncounter* e) {
     if(!e->coach) return NULL;
 
     switch(e->phase) {
-    case FT_PHASE_MENU: {
+    case FT_PHASE_MENU:
         /* The description row under the menu already names what each action
          * does and why a refused one is refused, so the coach must not repeat
-         * it. It spends its line on the controls instead — and only mentions
-         * targeting where targeting is a thing you can do, which a broadcast
-         * is not. */
-        const FtAction2 sel = (FtAction2)e->menu_index;
-        const bool aims = (sel == FT_ACTION_CONTACT) ||
-                          (sel == FT_ACTION_SIGNAL &&
-                           !ft_encounter_action_is_broadcast(e, sel));
-
-        if(aims && ft_encounter_living(e) > 1u) return "UP/DOWN picks target";
+         * it. It spends its line on the controls instead. */
         if(e->menu_level == FT_MENU_ATTACK) return "BACK leaves the list";
         return "LEFT/RIGHT, then OK";
-    }
 
     case FT_PHASE_PLAYER_ACT:
         if(ft_encounter_in_ready(e)) return "Wait for the pips...";
@@ -41,7 +32,7 @@ const char* ft_tutorial_hint(const FtEncounter* e) {
         const FtAttack* atk = ft_encounter_incoming(e);
         if(atk == NULL) return NULL;
 
-        if(atk->klass == FT_CLASS_UNDODGEABLE) return "No guard. Brace.";
+        if(atk->klass == FT_CLASS_UNDODGEABLE) return "No jam. PROTECT it.";
         if(ft_encounter_in_ready(e)) {
             return (atk->klass == FT_CLASS_GUARDED) ? "Dots only: jam it." :
                                                       "Solid end = capture";

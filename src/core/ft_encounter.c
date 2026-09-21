@@ -109,32 +109,6 @@ static int next_living(const FtEncounter* e, uint8_t from) {
     return -1;
 }
 
-uint8_t ft_encounter_target(const FtEncounter* e) {
-    if(ft_encounter_foe_alive(e, e->target)) return e->target;
-
-    /* The chosen target died; fall through to whoever is left. */
-    const int n = next_living(e, 0);
-    return (n < 0) ? 0u : (uint8_t)n;
-}
-
-void ft_encounter_target_move(FtEncounter* e, int8_t delta) {
-    if(e->phase != FT_PHASE_MENU || e->foe_count == 0u) return;
-    if(ft_encounter_living(e) <= 1u) return;
-
-    const int8_t step = (delta < 0) ? -1 : 1;
-    uint8_t idx = ft_encounter_target(e);
-
-    /* Walk to the next living foe, wrapping. Bounded by foe_count so a board
-     * of corpses cannot spin here. */
-    for(uint8_t guard = 0; guard < e->foe_count; guard++) {
-        const int16_t next = (int16_t)(idx + step);
-        idx = (uint8_t)((next < 0) ? (e->foe_count - 1) : (next % e->foe_count));
-        if(ft_encounter_foe_alive(e, idx)) break;
-    }
-
-    e->target = idx;
-}
-
 bool ft_encounter_over(const FtEncounter* e) {
     return e->phase == FT_PHASE_WIN || e->phase == FT_PHASE_LOSE;
 }
@@ -188,7 +162,6 @@ void ft_encounter_init(
     /* Any jammer on the board locks the meter for the whole fight. */
     e->signal.locked = jammer;
 
-    e->target = 0;
     e->acting_foe = 0;
 
     e->phase = FT_PHASE_MENU;
@@ -271,18 +244,22 @@ bool ft_encounter_can_reach(const FtEncounter* e, FtAction2 action, uint8_t i) {
 }
 
 uint8_t ft_encounter_effective_target(const FtEncounter* e, FtAction2 action) {
-    const uint8_t chosen = ft_encounter_target(e);
     if(e->foe_count == 0u) return 0u;
 
-    /* Your pick first, then along the row: if the one you aimed at is flying
-     * and your fist is not, the swing goes to the next one that is standing
-     * there instead of refusing to happen. */
-    for(uint8_t n = 0; n < e->foe_count; n++) {
-        const uint8_t i = (uint8_t)((chosen + n) % e->foe_count);
+    /* Nearest first. There is no cursor any more: a single-target attack goes
+     * to the closest foe it can actually reach, and walks down the row past
+     * anything it cannot. Choosing a target by hand was a whole extra control
+     * for a decision that, on a row of at most three, makes itself. */
+    for(uint8_t i = 0; i < e->foe_count; i++) {
         if(ft_encounter_can_reach(e, action, i)) return i;
     }
 
-    return chosen; /* nothing reachable: the swing whiffs, visibly */
+    /* Nothing reachable: the swing whiffs on the nearest living foe, which
+     * the description row warns about before you press. */
+    for(uint8_t i = 0; i < e->foe_count; i++) {
+        if(ft_encounter_foe_alive(e, i)) return i;
+    }
+    return 0u;
 }
 
 const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
@@ -428,14 +405,38 @@ int16_t ft_encounter_foe_shown_charge(const FtEncounter* e, uint8_t i) {
     return e->foes[i].charge;
 }
 
+uint8_t ft_encounter_foe_defeat(const FtEncounter* e, uint8_t i) {
+    if(i >= e->foe_count) return 0u;
+    if(e->foes[i].charge > 0) return 0u;
+    if(e->phase != FT_PHASE_RESULT) return 0u;
+
+    /* Only the foe this attack just killed: one that was already down when
+     * the turn started has finished falling. */
+    if(e->foe_charge_before[i] <= 0) return 0u;
+
+    const uint8_t at = ft_encounter_foe_hit_at(e, i);
+    const uint8_t now = ft_encounter_anim_progress(e);
+    if(now <= at) return 0u;
+
+    /* 0 at the moment of the hit, 255 once it is gone. Dying takes the rest
+     * of the animation however early in it the hit landed, so a foe struck
+     * first by a sweeping broadcast falls slower than the last one — which
+     * is right: they all finish together, as the turn ends. */
+    const uint32_t span = (uint32_t)(FT_ANIM_RECOVER - at);
+    if(span == 0u) return 255u;
+
+    const uint32_t done = ((uint32_t)(now - at) * 255u) / span;
+    return (done > 255u) ? 255u : (uint8_t)done;
+}
+
 bool ft_encounter_foe_visible(const FtEncounter* e, uint8_t i) {
     if(i >= e->foe_count) return false;
     if(e->foes[i].charge > 0) return true;
 
     /* Killed by the attack currently in flight: keep it up until the signal
-     * actually reaches it. */
-    return e->phase == FT_PHASE_RESULT && pre_strike_for(e, i) &&
-           e->foe_charge_before[i] > 0;
+     * actually reaches it, and then for as long as it takes to fall over. */
+    return e->phase == FT_PHASE_RESULT && e->foe_charge_before[i] > 0 &&
+           (pre_strike_for(e, i) || ft_encounter_foe_defeat(e, i) < 255u);
 }
 
 /* ---- Hit transition ---------------------------------------------------- */

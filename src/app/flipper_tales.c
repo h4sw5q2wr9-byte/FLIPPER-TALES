@@ -460,21 +460,14 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
     case InputKeyRight:
         ft_encounter_menu_move(&app->encounter, 1);
         break;
+    /* UP and DOWN move the cursor too, so the whole menu can be driven on
+     * either axis. They used to pick a target; targeting is automatic now. */
     case InputKeyUp:
-        if(ft_encounter_over(&app->encounter)) {
-            app->show_help = true;
-        } else if(app->encounter.menu_level == FT_MENU_ATTACK) {
-            ft_encounter_menu_move(&app->encounter, -1);
-        } else {
-            ft_encounter_target_move(&app->encounter, -1);
-        }
+        if(ft_encounter_over(&app->encounter)) app->show_help = true;
+        else ft_encounter_menu_move(&app->encounter, -1);
         break;
     case InputKeyDown:
-        if(app->encounter.menu_level == FT_MENU_ATTACK) {
-            ft_encounter_menu_move(&app->encounter, 1);
-        } else {
-            ft_encounter_target_move(&app->encounter, 1);
-        }
+        ft_encounter_menu_move(&app->encounter, 1);
         break;
     default:
         break;

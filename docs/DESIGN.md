@@ -178,11 +178,23 @@ miss. Early and late are punished identically.
 
 Every enemy attack has a class, which determines what you can do about it:
 
-| Class | Banner (§5) | Jam | Capture |
-|---|---|---|---|
-| Normal | plain 1px box | ✅ | ✅ |
-| `GUARDED` | hatched box | ✅ | ❌ |
-| `UNDODGEABLE` | inverted box | ❌ | ❌ |
+| Class | Banner (§5) | Jam | Capture | PROTECT still helps |
+|---|---|---|---|---|
+| Normal | plain 1px box | ✅ | ✅ | ✅ |
+| `GUARDED` | hatched box | ✅ | ❌ | ✅ |
+| `UNDODGEABLE` | inverted box | ❌ | ❌ | ✅ |
+
+The last column is the point of the class, and the banner used to hide it.
+`UNDODGEABLE` means **no timed guard** — it does not mean nothing helps. The
+Defend shield still blunts the hit, which is exactly what the coach line has
+always told you to do ("brace"). A banner reading "UNDODGEABLE" over an attack
+that PROTECT reduces is a lie by omission, so the banners now say what is
+true: **"NO JAM - PROTECT"** and **"JAM ONLY - NO CAPTURE"**.
+
+An enemy whose whole moveset is unguardable is just damage with extra steps,
+so no enemy has one. The Sealed Lock has two attacks: an ordinary Clamp you
+can jam *and* capture, and the Seal, which you can only brace against. That is
+why the Lock can be blocked — half the time.
 
 **Capture** is the centrepiece mechanic. A frame-perfect guard against a Normal-class attack takes
 zero damage *and* writes that attack into the player's **Signal Library**:
@@ -238,11 +250,15 @@ still needs a target.
 #### Attributes retarget; they never lock a module
 
 An enemy's attributes decide **who an attack lands on**, never whether you may
-choose it. Aim NFC at a flyer with a grounded foe behind it and the swing goes
-to the grounded one — `ft_encounter_effective_target()` walks the row from your
-cursor and takes the first foe `ft_encounter_can_reach()` says the attack can
-touch, wrapping. The caret in the arena sits on that foe, not on the cursor, so
-the retarget is visible before you commit.
+choose it. `ft_encounter_effective_target()` walks the row from the near end
+and takes the first living foe `ft_encounter_can_reach()` says the attack can
+touch: swing NFC at a board of two flyers and a grounded foe, and it hits the
+grounded one.
+
+**There is no target cursor.** Picking a foe by hand was a whole extra control
+— and a caret, and a coach line — for a decision that, on a row of at most
+three with reach deciding most of it, makes itself. UP and DOWN now just move
+the menu cursor like LEFT and RIGHT, so the whole menu works on either axis.
 
 This replaced attribute-based lockouts, which were wrong on two counts. They
 are not how the reference works — there, a grounded attack on a flyer is a
@@ -383,6 +399,32 @@ Two more glitches came out of looking at the panel at 6x rather than at 1x:
 - Everything in the status strip now stops at `FT_STATUS_Y + 6`, one row short
   of the menu band. Drawn to the full height, a full Charge bar and the menu's
   highlight ran together into one black slab.
+
+#### Attacks with weight
+
+Three rules, each fixing something that read as a sprite being slid around
+rather than as something hitting something.
+
+**The lunge eases.** `lunge_px()` pulls away from the target (`ease_out`, so
+it is a quick withdrawal that then hangs there — the pause before a punch),
+accelerates across the gap (`ease_in`, so the fastest frame is the frame of
+contact), holds at full extension for `LUNGE_HOLD`, then settles back. The
+first version was three straight lines at constant speed in each direction.
+
+**The impact burst exists only on impact.** Eight spokes thrown out from the
+contact point, growing over `BURST_MS` and gone. The old spark was three fixed
+diagonal scratches drawn for the whole approach, so the "impact" was on screen
+long before anything arrived.
+
+**Foes are seen to die.** `ft_encounter_foe_defeat()` returns 0–255 through a
+fold: the sprite loses height from the top as it crumples, and past halfway it
+starts dropping pixels so the silhouette comes apart rather than just
+shrinking. Before this a foe vanished between two frames the instant its bar
+hit zero. A foe struck early by a sweeping broadcast falls more slowly than
+the last one reached, so the whole row finishes together as the turn ends.
+
+Easing is integer: `ease_in`/`ease_out` are quadratics over 0..span, and the
+worst case stays inside `int32_t` by a wide margin.
 
 #### The hit flinch
 
@@ -574,8 +616,27 @@ Still to build: the strike, terminals, items, and saving.
 
 #### Tiles and the viewport
 
-8px tiles give a **16×8 viewport**: coarse enough to read at one bit, fine
-enough that a room is more than a few paces across. Maps are one byte per tile,
+8px tiles, drawn at **2x**, give an **8×4 viewport**. At 1:1 a whole prologue
+room fitted on the panel at once and everything in it was 8 pixels of a 128
+pixel screen: legible, but it read as a diagram rather than a place. Doubling
+halves the visible area and doubles how much of the screen the player
+occupies.
+
+The world is untouched by this — tiles, collision, stepping and the camera all
+still work in 8px tiles, and `FT_ZOOM` lives only in `ft_overworld.c`, applied
+on the way out. What changed alongside it:
+
+- **The player and the foes are drawn at the panel's own resolution**, not the
+  world's. The tiles are 8px art doubled and are meant to be chunky; keeping
+  the two things you actually look at crisp is what makes the zoom read as
+  "closer" rather than as "bigger pixels". Foes are their full 16×16 battle
+  sprites now instead of being sampled down to 8×8, so the thing in the
+  corridor is visibly the thing you are about to fight.
+- **The avatar is a 16×20 sprite of its own**, bottom-aligned so it stands a
+  little taller than the tile it occupies.
+- **`FT_FOE_ALERT` dropped from 5 tiles to 3.** The viewport is ±4 tiles wide
+  and ±2 tall now, so a 5-tile notice radius meant being charged by something
+  that was never on screen. Maps are one byte per tile,
 row-major — the format production maps will stream from the SD card, so nothing
 about the renderer changes when they do. Maps, tiles and sprites are all
 authored as editable ASCII under `tools/`.
@@ -598,11 +659,11 @@ The keyline erases nothing beyond its own outline and keeps the figure black
 and whole on every background, including the solid wall bands. Foes get the
 same treatment, or one standing on a black band is a smudge in it.
 
-The avatar itself is **solid, with the screen knocked out in white** after the
-body is drawn. Drawing the case as an outline left the head an empty
-rectangle: at 8x12 that reads as a picture frame standing on legs. Facing is
-two pupils on that screen rather than four sprite sets, and facing away simply
-leaves the screen dark.
+The avatar is **solid, with the screen knocked out in white** after the body
+is drawn. Drawing the case as an outline left the head an empty rectangle,
+which reads as a picture frame standing on legs. Facing is two pupils on that
+screen rather than four sprite sets, and facing away simply leaves the screen
+dark.
 
 **Tiles that belong to a run orient themselves to it.** A door in a horizontal
 wall is walked through vertically and reads face-on; the same door in a vertical

@@ -71,7 +71,9 @@ static void draw_header(Canvas* canvas, const FtEncounter* e) {
      * choosing, the foe swinging at you once one is. */
     const bool their_turn =
         (e->phase == FT_PHASE_TELEGRAPH || e->phase == FT_PHASE_IMPACT);
-    const uint8_t who = their_turn ? e->acting_foe : ft_encounter_target(e);
+    const uint8_t who =
+        their_turn ? e->acting_foe :
+                     ft_encounter_effective_target(e, (FtAction2)e->menu_index);
     const FtEnemy* en = ft_encounter_foe(e, who);
 
     canvas_set_font(canvas, FontSecondary);
@@ -167,27 +169,6 @@ static int32_t foe_x(uint8_t i, uint8_t count) {
     return LAYOUT[count - 1u][i];
 }
 
-/* Brackets flanking whoever a single-target action would hit.
- *
- * This used to be a wedge above the sprite's head, in the two spare pixels
- * between the title rule and the arena — where the tallest enemy's antenna
- * already lives, so on a real board it simply vanished. The sides are the
- * only space in the arena that is reliably empty: foes sit 20px apart and
- * are 16px wide. */
-static void draw_target_caret(Canvas* c, int32_t x, int32_t y) {
-    const int32_t top = y + 4, h = 8;
-
-    for(int32_t i = 0; i < h; i++) {
-        canvas_draw_dot(c, x - 2, top + i);
-        canvas_draw_dot(c, x + FT_SPRITE_W + 1, top + i);
-    }
-
-    /* Serifs, so a bare column does not read as part of the scenery. */
-    canvas_draw_dot(c, x - 1, top);
-    canvas_draw_dot(c, x - 1, top + h - 1);
-    canvas_draw_dot(c, x + FT_SPRITE_W, top);
-    canvas_draw_dot(c, x + FT_SPRITE_W, top + h - 1);
-}
 
 /* A radio chevron, the visual vocabulary for anything broadcast. */
 /* A travelling signal is meant to leave the arena, so the apex runs past the
@@ -228,15 +209,83 @@ static void draw_broadcast(
 }
 
 /* Contact: a tight field crackling between the two sprites. */
-static void draw_contact_spark(Canvas* c, int32_t x, int32_t y, uint8_t t) {
-    if(t < FT_ANIM_EMIT || t > FT_ANIM_STRIKE) return;
+/* Integer easing over 0..span, returning 0..range. No floating point, and the
+ * worst case (range 128, span 255) stays inside int32 by a wide margin. */
+static int32_t ease_in(int32_t t, int32_t span, int32_t range) {
+    if(t <= 0 || span <= 0) return 0;
+    if(t >= span) return range;
+    return (range * t * t) / (span * span);
+}
 
-    const int32_t n = 3;
-    for(int32_t i = 0; i < n; i++) {
-        const int32_t dy = (i - 1) * 4;
-        canvas_draw_line(c, x, y + dy, x + 4, y + dy + ((i % 2) ? 2 : -2));
+static int32_t ease_out(int32_t t, int32_t span, int32_t range) {
+    if(t <= 0 || span <= 0) return 0;
+    if(t >= span) return range;
+
+    const int32_t u = span - t;
+    return range - (range * u * u) / (span * span);
+}
+
+/* The moment of contact: spokes thrown out from the point of impact, growing
+ * fast and gone almost at once.
+ *
+ * The old spark was three fixed diagonal scratches drawn for the whole
+ * approach, so the "impact" was visible long before anything arrived. This
+ * exists only after the strike frame and lasts a fifth of the time, which is
+ * what makes it read as a hit rather than as decoration. */
+#define BURST_MS 34
+
+static void draw_contact_spark(Canvas* c, int32_t x, int32_t y, uint8_t t) {
+    if(t < FT_ANIM_STRIKE || t >= FT_ANIM_STRIKE + BURST_MS) return;
+
+    const int32_t age = (int32_t)t - FT_ANIM_STRIKE;
+    const int32_t r = 2 + ease_out(age, BURST_MS, 7);
+
+    /* Eight spokes, the diagonals shortened so the burst reads round. */
+    static const int8_t DIR[8][2] = {
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+
+    for(int32_t i = 0; i < 8; i++) {
+        const int32_t len = (i < 4) ? r : (r * 2) / 3;
+        const int32_t inner = len / 2;
+
+        canvas_draw_line(
+            c, x + DIR[i][0] * inner, y + DIR[i][1] * inner,
+            x + DIR[i][0] * len, y + DIR[i][1] * len);
     }
-    canvas_draw_box(c, x + 1, y - 1, 3, 3);
+
+    /* A solid core for the first couple of frames only. */
+    if(age < BURST_MS / 3) canvas_draw_box(c, x - 1, y - 1, 3, 3);
+}
+
+/* A foe going down: it folds toward the floor and breaks up as it goes.
+ * Returns how many rows of the sprite to skip from the top, and fills a
+ * dither mask, so the caller can draw a collapsing silhouette.
+ *
+ * Before this, a foe vanished between two frames the instant its bar hit
+ * zero, which is the single most common note anyone gives about combat feel:
+ * things have to be *seen* to die. */
+static void draw_defeat(Canvas* c, const uint16_t* rows, int32_t x, int32_t y,
+                        uint8_t progress) {
+    /* Fold: the sprite loses height from the top as it crumples down. */
+    const int32_t squash = ease_in(progress, 255, FT_SPRITE_H - 3);
+    const int32_t top = y + squash;
+
+    for(int32_t sy = squash; sy < FT_SPRITE_H; sy++) {
+        uint16_t bits = rows[sy];
+        if(!bits) continue;
+
+        /* Break up as it falls: past halfway, drop every other pixel, then
+         * two in three. A silhouette thinning out reads as coming apart; a
+         * solid shape that shrinks reads as a bug. */
+        if(progress > 128u) {
+            const uint16_t keep = (progress > 192u) ? 0x9249u : 0x5555u;
+            bits = (uint16_t)(bits & ((sy & 1) ? keep : (uint16_t)~keep));
+        }
+
+        for(int32_t sx = 0; sx < FT_SPRITE_W; sx++) {
+            if(bits & (1u << sx)) canvas_draw_dot(c, x + sx, top + sy - squash);
+        }
+    }
 }
 
 /* Two-pixel judder for whoever just took damage, `since` units after its own
@@ -253,15 +302,34 @@ static int32_t shake_px(uint8_t t) {
 }
 
 /* Attacker travel: out during the emit window, back during recovery. */
+#define LUNGE_BACK 4  /* how far the wind-up pulls away from the target */
+#define LUNGE_HOLD 30 /* progress units spent at full extension */
+
+/* A strike with weight: pull away, accelerate across the gap, land, hold for
+ * a beat, then drift back.
+ *
+ * The first version was three straight lines — constant-speed out, constant
+ * speed back — which is why it read as a sprite being slid around rather than
+ * as something hitting something. The dash accelerates *into* the target
+ * (ease_in) so the fastest frame is the frame of contact, and the recovery
+ * decelerates (ease_out) so the return is a settle, not a second dash. */
 static int32_t lunge_px(uint8_t t, int32_t reach) {
-    if(t < FT_ANIM_WINDUP) return -(int32_t)t / 24;                 /* wind back */
-    if(t < FT_ANIM_STRIKE) {
-        return (reach * (int32_t)(t - FT_ANIM_WINDUP)) / (FT_ANIM_STRIKE - FT_ANIM_WINDUP);
+    const int32_t p = (int32_t)t;
+
+    if(p < FT_ANIM_WINDUP) {
+        /* Away quickly, then hang there: the pause before a punch. */
+        return -ease_out(p, FT_ANIM_WINDUP, LUNGE_BACK);
     }
-    if(t < FT_ANIM_RECOVER) {
-        return (reach * (int32_t)(FT_ANIM_RECOVER - t)) / (FT_ANIM_RECOVER - FT_ANIM_STRIKE);
+
+    if(p < FT_ANIM_STRIKE) {
+        const int32_t span = FT_ANIM_STRIKE - FT_ANIM_WINDUP;
+        return -LUNGE_BACK + ease_in(p - FT_ANIM_WINDUP, span, reach + LUNGE_BACK);
     }
-    return 0;
+
+    if(p < FT_ANIM_STRIKE + LUNGE_HOLD) return reach;
+
+    const int32_t span = FT_ANIM_RECOVER - (FT_ANIM_STRIKE + LUNGE_HOLD);
+    return reach - ease_out(p - (FT_ANIM_STRIKE + LUNGE_HOLD), span, reach);
 }
 
 /* The antenna charging before a broadcast leaves the player. */
@@ -302,9 +370,8 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
     int32_t px = 4;
     int32_t py = floor_y - 16;
-    /* The caret sits on whoever the highlighted action would really hit, not
-     * on the cursor — that is how the retarget past a flyer is visible before
-     * you commit to it. */
+    /* Whoever the highlighted action would land on. Nothing points at them:
+     * targeting is automatic, so there is no choice to show. */
     const uint8_t tgt = ft_encounter_effective_target(e, (FtAction2)e->menu_index);
 
     /* --- the player's action --- */
@@ -376,7 +443,18 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         }
         if(e->phase == FT_PHASE_MENU && ((e->phase_ms / 700u) % 2u)) y -= 1;
 
-        draw_sprite(canvas, enemy_sprite(FT_ENEMIES[e->foes[i].id].attrs), x, y);
+        /* A foe this turn killed folds up instead of being drawn standing. */
+        const uint8_t dying = ft_encounter_foe_defeat(e, i);
+        const uint16_t* art = enemy_sprite(FT_ENEMIES[e->foes[i].id].attrs);
+
+        if(dying > 0u) {
+            draw_defeat(canvas, art, x, y, dying);
+
+            /* No health bar under something that no longer has any. */
+            continue;
+        }
+
+        draw_sprite(canvas, art, x, y);
 
         /* Only the foe that actually landed the hit flickers with you. */
         if(arena_fx.strobe && e->phase == FT_PHASE_IMPACT && i == e->acting_foe) {
@@ -391,17 +469,6 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         const int32_t fill =
             ft_bar_fill(ft_encounter_foe_shown_charge(e, i), e->foes[i].charge_max, bw);
         if(fill > 0) canvas_draw_box(canvas, x + 1, floor_y + 3, (size_t)fill, 2);
-
-        /* Only where aiming means something: a broadcast hits the row, and
-         * Defend and Focus hit nobody, so a caret on either is decoration. */
-        const FtAction2 sel = (FtAction2)e->menu_index;
-        const bool aims = (sel == FT_ACTION_CONTACT) ||
-                          (sel == FT_ACTION_SIGNAL &&
-                           !ft_encounter_action_is_broadcast(e, sel));
-
-        if(e->phase == FT_PHASE_MENU && count > 1u && aims && i == tgt) {
-            draw_target_caret(canvas, x, y);
-        }
     }
 }
 
@@ -496,8 +563,11 @@ static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
 
     const char* title;
     switch(atk->klass) {
-    case FT_CLASS_UNDODGEABLE: title = "UNDODGEABLE"; break;
-    case FT_CLASS_GUARDED:     title = "GUARDED - NO CAPTURE"; break;
+    /* "UNDODGEABLE" was a lie by omission: it means no *timed* guard, and
+     * PROTECT still blunts the hit — which is exactly what the coach line
+     * tells you to do. Say what is true. */
+    case FT_CLASS_UNDODGEABLE: title = "NO JAM - PROTECT"; break;
+    case FT_CLASS_GUARDED:     title = "JAM ONLY - NO CAPTURE"; break;
     default:                   title = "INCOMING"; break;
     }
     draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 4, title);

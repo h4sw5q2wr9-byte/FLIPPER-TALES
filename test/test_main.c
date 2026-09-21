@@ -1017,8 +1017,34 @@ static void test_tutorial(void) {
     undo.phase = FT_PHASE_TELEGRAPH;
     undo.foes[0].attack_index = 1;
     CHECK_EQ(FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attacks[1].klass, FT_CLASS_UNDODGEABLE);
+    /* It names the thing that actually does not work (the timed jam) and the
+     * thing that does (PROTECT). "Undodgeable" read as "nothing helps", which
+     * is not true: the Defend shield still blunts it, and the coach has
+     * always said to brace. */
     const char* brace = ft_tutorial_hint(&undo);
-    CHECK(brace && strstr(brace, "No guard"), "undodgeable should say so");
+    CHECK(brace && strstr(brace, "No jam"), "an unjammable attack should say so");
+    CHECK(brace && strstr(brace, "PROTECT"), "and should name what does work");
+
+    /* And that is the mechanic, not just the wording: bracing reduces it. */
+    const FtAttack* seal = &FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attacks[1];
+    const FtHitParams bare = {0, 0, FT_RATING_MISS, false, FT_GUARD_NONE, 0};
+    const FtDefender open_guard = {0, 0};
+    const FtDefender braced = {FT_DEFEND_SHIELD, 0};
+
+    const FtHitResult hit_open = ft_resolve_hit(seal, &open_guard, &bare);
+    const FtHitResult hit_braced = ft_resolve_hit(seal, &braced, &bare);
+    CHECK(hit_braced.damage < hit_open.damage,
+          "PROTECT blunts an unjammable hit (%d vs %d)",
+          (int)hit_braced.damage, (int)hit_open.damage);
+
+    /* A timed press on it, however, is worth nothing at all. */
+    CHECK_EQ(ft_guard_from_timing(0, false, FT_CLASS_UNDODGEABLE), FT_GUARD_NONE);
+    CHECK_EQ(ft_guard_permitted(FT_CLASS_UNDODGEABLE, FT_GUARD_CAPTURE), FT_GUARD_NONE);
+
+    /* The Lock's *other* attack is an ordinary one, which is why it can be
+     * jammed: a foe whose whole moveset is unguardable is just damage. */
+    CHECK_EQ(FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attack_count, 2);
+    CHECK_EQ(FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attacks[0].klass, FT_CLASS_NORMAL);
 
     /* Feedback after a guard distinguishes a jam from a capture. */
     FtEncounter jam;
@@ -1658,47 +1684,40 @@ static void test_reach(void) {
     CHECK(!ft_encounter_can_reach(&locks, FT_ACTION_BROADCAST, 0), "broadcast bounces off ENC");
     CHECK(ft_encounter_can_reach(&locks, FT_ACTION_CONTACT, 0), "contact opens ENC");
 
-    /* The headline fix: aim at a flyer with a grounded attack and the swing
-     * goes to the next one that is standing there, rather than refusing. */
+    /* The headline fix: a grounded attack walks past the flyers to whoever is
+     * standing there, instead of refusing to happen. There is no cursor to
+     * set — targeting is automatic, nearest reachable first. */
     const FtEnemyId mixed[FT_MAX_ENEMIES] = {
         FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
     FtEncounter e;
     ft_encounter_init(&e, mixed, 3, &lo, 3);
 
-    e.target = 0;
     CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_CONTACT), 2);
-    e.target = 1;
-    CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_CONTACT), 2);
-    e.target = 2;
-    CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_CONTACT), 2);
+    CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_BROADCAST), 0);
 
-    /* It wraps, so a reachable foe before the cursor is still found. */
+    /* Nearest first when several are reachable. */
     const FtEnemyId wrap[FT_MAX_ENEMIES] = {
-        FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON};
+        FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
     FtEncounter wr;
     ft_encounter_init(&wr, wrap, 3, &lo, 3);
-    wr.target = 1;
     CHECK_EQ(ft_encounter_effective_target(&wr, FT_ACTION_CONTACT), 0);
 
-    /* A chosen target that *is* reachable is never overruled. */
-    wr.target = 0;
-    CHECK_EQ(ft_encounter_effective_target(&wr, FT_ACTION_CONTACT), 0);
-
-    /* Dead foes are skipped: the retarget finds a living one. */
+    /* A dead foe is skipped, so killing the front one moves the aim along
+     * without the player doing anything. */
     wr.foes[0].charge = 0;
-    wr.target = 0;
     CHECK(!ft_encounter_can_reach(&wr, FT_ACTION_CONTACT, 0), "a corpse is not a target");
+    CHECK_EQ(ft_encounter_effective_target(&wr, FT_ACTION_CONTACT), 2);
 
-    /* Nothing reachable at all: the swing whiffs on the chosen foe rather
-     * than crashing or silently doing nothing. */
-    flyers.target = 1;
-    CHECK_EQ(ft_encounter_effective_target(&flyers, FT_ACTION_CONTACT), 1);
+    /* Nothing reachable at all: the swing lands on the nearest living foe and
+     * is refused there, rather than indexing off the end of the row. */
+    const uint8_t t = ft_encounter_effective_target(&flyers, FT_ACTION_CONTACT);
+    CHECK(t < flyers.foe_count, "a whiff still names a real foe");
+    CHECK(ft_encounter_foe_alive(&flyers, t), "and a living one");
 
-    /* And it resolves that way end to end: aiming at a flyer with contact
-     * damages the grounded one instead. */
+    /* And it resolves that way end to end: swinging with contact against two
+     * flyers and a grounded foe damages the grounded one. */
     FtEncounter fight;
     ft_encounter_init(&fight, mixed, 3, &lo, 3);
-    fight.target = 0;
     fight.menu_index = FT_ACTION_CONTACT;
 
     const int16_t before = fight.foes[2].charge;
@@ -1909,6 +1928,97 @@ static void test_practice(void) {
     CHECK(ft_encounter_over(&run), "an arena match terminates");
 }
 
+static void test_defeat(void) {
+    section("foes are seen to die");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    const FtEnemyId three[FT_MAX_ENEMIES] = {
+        FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET};
+
+    FtEncounter e;
+    ft_encounter_init(&e, three, 3, &lo, 5);
+
+    /* Standing foes are not falling over. */
+    for(uint8_t i = 0; i < 3; i++) {
+        CHECK_EQ(ft_encounter_foe_defeat(&e, i), 0);
+        CHECK(ft_encounter_foe_visible(&e, i), "a living foe is on screen");
+    }
+
+    /* Kill the row with a broadcast, mid-animation. */
+    e.phase = FT_PHASE_RESULT;
+    e.menu_index = FT_ACTION_BROADCAST;
+    for(uint8_t i = 0; i < 3; i++) {
+        e.foe_charge_before[i] = e.foes[i].charge_max;
+        e.foes[i].charge = 0;
+        e.foe_hit_valid[i] = true;
+        e.foe_hits[i].damage = e.foes[i].charge_max;
+    }
+
+    /* Before the wave reaches a foe it is untouched and still standing. */
+    e.phase_ms = 0;
+    for(uint8_t i = 0; i < 3; i++) {
+        CHECK_EQ(ft_encounter_foe_defeat(&e, i), 0);
+        CHECK(ft_encounter_foe_visible(&e, i), "foe %u waits for the wave", i);
+    }
+
+    /* Through the animation each one starts falling only once it is struck,
+     * never runs backwards, and is gone by the end. */
+    uint8_t prev[FT_MAX_ENEMIES] = {0, 0, 0};
+    bool started[FT_MAX_ENEMIES] = {false, false, false};
+
+    for(uint32_t ms = 0; ms <= FT_ANIM_MS; ms += 10) {
+        e.phase_ms = ms;
+        const uint8_t now = ft_encounter_anim_progress(&e);
+
+        for(uint8_t i = 0; i < 3; i++) {
+            const uint8_t d = ft_encounter_foe_defeat(&e, i);
+            const uint8_t at = ft_encounter_foe_hit_at(&e, i);
+
+            if(now <= at) {
+                CHECK_EQ(d, 0);
+                CHECK(ft_encounter_foe_visible(&e, i), "foe %u stands until hit", i);
+            } else {
+                if(d > 0u) started[i] = true;
+                CHECK(d >= prev[i], "foe %u never un-dies (%u -> %u)", i, prev[i], d);
+            }
+            prev[i] = d;
+        }
+    }
+
+    for(uint8_t i = 0; i < 3; i++) {
+        CHECK(started[i], "foe %u was seen to fall", i);
+        CHECK_EQ(prev[i], 255);
+        CHECK(!ft_encounter_foe_visible(&e, i), "and is gone by the end");
+    }
+
+    /* The fold is not instant: it occupies real frames rather than one. The
+     * whole complaint about the old behaviour was that a foe blinked out
+     * between two frames the moment its bar emptied. */
+    int frames = 0;
+    for(uint32_t ms = 0; ms <= FT_ANIM_MS; ms += 33) { /* one frame at 30fps */
+        e.phase_ms = ms;
+        const uint8_t d = ft_encounter_foe_defeat(&e, 2);
+        if(d > 0u && d < 255u) frames++;
+    }
+    CHECK(frames >= 2, "the fall lasts more than one frame (%d)", frames);
+
+    /* A foe that was already down before this turn does not fall again. */
+    FtEncounter old;
+    ft_encounter_init(&old, three, 3, &lo, 5);
+    old.phase = FT_PHASE_RESULT;
+    old.phase_ms = FT_ANIM_MS / 2;
+    old.foes[1].charge = 0;
+    old.foe_charge_before[1] = 0;
+    CHECK_EQ(ft_encounter_foe_defeat(&old, 1), 0);
+    CHECK(!ft_encounter_foe_visible(&old, 1), "yesterday's corpse is not drawn");
+
+    /* And nothing falls over during the menu. */
+    old.phase = FT_PHASE_MENU;
+    CHECK_EQ(ft_encounter_foe_defeat(&old, 1), 0);
+}
+
 static void test_scene_wipe(void) {
     section("scene wipe");
 
@@ -2083,6 +2193,7 @@ int main(void) {
     test_hit_fx();
     test_reach();
     test_practice();
+    test_defeat();
     test_scene_wipe();
     test_broadcast_sweep();
     test_world_links();

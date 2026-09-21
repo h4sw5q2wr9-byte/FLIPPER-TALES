@@ -103,6 +103,18 @@ static void build(FtEncounter* e, const Shot* s) {
 
     if(s->variant == 9) e->coach = false;
 
+    /* Variant 7 kills the row, so the defeat fold has something to play. */
+    if(s->variant == 7) {
+        for(uint8_t i = 0; i < e->foe_count; i++) {
+            e->foe_charge_before[i] = e->foes[i].charge_max;
+            e->foes[i].charge = 0;
+            e->foe_hit_valid[i] = true;
+            e->foe_hits[i].outcome = FT_HIT_OK;
+            e->foe_hits[i].damage = e->foes[i].charge_max;
+        }
+        e->last_player_hit = e->foe_hits[0];
+    }
+
     /* A broadcast result needs per-foe outcomes filled in. */
     if(s->phase == FT_PHASE_RESULT && s->menu_index == FT_ACTION_BROADCAST) {
         for(uint8_t i = 0; i < e->foe_count; i++) {
@@ -157,13 +169,22 @@ int main(void) {
         {"panel-locked",    FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    0, 0, 0, true},
         {"root-defend",     FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    2, 0, 3, false},
         {"root-focus",      FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    3, 0, 3, false},
-        /* The hit iris, sampled once per stage. A landed hit is variant 1. */
-        {"iris-flicker",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     760,  0, 1, 0, false},
-        {"iris-closing",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     980,  0, 1, 0, false},
-        {"iris-black",      FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1300,  0, 1, 0, false},
-        {"iris-opening",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1700,  0, 1, 0, false},
+        /* Taking a hit: the flinch strobe, then the result. A landed hit is
+         * variant 1. There is no iris here any more — that belongs to the
+         * scene wipe, not to every single connect. */
+        {"flinch",          FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     760,  0, 1, 0, false},
+        {"hit-taken",       FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1300,  0, 1, 0, false},
         /* The travelling broadcast, late in its flight across the row. */
         {"bcast-late",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     860,  0, 0, 3, false},
+        /* The strike, frame by frame: wind-up, the dash, the burst, recovery. */
+        {"hit-windup",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     200,  1, 0, 2, false},
+        {"hit-dash",        FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     560,  1, 0, 2, false},
+        {"hit-burst",       FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     700,  1, 0, 2, false},
+        {"hit-recover",     FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     830,  1, 0, 2, false},
+        /* And a foe going down, across the fold. */
+        {"die-early",       FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     740,  0, 7, 3, false},
+        {"die-mid",         FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     800,  0, 7, 3, false},
+        {"die-late",        FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     870,  0, 7, 3, false},
         {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0, 0, false},
         {"lose",            FT_ENEMY_SEALED_LOCK,  FT_PHASE_LOSE,       100,  0, 0, 0, false},
     };
