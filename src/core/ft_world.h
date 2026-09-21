@@ -25,7 +25,6 @@ typedef struct {
     uint8_t   roster; /* the group this one fights as */
 } FtEntity;
 
-/* A door and where it leads. */
 typedef struct {
     uint8_t tx, ty;
     uint8_t dest_room;
@@ -40,8 +39,8 @@ typedef struct {
     uint8_t         ent_count;
 } FtRoom;
 
-/* A roster is what one visible foe actually fights as — the sprite you can
- * see, plus friends you cannot. */
+/* A roster is what one visible foe fights as. The whole group also *walks*
+ * as a group out here, so what you see is what you are about to fight. */
 typedef struct {
     uint8_t   count;
     FtEnemyId foes[FT_MAX_ENEMIES];
@@ -51,17 +50,33 @@ const FtRoom*   ft_room(uint8_t index);
 uint8_t         ft_room_count(void);
 const FtRoster* ft_roster(uint8_t index);
 
+/* A tile-aligned actor mid-step. */
 typedef struct {
-    uint8_t  room;
-    FtPos    pos;
-    FtFacing facing;
-    bool     moving;
-    uint32_t step_ms;    /* walk cycle */
-    uint32_t walk_accum; /* sub-pixel movement, in thousandths of a pixel */
-    uint32_t area_ms; /* since entering the room, for the name banner */
+    uint8_t  tx, ty;
+    int8_t   dx, dy;   /* direction of the step in progress, 0 when idle */
+    uint32_t step_ms;  /* elapsed within the current step */
+} FtStepper;
 
-    /* Which entities are gone, one bit per entity per room. Defeated foes stay
-     * down for the visit rather than reappearing behind you. */
+typedef struct {
+    FtStepper mv;
+    uint32_t  think_ms;
+    bool      alive;
+} FtFoeState;
+
+typedef struct {
+    uint8_t   room;
+    FtStepper mv;
+    FtFacing  facing;
+    uint32_t  walk_ms; /* walk cycle, keeps running across steps */
+    uint32_t  area_ms; /* since entering the room, for the name banner */
+
+    /* Set for one update when a step finishes, so the app can react to what
+     * was landed on without polling every frame. */
+    bool arrived;
+
+    FtFoeState foes[FT_MAX_ROOM_ENTS];
+
+    /* Which entities are gone, one bit per entity per room. */
     uint8_t cleared[8];
 
     /* Carried between battles, since an encounter starts from scratch. */
@@ -71,33 +86,31 @@ typedef struct {
 } FtWorld;
 
 void ft_world_init(FtWorld* w);
-
-/* Move to a room and stand on a tile. Resets the area banner. */
 void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty);
 
-/* Advance time and walk. dx/dy are -1, 0 or 1; facing follows the last
- * non-zero direction even when movement is blocked. */
-void ft_world_walk(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms);
+/* Advance everything by dt. dx/dy are the held direction, -1/0/1. A step in
+ * progress runs to completion regardless of input. */
+void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms);
 
 const FtMap* ft_world_map(const FtWorld* w);
+
+/* Pixel position of an actor, interpolated through its current step. */
+FtPos ft_stepper_pos(const FtStepper* s, uint32_t step_ms_total);
+
+bool ft_world_moving(const FtWorld* w);
 
 bool ft_world_entity_gone(const FtWorld* w, uint8_t index);
 void ft_world_clear_entity(FtWorld* w, uint8_t index);
 
-/* Index of a living foe whose tile the player is standing on, else -1. */
+/* Index of a living foe sharing the player's tile, else -1. */
 int ft_world_foe_contact(const FtWorld* w);
 
-/* Index of a living foe on the tile the player faces, else -1. This is the
- * one you can strike first. */
+/* Index of a living foe on the tile the player faces, else -1. */
 int ft_world_foe_ahead(const FtWorld* w);
 
-/* The exit under the player's feet, or NULL. */
+/* The exit under the player, or NULL. */
 const FtExit* ft_world_exit_under(const FtWorld* w);
 
-/* Is the player standing on, or facing, a terminal? */
 bool ft_world_terminal_near(const FtWorld* w);
-
-/* Tile the player's feet occupy. */
-void ft_world_foot_tile(const FtWorld* w, int32_t* tx, int32_t* ty);
 
 #endif /* FT_WORLD_H */

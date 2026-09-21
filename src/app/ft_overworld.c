@@ -69,17 +69,6 @@ static void blit_rows(
     }
 }
 
-/* Knock a one-pixel white gap around the avatar before drawing it. Without
- * this it has the same visual weight as a crate and disappears into the floor
- * stipple; with it, the eye finds the player instantly. */
-static void draw_avatar_halo(Canvas* c, int32_t x, int32_t y) {
-    canvas_set_color(c, ColorWhite);
-    for(int32_t ry = -1; ry <= FT_AVATAR_H; ry++) {
-        run_clipped(c, x - 1, y + ry, FT_AVATAR_W + 2);
-    }
-    canvas_set_color(c, ColorBlack);
-}
-
 static void draw_avatar(Canvas* c, int32_t x, int32_t y, FtFacing facing, int32_t bob) {
     uint8_t rows[FT_AVATAR_H];
     for(int32_t i = 0; i < FT_AVATAR_H; i++) rows[i] = FT_AVATAR[i];
@@ -98,7 +87,13 @@ static void draw_avatar(Canvas* c, int32_t x, int32_t y, FtFacing facing, int32_
      * invisible at this size. */
     if(bob) rows[FT_AVATAR_H - 1] = 0x24;
 
+    /* XOR, not a knocked-out halo. The halo cleared a white box around the
+     * avatar, which swallowed anything it stood next to; inverting keeps the
+     * player readable against both bare floor and solid black without erasing
+     * the scenery. */
+    canvas_set_color(c, ColorXOR);
     blit_rows(c, rows, FT_AVATAR_H, x, y, FT_AVATAR_W);
+    canvas_set_color(c, ColorBlack);
 }
 
 /* Foes standing in the room. Drawn at half the battle sprite's size by
@@ -150,7 +145,7 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
     canvas_set_color(canvas, ColorBlack);
 
     const FtMap*  map = ft_world_map(w);
-    const FtPos   player = w->pos;
+    const FtPos   player = ft_stepper_pos(&w->mv, FT_STEP_MS);
     const FtPos   cam = ft_map_camera(map, player);
     const FtRoom* room = ft_room(w->room);
 
@@ -190,25 +185,37 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
         }
     }
 
-    /* Foes before the avatar, so the player is never hidden behind one. */
-    for(uint8_t i = 0; i < room->ent_count; i++) {
+    /* Foes before the avatar, so the player is never hidden behind one.
+     *
+     * A group walks as a group: if the roster is three, three sprites follow
+     * the leader. What you see is what you are about to fight, which is the
+     * whole point of making encounters visible. */
+    static const int8_t FOLLOW[FT_MAX_ENEMIES][2] = {
+        {0, 0}, {-6, 3}, {6, 3},
+    };
+
+    for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
         if(room->ents[i].kind != FT_ENT_FOE) continue;
-        if(ft_world_entity_gone(w, i)) continue;
+        if(!w->foes[i].alive) continue;
 
         const FtRoster* roster = ft_roster(room->ents[i].roster);
-        const uint32_t attrs = FT_ENEMIES[roster->foes[0]].attrs;
+        const FtPos fp = ft_stepper_pos(&w->foes[i].mv, FT_FOE_STEP_MS);
 
-        draw_foe(
-            canvas, foe_sprite(attrs),
-            (int32_t)room->ents[i].tx * FT_TILE_PX - cam.x,
-            (int32_t)room->ents[i].ty * FT_TILE_PX - cam.y - 2);
+        for(uint8_t m = 0; m < roster->count && m < FT_MAX_ENEMIES; m++) {
+            const uint32_t attrs = FT_ENEMIES[roster->foes[m]].attrs;
+
+            draw_foe(
+                canvas, foe_sprite(attrs),
+                fp.x - cam.x + FOLLOW[m][0],
+                fp.y - cam.y + FOLLOW[m][1] + (FT_AVATAR_H - FT_TILE_PX) - 2);
+        }
     }
 
-    const int32_t bob = w->moving ? (int32_t)((w->step_ms / 140u) % 2u) : 0;
+    const bool moving = ft_world_moving(w);
+    const int32_t bob = moving ? (int32_t)((w->walk_ms / 150u) % 2u) : 0;
     const int32_t ax = player.x - cam.x;
     const int32_t ay = player.y - cam.y;
 
-    draw_avatar_halo(canvas, ax, ay);
     draw_avatar(canvas, ax, ay, w->facing, bob);
 
     /* Area name, in a cleared strip so it stays legible over any tile. It

@@ -84,15 +84,13 @@ int main(void) {
 
     for(size_t i = 0; i < sizeof(shots) / sizeof(shots[0]); i++) {
         const Shot* s = &shots[i];
-        const FtPos p = {s->px, s->py};
 
         FtWorld w;
         ft_world_init(&w);
-        w.room = s->room;
-        w.pos = p;
+        ft_world_enter(&w, s->room, (uint8_t)(s->px / FT_TILE_PX),
+                       (uint8_t)(s->py / FT_TILE_PX));
         w.facing = s->facing;
-        w.moving = s->moving;
-        w.step_ms = 200;
+        w.walk_ms = 200;
         w.area_ms = s->area_ms;
 
         ft_overworld_render(canvas, &w);

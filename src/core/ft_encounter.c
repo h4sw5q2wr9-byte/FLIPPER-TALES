@@ -2,18 +2,31 @@
 
 /* ---- Timing ---------------------------------------------------------- */
 
-FtGuard ft_guard_from_timing(int32_t ms_before_impact, bool hard_mode) {
-    /* A press after the hit landed is simply late. */
-    if(ms_before_impact < 0) return FT_GUARD_NONE;
+uint32_t ft_jam_window_ms(bool hard_mode, FtAttackClass klass) {
+    uint32_t jam = FT_JAM_WINDOW_MS;
+    uint32_t capture = FT_CAPTURE_WINDOW_MS;
 
-    int32_t capture = FT_CAPTURE_WINDOW_MS;
-    int32_t jam = FT_JAM_WINDOW_MS;
     if(hard_mode) {
-        capture /= 2;
-        jam /= 2;
+        jam /= 2u;
+        capture /= 2u;
     }
 
-    if(ms_before_impact <= capture) return FT_GUARD_CAPTURE;
+    /* No capture on offer means no wide window either: a GUARDED attack asks
+     * for capture-grade timing to get half its damage off. */
+    return (klass == FT_CLASS_GUARDED) ? capture : jam;
+}
+
+FtGuard ft_guard_from_timing(int32_t ms_before_impact, bool hard_mode, FtAttackClass klass) {
+    /* A press after the hit landed is simply late. */
+    if(ms_before_impact < 0) return FT_GUARD_NONE;
+    if(klass == FT_CLASS_UNDODGEABLE) return FT_GUARD_NONE;
+
+    int32_t capture = FT_CAPTURE_WINDOW_MS;
+    if(hard_mode) capture /= 2;
+
+    const int32_t jam = (int32_t)ft_jam_window_ms(hard_mode, klass);
+
+    if(klass != FT_CLASS_GUARDED && ms_before_impact <= capture) return FT_GUARD_CAPTURE;
     if(ms_before_impact <= jam) return FT_GUARD_JAM;
 
     /* Too early: the guard has lapsed by the time the hit arrives. */
@@ -162,6 +175,7 @@ void ft_encounter_init(
 
         e->foe_hits[i] = (FtHitResult){FT_HIT_OK, 0, false, false, false, 0};
         e->foe_hit_valid[i] = false;
+        e->foe_charge_before[i] = e->foes[i].charge;
     }
     for(uint8_t i = count; i < FT_MAX_ENEMIES; i++) {
         e->foes[i].id = foes[0];
@@ -181,9 +195,11 @@ void ft_encounter_init(
     e->phase_ms = 0;
     e->menu_index = 0;
     e->defending = false;
+    e->player_turns = 0;
 
     e->action_pressed = false;
     e->action_press_ms = 0;
+    e->action_locked_ms = 0;
     e->last_rating = FT_RATING_MISS;
 
     e->guard_pressed = false;
@@ -284,6 +300,26 @@ static void gain_ram(FtEncounter* e, int16_t amount) {
 }
 
 /* Apply one attack to one foe, recording the per-foe result. */
+/* True while an action is still visibly travelling toward its target. */
+static bool pre_strike(const FtEncounter* e) {
+    if(e->phase != FT_PHASE_RESULT && e->phase != FT_PHASE_IMPACT) return false;
+    return ft_encounter_anim_progress(e) < FT_ANIM_STRIKE;
+}
+
+int16_t ft_encounter_foe_shown_charge(const FtEncounter* e, uint8_t i) {
+    if(i >= FT_MAX_ENEMIES) return 0;
+    if(e->phase == FT_PHASE_RESULT && pre_strike(e)) return e->foe_charge_before[i];
+    return e->foes[i].charge;
+}
+
+bool ft_encounter_foe_visible(const FtEncounter* e, uint8_t i) {
+    if(i >= e->foe_count) return false;
+    if(e->foes[i].charge > 0) return true;
+
+    /* Killed by the attack currently in flight: keep it up until impact. */
+    return e->phase == FT_PHASE_RESULT && pre_strike(e) && e->foe_charge_before[i] > 0;
+}
+
 static void strike_foe(FtEncounter* e, uint8_t i, const FtAttack* atk, FtRating rating) {
     const FtEnemy* proto = &FT_ENEMIES[e->foes[i].id];
     const FtDefender def = {proto->shielded, proto->attrs};
@@ -310,7 +346,10 @@ static void resolve_player_action(FtEncounter* e) {
     e->last_player_hit = blank;
     e->last_total_damage = 0;
     e->last_was_replay = false;
-    for(uint8_t i = 0; i < FT_MAX_ENEMIES; i++) e->foe_hit_valid[i] = false;
+    for(uint8_t i = 0; i < FT_MAX_ENEMIES; i++) {
+        e->foe_hit_valid[i] = false;
+        e->foe_charge_before[i] = e->foes[i].charge;
+    }
 
     if(action == FT_ACTION_DEFEND) {
         e->defending = true;
@@ -395,7 +434,7 @@ static void resolve_enemy_action(FtEncounter* e) {
     const int32_t before_impact =
         e->guard_pressed ? (int32_t)FT_TELEGRAPH_MS - (int32_t)e->guard_press_ms : -1;
 
-    e->last_guard = ft_guard_from_timing(before_impact, e->fx.hard_mode);
+    e->last_guard = ft_guard_from_timing(before_impact, e->fx.hard_mode, atk->klass);
 
     /* Bracing is a real shield, so it can blunt or even deflect a hit. */
     const FtDefender def = {e->defending ? FT_DEFEND_SHIELD : 0, 0};
@@ -426,7 +465,10 @@ void ft_encounter_press_ok(FtEncounter* e) {
 
         e->action_pressed = false;
         e->action_press_ms = 0;
+        e->action_locked_ms = 0;
         e->defending = false;
+
+        e->player_turns++;
 
         /* Defend and Focus have nothing to time, so they skip the sweep. */
         if(action == FT_ACTION_DEFEND || action == FT_ACTION_FOCUS) {
@@ -447,6 +489,7 @@ void ft_encounter_press_ok(FtEncounter* e) {
         if(!e->action_pressed) {
             e->action_pressed = true;
             e->action_press_ms = ft_encounter_sweep_ms(e);
+            e->action_locked_ms = 0;
         }
         break;
 
@@ -493,7 +536,15 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         break;
 
     case FT_PHASE_PLAYER_ACT:
-        if(e->phase_ms >= FT_READY_MS + FT_ACTION_WINDOW_MS) {
+        /* A press stops the sweep dead and holds briefly, so the cursor can be
+         * seen frozen exactly where it landed before anything resolves. */
+        if(e->action_pressed) {
+            e->action_locked_ms += dt_ms;
+            if(e->action_locked_ms >= FT_LOCK_HOLD_MS) {
+                resolve_player_action(e);
+                enter_phase(e, FT_PHASE_RESULT);
+            }
+        } else if(e->phase_ms >= FT_READY_MS + FT_ACTION_WINDOW_MS) {
             resolve_player_action(e);
             enter_phase(e, FT_PHASE_RESULT);
         }
@@ -503,6 +554,10 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         if(e->phase_ms >= FT_IMPACT_HOLD_MS) {
             if(ft_encounter_living(e) == 0u) {
                 enter_phase(e, FT_PHASE_WIN);
+            } else if(e->player_turns % FT_PLAYER_TURNS_PER_ROUND != 0u) {
+                /* Still the player's round: straight back to the menu. */
+                e->defending = false;
+                enter_phase(e, FT_PHASE_MENU);
             } else {
                 advance_foe_turn(e, 0);
             }

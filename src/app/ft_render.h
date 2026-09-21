@@ -21,9 +21,20 @@
 #define FT_ARENA_Y   11
 #define FT_ARENA_H   25
 #define FT_STATUS_Y  37
-#define FT_ACTION_Y  46
+#define FT_ACTION_Y  45
 
 #define FT_HELP_PAGES 4
+
+/* The pause menu, opened with Back. */
+typedef enum {
+    FT_PAUSE_RESUME = 0,
+    FT_PAUSE_HELP,
+    FT_PAUSE_TIPS,
+    FT_PAUSE_QUIT,
+    FT_PAUSE_COUNT
+} FtPauseItem;
+
+void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on);
 
 void ft_render_battle(Canvas* canvas, const FtEncounter* e);
 void ft_render_help(Canvas* canvas, uint8_t page);

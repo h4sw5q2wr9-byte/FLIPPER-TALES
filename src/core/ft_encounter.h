@@ -70,8 +70,14 @@ typedef struct {
     uint8_t menu_index;
     bool    defending;
 
-    /* Action command state. */
+    /* Player actions taken this battle. Foes only act on every other one —
+     * see FT_PLAYER_TURNS_PER_ROUND. */
+    uint16_t player_turns;
+
+    /* Action command state. The sweep stops the moment it is pressed, so the
+     * cursor can be shown frozen where it landed. */
     bool     action_pressed;
+    uint32_t action_locked_ms; /* time since the press */
     uint32_t action_press_ms;
     FtRating last_rating;
 
@@ -83,6 +89,11 @@ typedef struct {
     /* Per-foe results, so a broadcast can show what it did to each of them. */
     FtHitResult foe_hits[FT_MAX_ENEMIES];
     bool        foe_hit_valid[FT_MAX_ENEMIES];
+
+    /* Charge before the current action landed. The renderer shows this until
+     * the strike frame, so a foe does not drop dead before the attack that
+     * killed it has visibly reached it. */
+    int16_t foe_charge_before[FT_MAX_ENEMIES];
 
     FtHitResult last_player_hit; /* headline result, for the popup */
     FtHitResult last_enemy_hit;
@@ -97,7 +108,15 @@ typedef struct {
 
 /* ---- Pure timing helpers --------------------------------------------- */
 
-FtGuard  ft_guard_from_timing(int32_t ms_before_impact, bool hard_mode);
+/* Which guard a press this many ms before impact earns.
+ *
+ * A GUARDED attack cannot be captured, so its jam window shrinks to what the
+ * capture window would have been: losing the reward should cost precision,
+ * not just remove an option. */
+FtGuard ft_guard_from_timing(int32_t ms_before_impact, bool hard_mode, FtAttackClass klass);
+
+/* Width of the jam window for this attack class, in ms. */
+uint32_t ft_jam_window_ms(bool hard_mode, FtAttackClass klass);
 FtRating ft_rating_from_timing(int32_t ms_from_perfect);
 
 /* ---- Lifecycle ------------------------------------------------------- */
@@ -151,6 +170,14 @@ const FtAttack* ft_encounter_replay_attack(const FtEncounter* e);
 
 /* Does this action strike every foe at once? */
 bool ft_encounter_action_is_broadcast(const FtEncounter* e, FtAction2 action);
+
+/* Charge to draw for a foe right now — its pre-hit value while the attack is
+ * still travelling, its real value afterwards. */
+int16_t ft_encounter_foe_shown_charge(const FtEncounter* e, uint8_t i);
+
+/* Should this foe still be drawn? A foe killed by the action in flight stays
+ * on screen until the strike frame. */
+bool ft_encounter_foe_visible(const FtEncounter* e, uint8_t i);
 
 /* ---- Pacing ---------------------------------------------------------- */
 

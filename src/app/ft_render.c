@@ -295,7 +295,7 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
     /* --- the row of foes --- */
     for(uint8_t i = 0; i < count; i++) {
-        if(!ft_encounter_foe_alive(e, i)) continue;
+        if(!ft_encounter_foe_visible(e, i)) continue;
 
         int32_t x = foe_x(i, count);
         int32_t y = py;
@@ -311,7 +311,8 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         /* Health, directly beneath each foe. */
         const int32_t bw = 16;
         canvas_draw_frame(canvas, x, floor_y + 2, (size_t)bw, 4);
-        const int32_t fill = ft_bar_fill(e->foes[i].charge, e->foes[i].charge_max, bw);
+        const int32_t fill =
+            ft_bar_fill(ft_encounter_foe_shown_charge(e, i), e->foes[i].charge_max, bw);
         if(fill > 0) canvas_draw_box(canvas, x + 1, floor_y + 3, (size_t)fill, 2);
 
         if(e->phase == FT_PHASE_MENU && count > 1u && i == tgt) {
@@ -384,9 +385,20 @@ static void draw_strike_check(Canvas* canvas, const FtEncounter* e) {
         return;
     }
 
-    draw_cursor(canvas, TRACK_X + ms_to_px(ft_encounter_sweep_ms(e), FT_ACTION_WINDOW_MS));
+    if(e->action_pressed) {
+        /* Frozen where it stopped, flashing: the point is to see exactly
+         * where the hit landed rather than watch the cursor sail past it. */
+        const int32_t at = TRACK_X + ms_to_px(e->action_press_ms, FT_ACTION_WINDOW_MS);
 
-    if(e->action_pressed) draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 25, "LOCKED IN");
+        if((e->action_locked_ms / 70u) % 2u) {
+            canvas_draw_box(canvas, at - 1, TRACK_Y - 4, 5, TRACK_H + 8);
+        } else {
+            draw_cursor(canvas, at);
+        }
+        return;
+    }
+
+    draw_cursor(canvas, TRACK_X + ms_to_px(ft_encounter_sweep_ms(e), FT_ACTION_WINDOW_MS));
 }
 
 /* The guard check. Only the zones the player can actually hit are drawn, so
@@ -416,7 +428,7 @@ static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
                          TRACK_Y + 1);
     } else {
         const bool hard = e->fx.hard_mode;
-        const uint32_t jam_ms = hard ? FT_JAM_WINDOW_MS / 2u : FT_JAM_WINDOW_MS;
+        const uint32_t jam_ms = ft_jam_window_ms(hard, atk->klass);
         const uint32_t cap_ms = hard ? FT_CAPTURE_WINDOW_MS / 2u : FT_CAPTURE_WINDOW_MS;
 
         const int32_t jam_w = ms_to_px(jam_ms, FT_TELEGRAPH_MS);
@@ -633,7 +645,10 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
 static void draw_menu(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
 
+    /* Each action gets its own framed cell rather than sitting as loose text:
+     * five bare three-letter labels in a row read as one cramped string. */
     const int32_t cell = 25;
+    const int32_t h = 11;
 
     for(uint8_t i = 0; i < FT_ACTION_COUNT; i++) {
         const int32_t x = 1 + (int32_t)i * cell;
@@ -642,22 +657,24 @@ static void draw_menu(Canvas* canvas, const FtEncounter* e) {
         const char* label = action_label((FtAction2)i);
 
         if(selected) {
-            canvas_draw_box(canvas, x, FT_ACTION_Y, (size_t)(cell - 1), 9);
+            canvas_draw_box(canvas, x, FT_ACTION_Y, (size_t)(cell - 2), (size_t)h);
             canvas_set_color(canvas, ColorWhite);
+        } else {
+            canvas_draw_frame(canvas, x, FT_ACTION_Y, (size_t)(cell - 2), (size_t)h);
         }
 
         const int32_t lw = (int32_t)canvas_string_width(canvas, label);
-        const int32_t lx = x + (cell - 1 - lw) / 2;
-        canvas_draw_str(canvas, lx, FT_ACTION_Y + 7, label);
+        const int32_t lx = x + (cell - 2 - lw) / 2;
+        canvas_draw_str(canvas, lx, FT_ACTION_Y + 8, label);
 
         /* Struck through rather than hidden: the option stays visible and the
          * row below says why it is refused. */
-        if(!available) canvas_draw_line(canvas, lx, FT_ACTION_Y + 4, lx + lw, FT_ACTION_Y + 4);
+        if(!available) canvas_draw_line(canvas, lx, FT_ACTION_Y + 5, lx + lw, FT_ACTION_Y + 5);
 
         if(selected) canvas_set_color(canvas, ColorBlack);
     }
 
-    draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 16,
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 17,
                  action_desc(e, (FtAction2)e->menu_index));
 }
 
@@ -720,6 +737,43 @@ void ft_render_help(Canvas* canvas, uint8_t page) {
     draw_centred(canvas, FT_SCREEN_W / 2, 62,
                  (page + 1 < FT_HELP_PAGES) ? "RIGHT: more  OK: go" :
                                               "LEFT: back   OK: go");
+}
+
+void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 8, "PAUSED");
+    canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
+
+    static const char* const ITEMS[FT_PAUSE_COUNT] = {
+        "Resume",
+        "How to play",
+        "Tips",
+        "Quit",
+    };
+
+    for(uint8_t i = 0; i < FT_PAUSE_COUNT; i++) {
+        const int32_t y = 15 + (int32_t)i * 12;
+        const bool on = (i == selected);
+
+        if(on) {
+            canvas_draw_box(canvas, 4, y, 120, 11);
+            canvas_set_color(canvas, ColorWhite);
+        }
+
+        canvas_draw_str(canvas, 9, y + 8, ITEMS[i]);
+
+        /* Tips carries its state on the row rather than needing a submenu. */
+        if(i == FT_PAUSE_TIPS) {
+            const char* state = tips_on ? "ON" : "OFF";
+            const int32_t w = (int32_t)canvas_string_width(canvas, state);
+            canvas_draw_str(canvas, 119 - w, y + 8, state);
+        }
+
+        if(on) canvas_set_color(canvas, ColorBlack);
+    }
 }
 
 /* ---- Entry ----------------------------------------------------------- */

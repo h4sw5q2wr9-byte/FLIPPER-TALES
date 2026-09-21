@@ -39,7 +39,8 @@ typedef struct {
 
 typedef enum {
     FT_MODE_OVERWORLD = 0,
-    FT_MODE_BATTLE
+    FT_MODE_BATTLE,
+    FT_MODE_PAUSE
 } FtMode;
 
 typedef struct {
@@ -66,7 +67,11 @@ typedef struct {
     bool    show_help;
     uint8_t help_page;
     bool    coach;
-    bool    running;
+
+    FtMode  paused_from;
+    uint8_t pause_item;
+
+    bool running;
 } FlipperTales;
 
 #define HELD_UP    (1u << 0)
@@ -85,6 +90,8 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
 
     if(app->show_help) {
         ft_render_help(canvas, app->help_page);
+    } else if(app->mode == FT_MODE_PAUSE) {
+        ft_render_pause(canvas, app->pause_item, app->coach);
     } else if(app->mode == FT_MODE_BATTLE) {
         ft_render_battle(canvas, &app->encounter);
     } else {
@@ -180,13 +187,7 @@ static void ft_overworld_ok(FlipperTales* app) {
     if(ft_world_terminal_near(&app->world)) {
         app->world.stats.charge = app->world.stats.charge_max;
         app->world.stats.ram = app->world.stats.ram_max;
-        ft_toast(app, "Restored + saved.");
-        return;
-    }
-
-    const FtExit* exit = ft_world_exit_under(&app->world);
-    if(exit) {
-        ft_world_enter(&app->world, exit->dest_room, exit->dest_tx, exit->dest_ty);
+        ft_toast(app, "Restored.");
         return;
     }
 
@@ -240,8 +241,51 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
         return;
     }
 
+    if(app->mode == FT_MODE_PAUSE) {
+        switch(event->key) {
+        case InputKeyUp:
+            app->pause_item = (uint8_t)((app->pause_item + FT_PAUSE_COUNT - 1u) % FT_PAUSE_COUNT);
+            break;
+        case InputKeyDown:
+            app->pause_item = (uint8_t)((app->pause_item + 1u) % FT_PAUSE_COUNT);
+            break;
+        case InputKeyBack:
+            app->mode = app->paused_from;
+            break;
+        case InputKeyOk:
+            switch(app->pause_item) {
+            case FT_PAUSE_RESUME:
+                app->mode = app->paused_from;
+                break;
+            case FT_PAUSE_HELP:
+                app->mode = app->paused_from;
+                app->show_help = true;
+                app->help_page = 0;
+                break;
+            case FT_PAUSE_TIPS:
+                app->coach = !app->coach;
+                app->encounter.coach = app->coach;
+                break;
+            case FT_PAUSE_QUIT:
+            default:
+                app->running = false;
+                break;
+            }
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+
+    /* Back opens the menu rather than quitting outright — quitting by accident
+     * in the middle of a fight is not a feature. */
     if(event->key == InputKeyBack) {
-        if(pressed) app->running = false;
+        if(pressed) {
+            app->paused_from = app->mode;
+            app->pause_item = FT_PAUSE_RESUME;
+            app->mode = FT_MODE_PAUSE;
+        }
         return;
     }
 
@@ -284,7 +328,7 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
         app->toast_ms = (app->toast_ms > dt_ms) ? app->toast_ms - dt_ms : 0u;
     }
 
-    if(app->show_help) return;
+    if(app->show_help || app->mode == FT_MODE_PAUSE) return;
 
     if(app->mode == FT_MODE_BATTLE) {
         ft_encounter_tick(&app->encounter, dt_ms);
@@ -297,9 +341,20 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
     if(app->held & HELD_UP) dy -= 1;
     if(app->held & HELD_DOWN) dy += 1;
 
-    ft_world_walk(&app->world, dx, dy, dt_ms);
+    ft_world_update(&app->world, dx, dy, dt_ms);
 
-    /* Walking into a foe starts the fight without the free hit. */
+    /* Doors take themselves the moment you finish stepping onto one: having
+     * to stop and press to change room turns a corridor into paperwork. */
+    if(app->world.arrived) {
+        const FtExit* exit = ft_world_exit_under(&app->world);
+        if(exit) {
+            ft_world_enter(&app->world, exit->dest_room, exit->dest_tx, exit->dest_ty);
+            return;
+        }
+    }
+
+    /* Walking into a foe — or one walking into you — starts the fight without
+     * the free hit. */
     const int touched = ft_world_foe_contact(&app->world);
     if(touched >= 0) ft_begin_battle(app, touched, false);
 }
@@ -331,6 +386,8 @@ static FlipperTales* ft_alloc(void) {
 
     app->show_help = true;
     app->help_page = 0;
+    app->paused_from = FT_MODE_OVERWORLD;
+    app->pause_item = FT_PAUSE_RESUME;
     app->running = true;
 
     return app;

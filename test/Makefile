@@ -28,7 +28,7 @@ $(BIN)/test_main: $(CORE_SRC) test_main.c | $(BIN)
 	$(CC) $(CFLAGS) $^ -o $@
 
 $(BIN)/sim: $(CORE_SRC) sim.c | $(BIN)
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) -I$(APP_DIR) $^ -o $@
 
 test: $(BIN)/test_main check-nofloat
 	@./$(BIN)/test_main

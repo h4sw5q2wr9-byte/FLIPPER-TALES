@@ -69,17 +69,54 @@ const FtRoster* ft_roster(uint8_t index) {
     return &FT_ROSTERS[index < ROSTER_COUNT ? index : 0];
 }
 
+/* ---- Stepping --------------------------------------------------------- */
+
+FtPos ft_stepper_pos(const FtStepper* s, uint32_t step_ms_total) {
+    FtPos p = {(int32_t)s->tx * FT_TILE_PX, (int32_t)s->ty * FT_TILE_PX};
+
+    if(s->dx || s->dy) {
+        /* Interpolate across the step so movement reads as walking rather
+         * than snapping tile to tile. */
+        const int32_t travelled =
+            ((int32_t)s->step_ms * FT_TILE_PX) / (int32_t)step_ms_total;
+        p.x += s->dx * travelled;
+        p.y += s->dy * travelled;
+    }
+
+    /* The avatar is taller than a tile, so it sits back to stand on one. */
+    p.y -= (FT_AVATAR_H - FT_TILE_PX);
+
+    return p;
+}
+
+static bool step_target_free(const FtMap* m, uint8_t tx, uint8_t ty, int8_t dx, int8_t dy) {
+    return !ft_tile_solid(ft_map_tile(m, (int32_t)tx + dx, (int32_t)ty + dy));
+}
+
+/* Advance a step, returning true on the tick it completes. */
+static bool step_advance(FtStepper* s, uint32_t dt_ms, uint32_t total_ms) {
+    if(!s->dx && !s->dy) return false;
+
+    s->step_ms += dt_ms;
+    if(s->step_ms < total_ms) return false;
+
+    s->tx = (uint8_t)((int32_t)s->tx + s->dx);
+    s->ty = (uint8_t)((int32_t)s->ty + s->dy);
+    s->dx = 0;
+    s->dy = 0;
+    s->step_ms = 0;
+
+    return true;
+}
+
 /* ---- State ------------------------------------------------------------ */
 
 const FtMap* ft_world_map(const FtWorld* w) {
     return ft_room(w->room)->map;
 }
 
-void ft_world_foot_tile(const FtWorld* w, int32_t* tx, int32_t* ty) {
-    /* The feet, not the head: the avatar's lower rows are what collide, so
-     * they are also what stands on a door. */
-    *tx = (w->pos.x + FT_AVATAR_W / 2) / FT_TILE_PX;
-    *ty = (w->pos.y + FT_AVATAR_H - 2) / FT_TILE_PX;
+bool ft_world_moving(const FtWorld* w) {
+    return w->mv.dx != 0 || w->mv.dy != 0;
 }
 
 /* One bit per entity per room. */
@@ -96,7 +133,40 @@ bool ft_world_entity_gone(const FtWorld* w, uint8_t index) {
 void ft_world_clear_entity(FtWorld* w, uint8_t index) {
     const uint16_t bit = cleared_bit(w->room, index);
     if(bit >= sizeof(w->cleared) * 8u) return;
+
     w->cleared[bit / 8u] |= (uint8_t)(1u << (bit % 8u));
+    if(index < FT_MAX_ROOM_ENTS) w->foes[index].alive = false;
+}
+
+void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
+    w->room = (room < ft_room_count()) ? room : 0u;
+
+    w->mv.tx = tx;
+    w->mv.ty = ty;
+    w->mv.dx = 0;
+    w->mv.dy = 0;
+    w->mv.step_ms = 0;
+
+    w->facing = FT_FACE_DOWN;
+    w->walk_ms = 0;
+    w->area_ms = 0;
+    w->arrived = false;
+
+    /* Foes start where the room says, and are alive unless already beaten. */
+    const FtRoom* r = ft_room(w->room);
+    for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) {
+        w->foes[i].mv.dx = 0;
+        w->foes[i].mv.dy = 0;
+        w->foes[i].mv.step_ms = 0;
+        w->foes[i].think_ms = (uint32_t)(i * 70u); /* stagger, so they do not march in lockstep */
+        w->foes[i].alive = false;
+
+        if(i < r->ent_count && r->ents[i].kind == FT_ENT_FOE) {
+            w->foes[i].mv.tx = r->ents[i].tx;
+            w->foes[i].mv.ty = r->ents[i].ty;
+            w->foes[i].alive = !ft_world_entity_gone(w, i);
+        }
+    }
 }
 
 void ft_world_init(FtWorld* w) {
@@ -116,49 +186,96 @@ void ft_world_init(FtWorld* w) {
     ft_world_enter(w, 0, 3, 4);
 }
 
-void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
-    w->room = (room < ROOM_COUNT) ? room : 0u;
+/* ---- Foes -------------------------------------------------------------- */
 
-    /* Centre the avatar on the tile, and sit it so its feet land there. */
-    w->pos.x = (int32_t)tx * FT_TILE_PX;
-    w->pos.y = (int32_t)ty * FT_TILE_PX - (FT_AVATAR_H - FT_TILE_PX);
-
-    w->facing = FT_FACE_DOWN;
-    w->moving = false;
-    w->step_ms = 0;
-    w->walk_accum = 0;
-    w->area_ms = 0;
+static int32_t abs32(int32_t v) {
+    return v < 0 ? -v : v;
 }
 
-void ft_world_walk(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
-    w->area_ms += dt_ms;
+static void foe_think(FtWorld* w, uint8_t i, const FtMap* map) {
+    FtFoeState* f = &w->foes[i];
 
-    if(dx == 0 && dy == 0) {
-        w->moving = false;
-        w->walk_accum = 0;
-        return;
+    const int32_t dx = (int32_t)w->mv.tx - (int32_t)f->mv.tx;
+    const int32_t dy = (int32_t)w->mv.ty - (int32_t)f->mv.ty;
+    const int32_t dist = abs32(dx) + abs32(dy);
+
+    int8_t sx = 0, sy = 0;
+
+    if(dist > 0 && dist <= FT_FOE_ALERT) {
+        /* Close the larger gap first, so a chase reads as deliberate. */
+        if(abs32(dx) >= abs32(dy)) sx = (dx > 0) ? 1 : -1;
+        else sy = (dy > 0) ? 1 : -1;
+    } else {
+        /* Otherwise drift, using the step counter as a cheap shuffle rather
+         * than burning RNG state the battle also uses. */
+        const uint32_t r = (w->area_ms / 97u) + i * 13u + f->mv.tx + f->mv.ty;
+        switch(r % 6u) {
+        case 0: sx = 1; break;
+        case 1: sx = -1; break;
+        case 2: sy = 1; break;
+        case 3: sy = -1; break;
+        default: break; /* stand still half the time */
+        }
     }
 
-    /* Facing follows intent, not movement: walking into a wall still turns
-     * you, which is what makes striking a foe through a doorway work. */
-    if(dx < 0) w->facing = FT_FACE_LEFT;
-    else if(dx > 0) w->facing = FT_FACE_RIGHT;
-    else if(dy < 0) w->facing = FT_FACE_UP;
-    else if(dy > 0) w->facing = FT_FACE_DOWN;
+    if((sx || sy) && step_target_free(map, f->mv.tx, f->mv.ty, sx, sy)) {
+        f->mv.dx = sx;
+        f->mv.dy = sy;
+        f->mv.step_ms = 0;
+    }
+}
 
-    w->moving = true;
-    w->step_ms += dt_ms;
+/* ---- Update ------------------------------------------------------------ */
 
-    /* Sub-pixel accumulation, because at a 10ms tick the integer division
-     * floors to zero. Rounding that up to one pixel per tick would run the
-     * player at 100 px/s rather than FT_WALK_PX_PER_S. */
-    w->walk_accum += dt_ms * FT_WALK_PX_PER_S;
+void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
+    const FtMap* map = ft_world_map(w);
 
-    const int32_t move = (int32_t)(w->walk_accum / 1000u);
-    if(move == 0) return;
+    w->area_ms += dt_ms;
+    w->arrived = false;
 
-    w->walk_accum -= (uint32_t)move * 1000u;
-    w->pos = ft_map_move(ft_world_map(w), w->pos, dx * move, dy * move);
+    /* --- player --- */
+    if(ft_world_moving(w)) {
+        w->walk_ms += dt_ms;
+        w->arrived = step_advance(&w->mv, dt_ms, FT_STEP_MS);
+    }
+
+    if(!ft_world_moving(w) && (dx || dy)) {
+        /* One axis at a time keeps the player on the grid; horizontal wins so
+         * a diagonal press still moves rather than stalling. */
+        if(dx) dy = 0;
+
+        if(dx < 0) w->facing = FT_FACE_LEFT;
+        else if(dx > 0) w->facing = FT_FACE_RIGHT;
+        else if(dy < 0) w->facing = FT_FACE_UP;
+        else if(dy > 0) w->facing = FT_FACE_DOWN;
+
+        /* Facing always updates, even into a wall — that is what lets you
+         * turn and strike something you cannot walk into. */
+        if(step_target_free(map, w->mv.tx, w->mv.ty, dx, dy)) {
+            w->mv.dx = dx;
+            w->mv.dy = dy;
+            w->mv.step_ms = 0;
+            w->walk_ms += dt_ms;
+        }
+    }
+
+    /* --- foes --- */
+    const FtRoom* room = ft_room(w->room);
+    for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        FtFoeState* f = &w->foes[i];
+        if(!f->alive) continue;
+
+        if(f->mv.dx || f->mv.dy) {
+            step_advance(&f->mv, dt_ms, FT_FOE_STEP_MS);
+            continue;
+        }
+
+        f->think_ms += dt_ms;
+        if(f->think_ms < FT_FOE_THINK_MS) continue;
+
+        f->think_ms = 0;
+        foe_think(w, i, map);
+    }
 }
 
 /* ---- Queries ----------------------------------------------------------- */
@@ -171,48 +288,47 @@ static void facing_delta(FtFacing f, int32_t* dx, int32_t* dy) {
 static int foe_at_tile(const FtWorld* w, int32_t tx, int32_t ty) {
     const FtRoom* r = ft_room(w->room);
 
-    for(uint8_t i = 0; i < r->ent_count; i++) {
-        if(r->ents[i].kind != FT_ENT_FOE) continue;
-        if(ft_world_entity_gone(w, i)) continue;
-        if((int32_t)r->ents[i].tx == tx && (int32_t)r->ents[i].ty == ty) return (int)i;
+    for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(!w->foes[i].alive) continue;
+
+        /* A foe mid-step counts as occupying the tile it is heading for, so
+         * you cannot walk through one that is moving toward you. */
+        const int32_t fx = (int32_t)w->foes[i].mv.tx + w->foes[i].mv.dx;
+        const int32_t fy = (int32_t)w->foes[i].mv.ty + w->foes[i].mv.dy;
+
+        if((fx == tx && fy == ty) ||
+           ((int32_t)w->foes[i].mv.tx == tx && (int32_t)w->foes[i].mv.ty == ty)) {
+            return (int)i;
+        }
     }
     return -1;
 }
 
 int ft_world_foe_contact(const FtWorld* w) {
-    int32_t tx, ty;
-    ft_world_foot_tile(w, &tx, &ty);
-    return foe_at_tile(w, tx, ty);
+    return foe_at_tile(w, w->mv.tx, w->mv.ty);
 }
 
 int ft_world_foe_ahead(const FtWorld* w) {
-    int32_t tx, ty, dx, dy;
-    ft_world_foot_tile(w, &tx, &ty);
+    int32_t dx, dy;
     facing_delta(w->facing, &dx, &dy);
-
-    return foe_at_tile(w, tx + dx, ty + dy);
+    return foe_at_tile(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy);
 }
 
 const FtExit* ft_world_exit_under(const FtWorld* w) {
-    int32_t tx, ty;
-    ft_world_foot_tile(w, &tx, &ty);
-
     const FtRoom* r = ft_room(w->room);
+
     for(uint8_t i = 0; i < r->exit_count; i++) {
-        if((int32_t)r->exits[i].tx == tx && (int32_t)r->exits[i].ty == ty) {
-            return &r->exits[i];
-        }
+        if(r->exits[i].tx == w->mv.tx && r->exits[i].ty == w->mv.ty) return &r->exits[i];
     }
     return NULL;
 }
 
 bool ft_world_terminal_near(const FtWorld* w) {
-    int32_t tx, ty, dx, dy;
-    ft_world_foot_tile(w, &tx, &ty);
-
+    int32_t dx, dy;
     const FtMap* m = ft_world_map(w);
-    if(ft_map_tile(m, tx, ty) == FT_TILE_TERM) return true;
+
+    if(ft_map_tile(m, w->mv.tx, w->mv.ty) == FT_TILE_TERM) return true;
 
     facing_delta(w->facing, &dx, &dy);
-    return ft_map_tile(m, tx + dx, ty + dy) == FT_TILE_TERM;
+    return ft_map_tile(m, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) == FT_TILE_TERM;
 }

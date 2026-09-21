@@ -1,206 +1,145 @@
 /* Headless balance simulator.
  *
- * Plays whole battles with a scripted policy so the damage numbers can be
- * tuned without a device. Deterministic: same seed, same battle.
- *
- * Known limitations: every battle starts from fresh level-1 stats, so later
- * enemies read harder here than they will in play, where the player arrives
- * levelled. Hard Mode's +50% XP upside is not modelled at all, only its costs. */
+ * Drives the real encounter state machine rather than a hand-rolled model, so
+ * what it measures is what ships. Deterministic: same seed, same battle. */
 #include <stdio.h>
+#include <string.h>
 
-#include "ft_combat.h"
-#include "ft_data.h"
-#include "ft_priority.h"
-#include "ft_progress.h"
+#include "ft_encounter.h"
 #include "ft_rng.h"
-#include "ft_roll.h"
-#include "ft_signal.h"
+#include "ft_world.h"
 
-#define SIM_BATTLES  2000
-#define SIM_MAX_TURNS 40
+#define SIM_BATTLES   400
+#define SIM_MAX_MS    240000u
+#define SIM_TICK_MS   10u
 
 typedef struct {
-    uint32_t wins;
-    uint32_t losses;
-    uint32_t stalls;
+    uint32_t wins, losses, stalls;
     uint32_t total_turns;
-    uint32_t captures;
-    uint32_t brownouts_survived;
+    int32_t  charge_left; /* summed over wins */
 } SimResult;
 
-/* Pick the module that is not locked out by this enemy's attributes. */
-static const FtAttack* choose_attack(uint32_t enemy_attrs) {
-    if(enemy_attrs & FT_ATTR_AIRBORNE) return &FT_MODULES[FT_MOD_SUBGHZ].attack;
-    if(enemy_attrs & FT_ATTR_ENCRYPTED) return &FT_MODULES[FT_MOD_NFC].attack;
-
-    /* Otherwise the contact burst is simply stronger. */
-    return &FT_MODULES[FT_MOD_NFC].attack;
-}
-
-/* Model player execution as a skill percentage, split between a clean capture
- * and an ordinary jam. */
-static FtGuard roll_guard(FtRng* rng, uint32_t skill_pct) {
-    if(ft_rng_chance(rng, skill_pct / 3u)) return FT_GUARD_CAPTURE;
-    if(ft_rng_chance(rng, skill_pct)) return FT_GUARD_JAM;
-    return FT_GUARD_NONE;
-}
-
-static FtRating roll_rating(FtRng* rng, uint32_t skill_pct) {
+/* Skill is the chance of hitting a window; the rest of the time the press
+ * lands somewhere random in the sweep, which is what a real miss looks like. */
+static uint32_t press_offset(FtRng* rng, uint32_t window, uint32_t skill_pct, bool tight) {
     if(ft_rng_chance(rng, skill_pct)) {
-        return ft_rng_chance(rng, 40) ? FT_RATING_EXCELLENT : FT_RATING_GREAT;
+        /* Aim: land inside the tight band near the ideal moment. */
+        const uint32_t spread = tight ? 30u : 60u;
+        return (window / 2u) + ft_rng_below(rng, spread) - spread / 2u;
     }
-    return ft_rng_chance(rng, 50) ? FT_RATING_GOOD : FT_RATING_MISS;
+    return ft_rng_below(rng, window);
 }
 
-static void simulate(FtEnemyId enemy_id, const FtLoadout* lo, uint32_t skill_pct,
-                     uint32_t seed, SimResult* out) {
-    const FtEnemy* proto = &FT_ENEMIES[enemy_id];
-    const FtLoadoutEffects fx = ft_loadout_effects(lo);
+static void play(const FtRoster* roster, uint32_t skill, uint32_t seed, SimResult* out) {
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    FtEncounter e;
+    ft_encounter_init(&e, roster->foes, roster->count, &lo, seed);
+    e.coach = false;
 
     FtRng rng;
-    ft_rng_seed(&rng, seed);
+    ft_rng_seed(&rng, seed ^ 0xA5A5u);
 
-    for(uint32_t battle = 0; battle < SIM_BATTLES; battle++) {
-        FtStats stats;
-        ft_stats_init(&stats);
-        stats.charge_max = (int16_t)(stats.charge_max + fx.charge_max_bonus);
-        stats.charge = stats.charge_max;
+    uint32_t strike_at = 0, guard_at = 0;
+    bool strike_set = false, guard_set = false;
+    uint32_t turns = 0;
 
-        FtRoll roll;
-        ft_roll_init(&roll, stats.charge);
-
-        FtSignal sig;
-        ft_signal_init(&sig, 1);
-        ft_signal_battle_start(&sig);
-
-        FtSignalLibrary lib;
-        ft_siglib_init(&lib);
-
-        int16_t enemy_charge = proto->charge;
-        bool counted_brownout = false;
-        uint32_t turn = 0;
-
-        for(; turn < SIM_MAX_TURNS; turn++) {
-            /* --- player acts --- */
-            const FtAttack* atk = choose_attack(proto->attrs);
-            FtDefender edef = {proto->shielded, proto->attrs};
-            FtHitParams pp = {fx.atk_up, 0, roll_rating(&rng, skill_pct), false,
-                              FT_GUARD_NONE, 0};
-
-            FtHitResult pr = ft_resolve_hit(atk, &edef, &pp);
-            enemy_charge = (int16_t)(enemy_charge - pr.damage);
-
-            if(pr.outcome == FT_HIT_OK && pr.damage > 0) {
-                ft_signal_add(&sig, ft_signal_attack_gain(roll.current, stats.charge_max));
+    for(uint32_t t = 0; t < SIM_MAX_MS && !ft_encounter_over(&e); t += SIM_TICK_MS) {
+        switch(e.phase) {
+        case FT_PHASE_MENU: {
+            /* Pick whatever is usable, preferring the stronger single hit when
+             * there is only one foe left. */
+            FtAction2 want =
+                (ft_encounter_living(&e) > 1u) ? FT_ACTION_BROADCAST : FT_ACTION_CONTACT;
+            if(!ft_encounter_action_available(&e, want)) {
+                want = (want == FT_ACTION_CONTACT) ? FT_ACTION_BROADCAST : FT_ACTION_CONTACT;
             }
-            if(enemy_charge <= 0) break;
+            if(!ft_encounter_action_available(&e, want)) want = FT_ACTION_DEFEND;
 
-            /* --- enemy acts --- */
-            const FtAttack* eatk =
-                &proto->attacks[ft_rng_below(&rng, proto->attack_count)];
+            e.menu_index = (uint8_t)want;
+            ft_encounter_press_ok(&e);
 
-            FtDefender pdef = {0, 0};
-            /* Hard Mode halves the guard window, which costs execution. */
-            const uint32_t guard_skill = fx.hard_mode ? skill_pct / 2u : skill_pct;
-            FtHitParams ep = {0, 0, FT_RATING_MISS, false, roll_guard(&rng, guard_skill),
-                              fx.jam_reduction_pct};
-
-            FtHitResult er = ft_resolve_hit(eatk, &pdef, &ep);
-            if(er.captured && ft_siglib_capture(&lib, eatk->id)) out->captures++;
-
-            ft_roll_apply_damage(&roll, (int16_t)(er.damage * (fx.hard_mode ? 2 : 1)));
-            ft_signal_add(&sig, FT_SIGNAL_GAIN_ENEMY_TURN);
-
-            /* Drain the queued damage. The thinking phase pauses the roll, so
-             * one turn's worth of ticking is what actually lands. */
-            const uint32_t interval = ft_roll_interval_ms(0, false, fx.hard_mode);
-            ft_roll_tick(&roll, interval * 64u, interval);
-
-            if(ft_roll_brownout(&roll) && !counted_brownout) {
-                counted_brownout = true;
-                out->brownouts_survived++;
-            }
-            if(ft_roll_down(&roll)) break;
+            strike_set = false;
+            guard_set = false;
+            turns++;
+            break;
         }
 
-        out->total_turns += turn + 1;
+        case FT_PHASE_PLAYER_ACT:
+            if(!strike_set && !ft_encounter_in_ready(&e)) {
+                strike_at = press_offset(&rng, FT_ACTION_WINDOW_MS, skill, true);
+                strike_set = true;
+            }
+            if(strike_set && ft_encounter_sweep_ms(&e) >= strike_at) ft_encounter_press_ok(&e);
+            break;
 
-        if(enemy_charge <= 0) {
-            out->wins++;
-        } else if(ft_roll_down(&roll)) {
-            out->losses++;
-        } else {
-            out->stalls++;
+        case FT_PHASE_TELEGRAPH:
+            if(!guard_set && !ft_encounter_in_ready(&e)) {
+                /* Guarding means pressing near the very end of the sweep. */
+                const uint32_t w = FT_TELEGRAPH_MS;
+                guard_at = ft_rng_chance(&rng, skill) ?
+                               w - ft_rng_below(&rng, FT_CAPTURE_WINDOW_MS + 20u) :
+                               ft_rng_below(&rng, w);
+                guard_set = true;
+            }
+            if(guard_set && ft_encounter_sweep_ms(&e) >= guard_at) ft_encounter_press_ok(&e);
+            break;
+
+        default:
+            break;
         }
+
+        ft_encounter_tick(&e, SIM_TICK_MS);
+    }
+
+    out->total_turns += turns;
+
+    if(e.phase == FT_PHASE_WIN) {
+        out->wins++;
+        if(e.roll.current > 0) out->charge_left += e.roll.current;
+    } else if(e.phase == FT_PHASE_LOSE) {
+        out->losses++;
+    } else {
+        out->stalls++;
     }
 }
 
 static void report(const char* label, const SimResult* r) {
-    const uint32_t total = r->wins + r->losses + r->stalls;
-    if(total == 0u) return;
+    const uint32_t n = r->wins + r->losses + r->stalls;
+    if(!n) return;
 
-    printf("  %-22s win %3u%%  loss %3u%%  stall %3u%%  avg turns %2u.%u  captures %u\n",
-           label,
-           (r->wins * 100u) / total,
-           (r->losses * 100u) / total,
-           (r->stalls * 100u) / total,
-           r->total_turns / total,
-           ((r->total_turns * 10u) / total) % 10u,
-           r->captures);
+    printf(
+        "    %-18s win %3u%%   avg turns %2u   charge left %2u\n", label,
+        (r->wins * 100u) / n, r->total_turns / n,
+        r->wins ? (uint32_t)r->charge_left / r->wins : 0u);
 }
 
 int main(void) {
-    printf("\nFlipper Tales — balance simulation (%d battles per cell)\n", SIM_BATTLES);
+    printf("\nFlipper Tales — balance (%d battles per cell, level 1 loadout)\n", SIM_BATTLES);
 
-    FtLoadout base;
-    ft_loadout_init(&base);
+    const uint32_t skills[] = {20, 50, 80};
 
-    FtLoadout amped;
-    ft_loadout_init(&amped);
-    ft_loadout_add(&amped, FT_MOD_AMPLIFY);
-    ft_loadout_add(&amped, FT_MOD_CHARGE_PLUS);
+    for(uint8_t ri = 0; ri < 4; ri++) {
+        const FtRoster* roster = ft_roster(ri);
 
-    FtLoadout hard;
-    ft_loadout_init(&hard);
-    ft_loadout_add(&hard, FT_MOD_HARD_MODE);
+        printf("\n  roster %u: %u foe(s) —", ri, roster->count);
+        for(uint8_t i = 0; i < roster->count; i++) {
+            printf(" %s", FT_ENEMIES[roster->foes[i]].name);
+        }
+        printf("\n");
 
-    const struct {
-        const char* name;
-        const FtLoadout* lo;
-    } builds[] = {
-        {"base", &base},
-        {"amplify+charge", &amped},
-        {"hard mode", &hard},
-    };
+        for(size_t s = 0; s < sizeof(skills) / sizeof(skills[0]); s++) {
+            SimResult r;
+            memset(&r, 0, sizeof(r));
 
-    const uint32_t skills[] = {0, 35, 70, 95};
-
-    /* A build is only meaningful if the player could afford its Flash. */
-    printf("\nbuilds:\n");
-    for(size_t b = 0; b < sizeof(builds) / sizeof(builds[0]); b++) {
-        const FtLoadoutEffects fx = ft_loadout_effects(builds[b].lo);
-        int16_t over = (int16_t)(fx.flash_used - FT_START_FLASH);
-        if(over < 0) over = 0;
-        const int min_level = 1 + (over + FT_LEVEL_UP_FLASH - 1) / FT_LEVEL_UP_FLASH;
-        printf("  %-16s flash %2d  affordable from level %d\n", builds[b].name,
-               fx.flash_used, min_level);
-    }
-
-    for(int e = 0; e < FT_ENEMY_COUNT; e++) {
-        printf("\n%s (charge %d, shield %d)\n", FT_ENEMIES[e].name, FT_ENEMIES[e].charge,
-               FT_ENEMIES[e].shielded);
-
-        for(size_t b = 0; b < sizeof(builds) / sizeof(builds[0]); b++) {
-            for(size_t s = 0; s < sizeof(skills) / sizeof(skills[0]); s++) {
-                SimResult r = {0, 0, 0, 0, 0, 0};
-                const uint32_t seed =
-                    1000u + (uint32_t)e * 100u + (uint32_t)b * 10u + (uint32_t)s;
-                simulate((FtEnemyId)e, builds[b].lo, skills[s], seed, &r);
-
-                char label[40];
-                snprintf(label, sizeof(label), "%s @ skill %u%%", builds[b].name, skills[s]);
-                report(label, &r);
+            for(uint32_t b = 0; b < SIM_BATTLES; b++) {
+                play(roster, skills[s], 1000u + ri * 977u + (uint32_t)s * 31u + b, &r);
             }
+
+            char label[24];
+            snprintf(label, sizeof(label), "skill %u%%", skills[s]);
+            report(label, &r);
         }
     }
 

@@ -18,9 +18,14 @@
 #define FT_AVATAR_W 8
 #define FT_AVATAR_H 12
 
-/* Walk speed. Fast enough that a room is not a chore, slow enough that an
- * 8px tile is still a meaningful unit of positioning. */
-#define FT_WALK_PX_PER_S 44
+/* Movement is grid-based but animated: a step slides smoothly from one tile to
+ * the next and cannot be interrupted part-way. That keeps the player aligned
+ * to tiles — so doorways and foes line up without fighting the controls —
+ * while still looking like walking rather than hopping. */
+#define FT_STEP_MS      210 /* per tile; ~38 px/s */
+#define FT_FOE_STEP_MS  330 /* foes are slower, so you can outrun them */
+#define FT_FOE_THINK_MS 240
+#define FT_FOE_ALERT    5   /* tiles */
 
 typedef enum {
     FT_FACE_DOWN = 0,

@@ -19,7 +19,7 @@
 
 /* ---- Stat limits (DESIGN.md 4.1) ------------------------------------- */
 
-#define FT_START_CHARGE 10
+#define FT_START_CHARGE 14
 #define FT_START_RAM    5
 #define FT_START_FLASH  3
 
@@ -138,6 +138,14 @@ typedef enum {
 
 /* ---- Battle pacing --------------------------------------------------- */
 
+/* The player acts this many times per enemy round.
+ *
+ * Without it a fight is one player action against N foe actions, so a group of
+ * three simply deletes a level-one character before they can respond — the
+ * balance simulator measured 0% wins at low skill. The reference solves the
+ * same problem the same way: a lone player gets two turns to the enemy's one. */
+#define FT_PLAYER_TURNS_PER_ROUND 2
+
 /* A "get set" beat before either timing bar starts moving. The bar and its
  * target zones are already on screen, so the player can see what they are
  * aiming at before the cursor is released. Presses during this beat are
@@ -155,6 +163,10 @@ typedef enum {
  * watch on a 128x64 panel — the first pass was a 320ms twitch. */
 #define FT_ANIM_MS             900
 #define FT_IMPACT_HOLD_MS     1450  /* animation, then the popup */
+
+/* How long the action-command cursor stays frozen and flashing at the point
+ * it was stopped, before the action resolves. */
+#define FT_LOCK_HOLD_MS        420
 
 /* Stage boundaries as a fraction of FT_ANIM_MS, in 0..255 progress units. */
 #define FT_ANIM_WINDUP  70

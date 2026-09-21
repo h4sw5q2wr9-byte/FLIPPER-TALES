@@ -584,29 +584,29 @@ static void test_guard_timing(void) {
     section("guard windows (DESIGN 4.4)");
 
     /* Innermost 50 ms captures. */
-    CHECK_EQ(ft_guard_from_timing(0, false), FT_GUARD_CAPTURE);
-    CHECK_EQ(ft_guard_from_timing(50, false), FT_GUARD_CAPTURE);
+    CHECK_EQ(ft_guard_from_timing(0, false, FT_CLASS_NORMAL), FT_GUARD_CAPTURE);
+    CHECK_EQ(ft_guard_from_timing(50, false, FT_CLASS_NORMAL), FT_GUARD_CAPTURE);
 
     /* Out to 150 ms jams. */
-    CHECK_EQ(ft_guard_from_timing(51, false), FT_GUARD_JAM);
-    CHECK_EQ(ft_guard_from_timing(150, false), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(51, false, FT_CLASS_NORMAL), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(150, false, FT_CLASS_NORMAL), FT_GUARD_JAM);
 
     /* Earlier than that has lapsed by the time the hit lands. */
-    CHECK_EQ(ft_guard_from_timing(151, false), FT_GUARD_NONE);
-    CHECK_EQ(ft_guard_from_timing(5000, false), FT_GUARD_NONE);
+    CHECK_EQ(ft_guard_from_timing(151, false, FT_CLASS_NORMAL), FT_GUARD_NONE);
+    CHECK_EQ(ft_guard_from_timing(5000, false, FT_CLASS_NORMAL), FT_GUARD_NONE);
 
     /* A press after impact is late, not a guard. */
-    CHECK_EQ(ft_guard_from_timing(-1, false), FT_GUARD_NONE);
+    CHECK_EQ(ft_guard_from_timing(-1, false, FT_CLASS_NORMAL), FT_GUARD_NONE);
 
     /* Hard Mode halves both windows. */
-    CHECK_EQ(ft_guard_from_timing(25, true), FT_GUARD_CAPTURE);
-    CHECK_EQ(ft_guard_from_timing(26, true), FT_GUARD_JAM);
-    CHECK_EQ(ft_guard_from_timing(75, true), FT_GUARD_JAM);
-    CHECK_EQ(ft_guard_from_timing(76, true), FT_GUARD_NONE);
+    CHECK_EQ(ft_guard_from_timing(25, true, FT_CLASS_NORMAL), FT_GUARD_CAPTURE);
+    CHECK_EQ(ft_guard_from_timing(26, true, FT_CLASS_NORMAL), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(75, true, FT_CLASS_NORMAL), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(76, true, FT_CLASS_NORMAL), FT_GUARD_NONE);
 
     /* What was a capture on normal is only a jam on Hard Mode. */
-    CHECK_EQ(ft_guard_from_timing(40, false), FT_GUARD_CAPTURE);
-    CHECK_EQ(ft_guard_from_timing(40, true), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(40, false, FT_CLASS_NORMAL), FT_GUARD_CAPTURE);
+    CHECK_EQ(ft_guard_from_timing(40, true, FT_CLASS_NORMAL), FT_GUARD_JAM);
 }
 
 static void test_rating_timing(void) {
@@ -629,6 +629,109 @@ static void test_rating_timing(void) {
     for(int32_t d = 0; d <= 300; d += 7) {
         CHECK_EQ(ft_rating_from_timing(d), ft_rating_from_timing(-d));
     }
+}
+
+static void test_guarded_window(void) {
+    section("GUARDED tightens the jam window");
+
+    /* A GUARDED attack cannot be captured, so its jam window shrinks to the
+     * capture window's width: losing the reward should cost precision rather
+     * than just removing an option. */
+    CHECK_EQ(ft_jam_window_ms(false, FT_CLASS_NORMAL), FT_JAM_WINDOW_MS);
+    CHECK_EQ(ft_jam_window_ms(false, FT_CLASS_GUARDED), FT_CAPTURE_WINDOW_MS);
+    CHECK(ft_jam_window_ms(false, FT_CLASS_GUARDED) < ft_jam_window_ms(false, FT_CLASS_NORMAL),
+          "guarded is the tighter of the two");
+
+    /* Hard Mode halves both. */
+    CHECK_EQ(ft_jam_window_ms(true, FT_CLASS_NORMAL), FT_JAM_WINDOW_MS / 2);
+    CHECK_EQ(ft_jam_window_ms(true, FT_CLASS_GUARDED), FT_CAPTURE_WINDOW_MS / 2);
+
+    /* A press that would jam a normal attack misses a guarded one entirely. */
+    const int32_t mid = (FT_CAPTURE_WINDOW_MS + FT_JAM_WINDOW_MS) / 2;
+    CHECK_EQ(ft_guard_from_timing(mid, false, FT_CLASS_NORMAL), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(mid, false, FT_CLASS_GUARDED), FT_GUARD_NONE);
+
+    /* Inside the tight window it still jams, but never captures. */
+    CHECK_EQ(ft_guard_from_timing(10, false, FT_CLASS_GUARDED), FT_GUARD_JAM);
+    CHECK_EQ(ft_guard_from_timing(10, false, FT_CLASS_NORMAL), FT_GUARD_CAPTURE);
+
+    /* Undodgeable refuses everything at any timing. */
+    for(int32_t t = 0; t < 400; t += 10) {
+        CHECK_EQ(ft_guard_from_timing(t, false, FT_CLASS_UNDODGEABLE), FT_GUARD_NONE);
+    }
+}
+
+static void test_turn_economy(void) {
+    section("solo turn economy");
+
+    /* One player action against three foe actions deletes a level-one
+     * character; the simulator measured 0% wins. The player gets two turns to
+     * the enemy round, as the reference does for a lone player. */
+    CHECK(FT_PLAYER_TURNS_PER_ROUND >= 2, "a lone player acts more than once per round");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    const FtEnemyId group[3] = {
+        FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK};
+
+    FtEncounter e;
+    ft_encounter_init(&e, group, 3, &lo, 5);
+    CHECK_EQ(e.player_turns, 0);
+
+    /* Take one action and run out the result hold: it should be the player's
+     * go again, not the enemies'. */
+    e.menu_index = FT_ACTION_DEFEND;
+    ft_encounter_press_ok(&e);
+    CHECK_EQ(e.player_turns, 1);
+    CHECK_EQ(e.phase, FT_PHASE_RESULT);
+
+    ft_encounter_tick(&e, FT_IMPACT_HOLD_MS + 10);
+    CHECK_EQ(e.phase, FT_PHASE_MENU);
+
+    /* The second action hands the round over. */
+    e.menu_index = FT_ACTION_DEFEND;
+    ft_encounter_press_ok(&e);
+    CHECK_EQ(e.player_turns, 2);
+
+    ft_encounter_tick(&e, FT_IMPACT_HOLD_MS + 10);
+    CHECK_EQ(e.phase, FT_PHASE_TELEGRAPH);
+}
+
+static void test_death_timing(void) {
+    section("foes die when the attack lands");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    FtEncounter e;
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 7);
+
+    /* Kill it outright, then check it is still drawn until the strike frame:
+     * a foe that drops dead before the attack visibly reaches it looks broken. */
+    e.phase = FT_PHASE_RESULT;
+    e.phase_ms = 0;
+    e.foe_charge_before[0] = 8;
+    e.foes[0].charge = 0;
+
+    CHECK(ft_encounter_in_anim(&e), "the attack is still travelling");
+    CHECK(ft_encounter_foe_visible(&e, 0), "and the foe is still on screen");
+    CHECK_EQ(ft_encounter_foe_shown_charge(&e, 0), 8);
+
+    /* Past the strike, it is gone and the bar reads empty. */
+    e.phase_ms = FT_ANIM_MS;
+    CHECK(!ft_encounter_foe_visible(&e, 0), "now it is down");
+    CHECK_EQ(ft_encounter_foe_shown_charge(&e, 0), 0);
+
+    /* A survivor is shown throughout, at its pre-hit value while in flight. */
+    e.phase_ms = 0;
+    e.foe_charge_before[0] = 8;
+    e.foes[0].charge = 3;
+    CHECK(ft_encounter_foe_visible(&e, 0), "a survivor stays visible");
+    CHECK_EQ(ft_encounter_foe_shown_charge(&e, 0), 8);
+
+    e.phase_ms = FT_ANIM_MS;
+    CHECK_EQ(ft_encounter_foe_shown_charge(&e, 0), 3);
 }
 
 static void test_ready_beat(void) {
@@ -780,10 +883,6 @@ static void test_encounter(void) {
             run.menu_index = FT_ACTION_CONTACT;
             ft_encounter_press_ok(&run);
         } else if(
-            run.phase == FT_PHASE_PLAYER_ACT &&
-            run.phase_ms >= FT_READY_MS + FT_ACTION_WINDOW_MS / 2) {
-            ft_encounter_press_ok(&run);
-        } else if(
             run.phase == FT_PHASE_TELEGRAPH &&
             run.phase_ms >= FT_READY_MS + FT_TELEGRAPH_MS - 20) {
             ft_encounter_press_ok(&run);
@@ -796,14 +895,16 @@ static void test_encounter(void) {
     CHECK(guard_ticks > 0, "the run should have faced at least one attack");
 
     /* Capture, end to end. Stray Packet's only attack is NORMAL class, so it
-     * is capturable; skipping the action command keeps the player's damage low
-     * enough that the enemy actually gets a turn. */
+     * is capturable. The player broadcasts and never presses the action
+     * command, so damage stays low enough that the foe survives to take a
+     * turn — with two player turns per enemy round, a timed contact hit kills
+     * it before it ever acts. */
     FtEncounter cap;
     ft_encounter_init_single(&cap, FT_ENEMY_STRAY_PACKET, &lo, 11);
     bool faced_attack = false;
     for(int i = 0; i < 20000 && !ft_encounter_over(&cap); i++) {
         if(cap.phase == FT_PHASE_MENU) {
-            cap.menu_index = FT_ACTION_CONTACT;
+            cap.menu_index = FT_ACTION_BROADCAST;
             ft_encounter_press_ok(&cap);
         } else if(
             cap.phase == FT_PHASE_TELEGRAPH &&
@@ -1250,47 +1351,50 @@ static void test_world(void) {
     CHECK(ft_world_map(&w) != NULL, "the first room has a map");
     CHECK(w.stats.charge > 0, "the player starts with charge");
 
-    /* Walking moves, and facing follows intent even when blocked. */
-    const FtPos before = w.pos;
-    ft_world_walk(&w, 1, 0, 100);
+    /* Movement is grid-based: a press starts a step to the next tile, and
+     * that step runs to completion whatever the input does meanwhile. */
+    const uint8_t start_tx = w.mv.tx;
+    ft_world_update(&w, 1, 0, 20);
     CHECK_EQ(w.facing, FT_FACE_RIGHT);
-    CHECK(w.pos.x > before.x, "walking right moves right");
-    CHECK(w.moving, "walking sets the walk flag");
+    CHECK(ft_world_moving(&w), "a step is under way");
+    CHECK_EQ(w.mv.tx, start_tx); /* not there yet */
 
-    ft_world_walk(&w, 0, 0, 100);
-    CHECK(!w.moving, "standing still clears it");
+    /* Releasing mid-step does not abandon it — that is what keeps the player
+     * tile-aligned and doorways easy to hit. */
+    ft_world_update(&w, 0, 0, FT_STEP_MS);
+    CHECK(!ft_world_moving(&w), "the step finished");
+    CHECK_EQ(w.mv.tx, start_tx + 1);
+    CHECK(w.arrived, "arrival is reported for one update");
+
+    ft_world_update(&w, 0, 0, 10);
+    CHECK(!w.arrived, "and only for one");
     CHECK_EQ(w.facing, FT_FACE_RIGHT); /* facing persists */
 
-    /* Walk speed must match the constant regardless of tick size. At a 10ms
-     * tick the naive integer division floors to zero, and rounding that up to
-     * one pixel per tick ran the player at 100 px/s instead of 44. */
+    /* One tile per FT_STEP_MS, whatever the tick size. The old pixel-based
+     * walk ran at 100 px/s instead of 44 because a 10ms tick floored to zero
+     * pixels and got rounded up; stepping cannot drift that way. */
     for(int tick = 1; tick <= 40; tick++) {
         FtWorld s2;
         ft_world_init(&s2);
-        /* Row 6 of Boot Corridor is clear floor end to end; row 3 has a crate
-         * in it, which measures collision rather than speed. */
         ft_world_enter(&s2, 1, 2, 6);
 
-        const int32_t x0 = s2.pos.x;
-        for(uint32_t elapsed = 0; elapsed < 1000u; elapsed += (uint32_t)tick) {
-            ft_world_walk(&s2, 1, 0, (uint32_t)tick);
+        const uint8_t x0 = s2.mv.tx;
+        uint32_t elapsed = 0;
+        while(elapsed < FT_STEP_MS * 4u) {
+            ft_world_update(&s2, 1, 0, (uint32_t)tick);
+            elapsed += (uint32_t)tick;
         }
-        const int32_t travelled = s2.pos.x - x0;
 
-        /* Within a pixel or two of the intended distance, whatever the tick. */
-        CHECK(travelled >= FT_WALK_PX_PER_S - 3 && travelled <= FT_WALK_PX_PER_S + 3,
-              "tick %dms travelled %d px in a second, expected ~%d", tick,
-              (int)travelled, FT_WALK_PX_PER_S);
+        const int moved = (int)s2.mv.tx - (int)x0;
+        CHECK(moved >= 3 && moved <= 4, "tick %dms moved %d tiles in 4 steps", tick, moved);
     }
 
-    /* A wall stops movement but still turns you, which is what lets you
+    /* A wall refuses the step but still turns you, which is what lets you
      * strike a foe you cannot walk into. */
     ft_world_enter(&w, 0, 1, 1);
-    const FtPos corner = w.pos;
-    for(int i = 0; i < 40; i++) ft_world_walk(&w, -1, 0, 50);
+    for(int i = 0; i < 40; i++) ft_world_update(&w, -1, 0, 50);
     CHECK_EQ(w.facing, FT_FACE_LEFT);
-    CHECK(w.pos.x >= 0, "the wall holds");
-    CHECK(w.pos.x <= corner.x, "and did not push through it");
+    CHECK_EQ(w.mv.tx, 1); /* the wall held */
 
     /* Entity clearing is per room, so beating a foe in one room must not
      * silently remove one in another. */
@@ -1327,14 +1431,12 @@ static void test_world_links(void) {
             CHECK(x->dest_room < ft_room_count(), "room %u exit %u leads somewhere",
                   r, e);
 
-            /* The landing spot must be walkable for the whole footprint. */
+            /* The landing tile must be standable, or the exit drops the
+             * player inside a wall. */
             const FtRoom* dest = ft_room(x->dest_room);
-            FtWorld probe;
-            ft_world_init(&probe);
-            ft_world_enter(&probe, x->dest_room, x->dest_tx, x->dest_ty);
+            const FtTile landing = ft_map_tile(dest->map, x->dest_tx, x->dest_ty);
 
-            CHECK(!ft_map_blocked(dest->map, probe.pos),
-                  "room %u exit %u lands somewhere standable", r, e);
+            CHECK(!ft_tile_solid(landing), "room %u exit %u lands on open ground", r, e);
         }
 
         /* Foes must stand on walkable ground, or they can never be reached. */
@@ -1391,6 +1493,9 @@ int main(void) {
     test_enemy_table();
     test_guard_timing();
     test_rating_timing();
+    test_guarded_window();
+    test_turn_economy();
+    test_death_timing();
     test_ready_beat();
     test_encounter();
     test_tutorial();
