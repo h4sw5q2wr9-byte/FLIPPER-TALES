@@ -35,6 +35,12 @@ static void build(FtEncounter* e, const Shot* s) {
     e->enemy_charge = (int16_t)(e->enemy_charge_max / 2);
     e->signal.value = 70;
 
+    /* Widest case for the pip row: four bars, three of them filled. */
+    if(s->enemy == FT_ENEMY_SEALED_LOCK) {
+        e->signal.max_bars = 4;
+        e->signal.value = 320;
+    }
+
     switch(s->phase) {
     case FT_PHASE_TELEGRAPH:
     case FT_PHASE_IMPACT:
@@ -71,14 +77,17 @@ int main(void) {
         {"menu-airborne",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_MENU,       0,    1, 0},
         {"menu-encrypted",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    0, 0},
         {"menu-last",       FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    3, 0},
-        {"strike-early",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 120,  1, 0},
-        {"strike-perfect",  FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 350,  1, 0},
+        /* Phase times include the FT_READY_MS lead-in. */
+        {"strike-ready",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 200,  1, 0},
+        {"strike-early",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 620,  1, 0},
+        {"strike-perfect",  FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 850,  1, 0},
         {"result-hit",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     100,  1, 0},
         {"result-locked",   FT_ENEMY_SEALED_LOCK,  FT_PHASE_RESULT,     100,  0, 1},
-        {"telegraph-far",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  300,  0, 0},
-        {"telegraph-near",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1020, 0, 0},
-        {"telegraph-guard", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1000, 0, 1},
-        {"telegraph-undo",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_TELEGRAPH,  900,  0, 1},
+        {"telegraph-ready", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  250,  0, 0},
+        {"telegraph-far",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  800,  0, 0},
+        {"telegraph-near",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1270, 0, 0},
+        {"telegraph-guard", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1240, 0, 1},
+        {"telegraph-undo",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_TELEGRAPH,  1100, 0, 1},
         {"impact-capture",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     100,  0, 0},
         {"impact-jam",      FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     100,  0, 1},
         {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0},

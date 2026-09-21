@@ -103,4 +103,14 @@ bool           ft_encounter_over(const FtEncounter* e);
 /* The attack currently being telegraphed, or NULL outside the wind-up. */
 const FtAttack* ft_encounter_incoming(const FtEncounter* e);
 
+/* True during the "get set" beat, before the timing cursor is released. */
+bool ft_encounter_in_ready(const FtEncounter* e);
+
+/* Milliseconds since the cursor started moving; zero during the ready beat.
+ * This, not phase_ms, is what the timing windows are measured against. */
+uint32_t ft_encounter_sweep_ms(const FtEncounter* e);
+
+/* Total length of the current phase's timing bar, ready beat excluded. */
+uint32_t ft_encounter_sweep_window(const FtEncounter* e);
+
 #endif /* FT_ENCOUNTER_H */

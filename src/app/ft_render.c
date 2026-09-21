@@ -1,5 +1,7 @@
 #include "ft_render.h"
 
+#include "ft_sprites.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -98,49 +100,49 @@ static void draw_header(Canvas* canvas, const FtEncounter* e) {
 
 /* ---- Arena ----------------------------------------------------------- */
 
-static void draw_player(Canvas* c, int32_t x, int32_t y, bool hurt) {
-    canvas_draw_rframe(c, x, y, 10, 14, 2);
-    canvas_draw_box(c, x + 2, y + 2, 6, 5);
-
-    if(hurt) {
-        canvas_set_color(c, ColorWhite);
-        canvas_draw_line(c, x + 3, y + 3, x + 6, y + 6);
-        canvas_set_color(c, ColorBlack);
+/* Blit a 16x16 sprite. Bit n of each row is column n from the left. */
+static void draw_sprite(Canvas* c, const uint16_t* rows, int32_t x, int32_t y) {
+    for(int32_t sy = 0; sy < FT_SPRITE_H; sy++) {
+        const uint16_t bits = rows[sy];
+        if(!bits) continue;
+        for(int32_t sx = 0; sx < FT_SPRITE_W; sx++) {
+            if(bits & (1u << sx)) canvas_draw_dot(c, x + sx, y + sy);
+        }
     }
-    canvas_draw_dot(c, x + 3, y + 10);
-    canvas_draw_dot(c, x + 6, y + 10);
 }
 
-/* Silhouette keyed to attributes, so the lock is legible at a glance. */
-static void draw_enemy(Canvas* c, int32_t x, int32_t y, uint32_t attrs) {
-    if(attrs & FT_ATTR_AIRBORNE) {
-        canvas_draw_circle(c, x + 7, y + 6, 5);
-        canvas_draw_line(c, x + 2, y + 3, x - 1, y);
-        canvas_draw_line(c, x + 12, y + 3, x + 15, y);
-        canvas_draw_dot(c, x + 5, y + 5);
-        canvas_draw_dot(c, x + 9, y + 5);
-    } else if(attrs & FT_ATTR_ENCRYPTED) {
-        canvas_draw_box(c, x + 1, y + 5, 12, 9);
-        canvas_draw_circle(c, x + 7, y + 4, 3);
-        canvas_set_color(c, ColorWhite);
-        canvas_draw_dot(c, x + 7, y + 9);
+static void draw_player(Canvas* c, int32_t x, int32_t y, bool hurt) {
+    draw_sprite(c, FT_SPRITE_PLAYER, x, y);
+
+    /* While Charge is still draining, the screen goes dark: the sprite reads
+     * its own state rather than relying on the bar alone. */
+    if(hurt) {
+        canvas_set_color(c, ColorXOR);
+        canvas_draw_box(c, x + 4, y + 4, 8, 6);
         canvas_set_color(c, ColorBlack);
-    } else {
-        canvas_draw_rframe(c, x, y + 2, 14, 11, 3);
-        canvas_draw_dot(c, x + 4, y + 6);
-        canvas_draw_dot(c, x + 9, y + 6);
-        canvas_draw_line(c, x + 4, y + 9, x + 9, y + 9);
     }
+}
+
+static const uint16_t* enemy_sprite(uint32_t attrs) {
+    if(attrs & FT_ATTR_AIRBORNE) return FT_SPRITE_BEACON;
+    if(attrs & FT_ATTR_ENCRYPTED) return FT_SPRITE_LOCK;
+    return FT_SPRITE_PACKET;
 }
 
 static void draw_arena(Canvas* canvas, const FtEncounter* e) {
-    draw_player(canvas, 6, FT_ARENA_Y + 5, ft_roll_active(&e->roll));
-    draw_enemy(canvas, 104, FT_ARENA_Y + 5, ft_encounter_enemy(e)->attrs);
+    const int32_t floor_y = FT_ARENA_Y + 18;
+
+    /* A dashed ground line gives the sprites somewhere to stand and stops the
+     * arena reading as two shapes floating in a void. */
+    for(int32_t x = 2; x < FT_SCREEN_W - 2; x += 3) canvas_draw_dot(canvas, x, floor_y);
+
+    draw_player(canvas, 4, floor_y - 16, ft_roll_active(&e->roll));
+    draw_sprite(canvas, enemy_sprite(ft_encounter_enemy(e)->attrs), 106, floor_y - 16);
 
     /* Enemy health, directly under its sprite. */
     const int32_t bw = 24;
     const int32_t bx = 100;
-    const int32_t by = FT_ARENA_Y + 21;
+    const int32_t by = floor_y + 2;
 
     canvas_draw_frame(canvas, bx, by, (size_t)bw, 4);
     {
@@ -176,9 +178,27 @@ static int32_t ms_to_px(uint32_t ms, uint32_t window) {
 }
 
 /* "Time your strike": hit the solid block in the middle. */
+/* During the ready beat the track and its zones are already drawn; this marks
+ * the start line and counts the player in. */
+static void draw_ready_overlay(Canvas* canvas, const FtEncounter* e) {
+    canvas_draw_box(canvas, TRACK_X, TRACK_Y + 1, 3, TRACK_H - 2);
+
+    /* Three pips that empty as the beat runs out. */
+    const int32_t lit = 3 - (int32_t)((e->phase_ms * 3u) / FT_READY_MS);
+    for(int32_t i = 0; i < 3; i++) {
+        const int32_t px = FT_SCREEN_W / 2 - 10 + i * 8;
+        if(i < lit) {
+            canvas_draw_box(canvas, px, TRACK_Y + 5, 5, 5);
+        } else {
+            canvas_draw_frame(canvas, px, TRACK_Y + 5, 5, 5);
+        }
+    }
+}
+
 static void draw_strike_check(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
-    draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 4, "TIME YOUR STRIKE");
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 4,
+                 ft_encounter_in_ready(e) ? "GET READY" : "TIME YOUR STRIKE");
 
     canvas_draw_frame(canvas, TRACK_X, TRACK_Y, TRACK_W, TRACK_H);
 
@@ -190,7 +210,12 @@ static void draw_strike_check(Canvas* canvas, const FtEncounter* e) {
     hatch(canvas, mid - good, TRACK_Y + 1, good * 2, TRACK_H - 2);
     canvas_draw_box(canvas, mid - best, TRACK_Y + 1, (size_t)(best * 2), TRACK_H - 2);
 
-    draw_cursor(canvas, TRACK_X + ms_to_px(e->phase_ms, FT_ACTION_WINDOW_MS));
+    if(ft_encounter_in_ready(e)) {
+        draw_ready_overlay(canvas, e);
+        return;
+    }
+
+    draw_cursor(canvas, TRACK_X + ms_to_px(ft_encounter_sweep_ms(e), FT_ACTION_WINDOW_MS));
 
     if(e->action_pressed) draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 25, "LOCKED IN");
 }
@@ -237,7 +262,12 @@ static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
         }
     }
 
-    draw_cursor(canvas, TRACK_X + ms_to_px(e->phase_ms, FT_TELEGRAPH_MS));
+    if(ft_encounter_in_ready(e)) {
+        draw_ready_overlay(canvas, e);
+        return;
+    }
+
+    draw_cursor(canvas, TRACK_X + ms_to_px(ft_encounter_sweep_ms(e), FT_TELEGRAPH_MS));
 }
 
 /* ---- Popups ---------------------------------------------------------- */
@@ -262,6 +292,10 @@ static void draw_popup(Canvas* canvas, const char* top, const char* bottom) {
     canvas_draw_box(canvas, x, y, (size_t)w, (size_t)h);
     canvas_set_color(canvas, ColorBlack);
     canvas_draw_frame(canvas, x, y, (size_t)w, (size_t)h);
+
+    /* A one-pixel drop shadow: cheap depth on a panel with no colour. */
+    canvas_draw_line(canvas, x + 2, y + h, x + w, y + h);
+    canvas_draw_line(canvas, x + w, y + 2, x + w, y + h);
 
     draw_centred(canvas, FT_SCREEN_W / 2, y + 8, top);
     if(bottom) draw_centred(canvas, FT_SCREEN_W / 2, y + 17, bottom);
@@ -332,6 +366,8 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
     char buf[12];
 
+    canvas_draw_line(canvas, 0, FT_STATUS_Y - 1, FT_SCREEN_W - 1, FT_STATUS_Y - 1);
+
     canvas_draw_str(canvas, 2, FT_STATUS_Y + 7, "CHG");
 
     const int32_t bx = 22, bw = 38;
@@ -339,26 +375,37 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
     {
         const int32_t fill = ft_bar_fill(e->roll.current, e->stats.charge_max, bw);
         if(fill > 0) canvas_draw_box(canvas, bx + 1, FT_STATUS_Y + 2, (size_t)fill, 5);
+
+        /* Quarter ticks turn the bar into a gauge you can read at a glance
+         * instead of a featureless slab. */
+        for(int32_t q = 1; q < 4; q++) {
+            const int32_t tx = bx + (bw * q) / 4;
+            canvas_set_color(canvas, (tx - bx - 1 < fill) ? ColorWhite : ColorBlack);
+            canvas_draw_dot(canvas, tx, FT_STATUS_Y + 4);
+            canvas_set_color(canvas, ColorBlack);
+        }
     }
 
     snprintf(buf, sizeof(buf), "%d", (int)e->roll.current);
-    canvas_draw_str(canvas, 63, FT_STATUS_Y + 7, buf);
+    canvas_draw_str(canvas, 62, FT_STATUS_Y + 7, buf);
 
     snprintf(buf, sizeof(buf), "R%d", (int)e->stats.ram);
-    canvas_draw_str(canvas, 78, FT_STATUS_Y + 7, buf);
+    canvas_draw_str(canvas, 77, FT_STATUS_Y + 7, buf);
 
-    canvas_draw_str(canvas, 93, FT_STATUS_Y + 7, "SIG");
+    /* One letter, not three: the pips beside it are self-explanatory once
+     * they start filling, and the width is needed for four of them. */
+    canvas_draw_str(canvas, 92, FT_STATUS_Y + 7, "S");
 
     const uint8_t bars = ft_signal_bars(&e->signal);
-    for(uint8_t i = 0; i < e->signal.max_bars && i < 2u; i++) {
-        const int32_t sx = 112 + i * 7;
+    for(uint8_t i = 0; i < e->signal.max_bars && i < 4u; i++) {
+        const int32_t sx = 100 + i * 7;
         if(e->signal.locked) {
-            hatch(canvas, sx, FT_STATUS_Y + 1, 6, 7);
-            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 6, 7);
+            hatch(canvas, sx, FT_STATUS_Y + 1, 5, 7);
+            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 5, 7);
         } else if(i < bars) {
-            canvas_draw_box(canvas, sx, FT_STATUS_Y + 1, 6, 7);
+            canvas_draw_box(canvas, sx, FT_STATUS_Y + 1, 5, 7);
         } else {
-            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 6, 7);
+            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 5, 7);
         }
     }
 }
@@ -396,13 +443,14 @@ static void draw_menu(Canvas* canvas, const FtEncounter* e) {
             canvas_set_color(canvas, ColorWhite);
         }
 
-        draw_clipped(canvas, x + 3, y + 7, label, w - 6);
+        if(selected) canvas_draw_str(canvas, x + 2, y + 7, ">");
+        draw_clipped(canvas, x + 9, y + 7, label, w - 12);
 
         /* A locked module is struck through rather than hidden, so the player
          * reads the attribute instead of wondering where the option went. */
         if(!available) {
-            const int32_t w = (int32_t)canvas_string_width(canvas, label);
-            canvas_draw_line(canvas, x + 3, y + 4, x + 3 + w, y + 4);
+            const int32_t lw = (int32_t)canvas_string_width(canvas, label);
+            canvas_draw_line(canvas, x + 9, y + 4, x + 9 + lw, y + 4);
         }
 
         if(selected) canvas_set_color(canvas, ColorBlack);

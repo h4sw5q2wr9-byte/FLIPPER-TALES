@@ -31,6 +31,28 @@ FtRating ft_rating_from_timing(int32_t ms_from_perfect) {
     return FT_RATING_MISS;
 }
 
+/* ---- Ready beat ------------------------------------------------------ */
+
+bool ft_encounter_in_ready(const FtEncounter* e) {
+    if(e->phase != FT_PHASE_PLAYER_ACT && e->phase != FT_PHASE_TELEGRAPH) return false;
+    return e->phase_ms < FT_READY_MS;
+}
+
+uint32_t ft_encounter_sweep_window(const FtEncounter* e) {
+    if(e->phase == FT_PHASE_PLAYER_ACT) return FT_ACTION_WINDOW_MS;
+    if(e->phase == FT_PHASE_TELEGRAPH) return FT_TELEGRAPH_MS;
+    return 0u;
+}
+
+uint32_t ft_encounter_sweep_ms(const FtEncounter* e) {
+    if(e->phase_ms <= FT_READY_MS) return 0u;
+
+    const uint32_t elapsed = e->phase_ms - FT_READY_MS;
+    const uint32_t window = ft_encounter_sweep_window(e);
+
+    return (window && elapsed > window) ? window : elapsed;
+}
+
 /* ---- Setup ----------------------------------------------------------- */
 
 const FtEnemy* ft_encounter_enemy(const FtEncounter* e) {
@@ -233,17 +255,24 @@ void ft_encounter_press_ok(FtEncounter* e) {
         break;
 
     case FT_PHASE_PLAYER_ACT:
-        /* Only the first press counts — mashing must not help. */
+        /* Presses during the ready beat are ignored, not penalised. Mashing
+         * still costs you: the first press once the cursor moves lands at the
+         * very start of the sweep, nowhere near the target. */
+        if(ft_encounter_in_ready(e)) break;
+
+        /* Only the first press counts. */
         if(!e->action_pressed) {
             e->action_pressed = true;
-            e->action_press_ms = e->phase_ms;
+            e->action_press_ms = ft_encounter_sweep_ms(e);
         }
         break;
 
     case FT_PHASE_TELEGRAPH:
+        if(ft_encounter_in_ready(e)) break;
+
         if(!e->guard_pressed) {
             e->guard_pressed = true;
-            e->guard_press_ms = e->phase_ms;
+            e->guard_press_ms = ft_encounter_sweep_ms(e);
         }
         break;
 
@@ -272,7 +301,7 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         break;
 
     case FT_PHASE_PLAYER_ACT:
-        if(e->phase_ms >= FT_ACTION_WINDOW_MS) {
+        if(e->phase_ms >= FT_READY_MS + FT_ACTION_WINDOW_MS) {
             resolve_player_action(e);
             enter_phase(e, FT_PHASE_RESULT);
         }
@@ -290,7 +319,7 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         break;
 
     case FT_PHASE_TELEGRAPH:
-        if(e->phase_ms >= FT_TELEGRAPH_MS) {
+        if(e->phase_ms >= FT_READY_MS + FT_TELEGRAPH_MS) {
             resolve_enemy_action(e);
             enter_phase(e, FT_PHASE_IMPACT);
         }

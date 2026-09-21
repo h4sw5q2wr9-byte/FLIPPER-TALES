@@ -628,6 +628,53 @@ static void test_rating_timing(void) {
     }
 }
 
+static void test_ready_beat(void) {
+    section("ready beat");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    FtEncounter e;
+    ft_encounter_init(&e, FT_ENEMY_STRAY_PACKET, &lo, 2);
+    e.menu_index = FT_ACTION_CONTACT;
+    ft_encounter_press_ok(&e);
+    CHECK_EQ(e.phase, FT_PHASE_PLAYER_ACT);
+
+    /* The cursor is held still for the whole beat. */
+    CHECK(ft_encounter_in_ready(&e), "a fresh sweep starts in the ready beat");
+    CHECK_EQ(ft_encounter_sweep_ms(&e), 0);
+
+    ft_encounter_tick(&e, FT_READY_MS - 1);
+    CHECK(ft_encounter_in_ready(&e), "still ready one ms before the release");
+    CHECK_EQ(ft_encounter_sweep_ms(&e), 0);
+
+    ft_encounter_tick(&e, 2);
+    CHECK(!ft_encounter_in_ready(&e), "released once the beat elapses");
+    CHECK_EQ(ft_encounter_sweep_ms(&e), 1);
+
+    /* The sweep clock saturates at the window rather than running past it. */
+    ft_encounter_tick(&e, FT_ACTION_WINDOW_MS * 4);
+    CHECK(ft_encounter_sweep_ms(&e) <= FT_ACTION_WINDOW_MS,
+          "sweep clock must not exceed its window");
+
+    /* The guard sweep gets the same lead-in, and a press during it is ignored
+     * rather than counting as a wildly early guard. */
+    FtEncounter g;
+    ft_encounter_init(&g, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    g.phase = FT_PHASE_TELEGRAPH;
+    g.phase_ms = 0;
+    CHECK(ft_encounter_in_ready(&g), "guard sweep also starts with a beat");
+
+    ft_encounter_press_ok(&g);
+    CHECK(!g.guard_pressed, "ready-beat guard presses must be ignored");
+
+    /* Phases without a timing bar never report a ready beat. */
+    FtEncounter m;
+    ft_encounter_init(&m, FT_ENEMY_STRAY_PACKET, &lo, 6);
+    CHECK(!ft_encounter_in_ready(&m), "the menu is not a ready beat");
+    CHECK_EQ(ft_encounter_sweep_window(&m), 0);
+}
+
 static void test_encounter(void) {
     section("encounter state machine");
 
@@ -679,7 +726,16 @@ static void test_encounter(void) {
     ft_encounter_press_ok(&fight);
     CHECK_EQ(fight.phase, FT_PHASE_PLAYER_ACT);
 
-    ft_encounter_tick(&fight, FT_ACTION_WINDOW_MS / 2);
+    /* Presses during the ready beat are ignored outright. */
+    ft_encounter_tick(&fight, FT_READY_MS / 2);
+    CHECK(ft_encounter_in_ready(&fight), "the sweep has not started yet");
+    ft_encounter_press_ok(&fight);
+    CHECK(!fight.action_pressed, "ready-beat presses must be ignored");
+    CHECK_EQ(ft_encounter_sweep_ms(&fight), 0);
+
+    /* Land the press at the middle of the sweep, which is the perfect moment. */
+    ft_encounter_tick(&fight, (FT_READY_MS / 2) + FT_ACTION_WINDOW_MS / 2);
+    CHECK(!ft_encounter_in_ready(&fight), "the sweep should have started");
     ft_encounter_press_ok(&fight);
 
     /* Mashing must not improve on the first press. */
@@ -717,9 +773,13 @@ static void test_encounter(void) {
         if(run.phase == FT_PHASE_MENU) {
             run.menu_index = FT_ACTION_CONTACT;
             ft_encounter_press_ok(&run);
-        } else if(run.phase == FT_PHASE_PLAYER_ACT && run.phase_ms >= FT_ACTION_WINDOW_MS / 2) {
+        } else if(
+            run.phase == FT_PHASE_PLAYER_ACT &&
+            run.phase_ms >= FT_READY_MS + FT_ACTION_WINDOW_MS / 2) {
             ft_encounter_press_ok(&run);
-        } else if(run.phase == FT_PHASE_TELEGRAPH && run.phase_ms >= FT_TELEGRAPH_MS - 20) {
+        } else if(
+            run.phase == FT_PHASE_TELEGRAPH &&
+            run.phase_ms >= FT_READY_MS + FT_TELEGRAPH_MS - 20) {
             ft_encounter_press_ok(&run);
             guard_ticks++;
         }
@@ -739,7 +799,9 @@ static void test_encounter(void) {
         if(cap.phase == FT_PHASE_MENU) {
             cap.menu_index = FT_ACTION_CONTACT;
             ft_encounter_press_ok(&cap);
-        } else if(cap.phase == FT_PHASE_TELEGRAPH && cap.phase_ms >= FT_TELEGRAPH_MS - 20) {
+        } else if(
+            cap.phase == FT_PHASE_TELEGRAPH &&
+            cap.phase_ms >= FT_READY_MS + FT_TELEGRAPH_MS - 20) {
             ft_encounter_press_ok(&cap);
             faced_attack = true;
         }
@@ -757,7 +819,7 @@ static void test_encounter(void) {
     undo.phase = FT_PHASE_TELEGRAPH;
     undo.enemy_attack_index = 1; /* Seal: UNDODGEABLE */
     undo.guard_pressed = true;
-    undo.guard_press_ms = FT_TELEGRAPH_MS; /* frame perfect */
+    undo.guard_press_ms = FT_TELEGRAPH_MS; /* frame perfect on the sweep clock */
     ft_encounter_tick(&undo, 0);
     CHECK_EQ(FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attacks[1].klass, FT_CLASS_UNDODGEABLE);
 }
@@ -781,6 +843,7 @@ int main(void) {
     test_enemy_table();
     test_guard_timing();
     test_rating_timing();
+    test_ready_beat();
     test_encounter();
     test_rng();
 

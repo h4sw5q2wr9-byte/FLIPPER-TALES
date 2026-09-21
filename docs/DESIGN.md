@@ -148,6 +148,12 @@ about five samples. These are the numbers most likely to need changing
 once the game is played on hardware — they are constants in `ft_types.h` for
 exactly that reason.
 
+Both bars open with a **500 ms ready beat** (`FT_READY_MS`). The track and its
+target zones are drawn, but the cursor is held at the start line and three pips
+count the player in. Presses during the beat are ignored rather than penalised —
+mashing is still self-punishing, because the first press after the release lands
+at the very start of the sweep, nowhere near the target.
+
 Action commands use the same mechanism, graded by distance from the perfect
 moment: ≤30 ms EXCELLENT, ≤60 ms AMAZING, ≤100 ms GREAT, ≤160 ms GOOD, else a
 miss. Early and late are punished identically.
@@ -248,6 +254,13 @@ running off both edges.
 
 The stub's font advances are deliberately wider than the firmware's, so the
 check errs toward reporting overflow the device would not actually show.
+
+Character art lives in `tools/gensprites.py` as editable ASCII, which emits
+`src/app/ft_sprites.h` and a preview PNG. Three rules keep a 16×16 sprite
+legible at one bit: a solid 2px silhouette, a white interior, and features at
+least 2×2 inside it — thin outline mixed with fill turns to mush at this size.
+Each enemy's silhouette encodes its attribute class, so `AIRBORNE` and
+`ENCRYPTED` are readable before the tags are.
 
 **Width budget: 20 characters per line** at the standard font. Anything
 data-driven (enemy names, attack titles) is measured with `canvas_string_width`

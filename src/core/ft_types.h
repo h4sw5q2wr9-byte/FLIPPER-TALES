@@ -138,6 +138,12 @@ typedef enum {
 
 /* ---- Battle pacing --------------------------------------------------- */
 
+/* A "get set" beat before either timing bar starts moving. The bar and its
+ * target zones are already on screen, so the player can see what they are
+ * aiming at before the cursor is released. Presses during this beat are
+ * ignored rather than penalised. */
+#define FT_READY_MS 500
+
 /* Both sweeps are short on purpose. The bar that shows them is only ~120px
  * wide, so a longer sweep makes every timing band too few pixels to read. */
 #define FT_ACTION_WINDOW_MS    700  /* action command bar sweep */
