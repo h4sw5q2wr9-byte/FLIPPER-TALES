@@ -128,6 +128,47 @@ Big/Small, Painted, Butterfingers, Exhausted.
 `+50% XP` in exchange for `2× damage taken`, `halved guard window`, `2× HP roll speed`.
 Difficulty is a build decision, not a menu setting. Excellent idea.
 
+## Area structure — how a chapter is actually laid out
+
+Not an open world, and not rooms-with-backtracking. **An area is a numbered
+chain of rooms**, each about a screen, walked left to right:
+`Rugged Rainforest [1] → [2] → … → [12]`, then a town, then the next area.
+
+Each room holds a small, fixed amount:
+
+- **One overworld foe** (sometimes none). Touching it starts a battle against a
+  **predefined group** — the sprite you see plus its friends. `Overworld:
+  Gorilla` fights `Toxic Spearman + Gorilla`; `Overworld: Mosquito Swarm`
+  fights two Mosquito Swarms.
+- **An item or two**, plus a hidden collectible (BUX) tucked in a corner,
+  behind a tree, under bushes.
+- Sometimes **one obstacle**, and each obstacle has exactly one answer:
+
+| Obstacle | Answer |
+|---|---|
+| Rubble blocking the path | Dynamite |
+| Pits of thorns / water | Rocket Boots (fly across) |
+| Thick grass | Iron Sword upgrade |
+| A river | Bottled Ship — a **Chapter 4** item, so the room is revisited |
+| Lilypads that sink | Timing |
+| Thorn vines that lash out | Timing |
+| Far-away item | Throw the Ball at it |
+
+- Occasionally a **side room** off the main path (Komodo Nest, Secret Cave),
+  holding an item and usually nothing else.
+- **Vertical sections** connected by ladders, with rooms having a "first floor"
+  and "second floor" and doors on each.
+- A **mini-boss blocks the exit** at the end of an area: "Supreme Ant blocks
+  the player path and forces them into a battle right at the exit, winning
+  against her granting access to Roadtown."
+
+Towns follow the same shape — West Bizville → Central Bizville → East
+Bizville — but swap foes for shops, an inn with a bed, and NPCs.
+
+The important consequence: **a room is a small authored set-piece, not a space
+to explore.** The interest comes from the encounter, the one obstacle, and the
+hidden thing in the corner — not from layout.
+
 ## Other systems
 
 - **Cooking** — item → item transmutation via an NPC; incompatible inputs yield "**A Mistake**",

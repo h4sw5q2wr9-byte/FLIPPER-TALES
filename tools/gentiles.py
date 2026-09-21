@@ -174,6 +174,19 @@ TILES["term"] = """
 ........
 """
 
+# Ladder: walkable, and the way between terraces. Top-down has no elevation,
+# so a terrace edge is drawn as wall and the ladder is the gap through it.
+TILES["ladder"] = """
+.#....#.
+.######.
+.#....#.
+.######.
+.#....#.
+.######.
+.#....#.
+.######.
+"""
+
 # Locked port. Opened by the iButton module, once it is recovered.
 TILES["lock"] = """
 ..####..
@@ -252,6 +265,8 @@ static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
     # Must match FtTile, then the orientation variants (FT_TILE_ART_*).
     order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock", "crate",
              "door_side", "lock_side", "cable_v", "wall_top", "shadow", "tuft"]
+    # Ladder is a real tile, so it goes in the FtTile run, not the variants.
+    order.insert(9, "ladder")
     for name in order:
         fh.write("    /* %-6s */ {%s},\n" % (name, ", ".join("0x%02X" % b for b in data[name])))
     fh.write("};\n\n#endif /* FT_TILES_H */\n")

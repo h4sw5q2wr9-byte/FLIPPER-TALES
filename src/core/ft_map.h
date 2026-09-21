@@ -28,6 +28,7 @@ typedef enum {
     FT_TILE_TERM,
     FT_TILE_LOCK,
     FT_TILE_CRATE,
+    FT_TILE_LADDER,
     FT_TILE_COUNT
 } FtTile;
 

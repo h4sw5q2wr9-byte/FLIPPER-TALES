@@ -18,56 +18,74 @@ LEGEND = {
     "T": 6,  # terminal
     "L": 7,  # locked port
     "C": 8,  # crate
+    "H": 9,  # ladder
 }
 
 MAPS = {}
 
-# Cold Boot: where the game opens. A terminal to teach saving, a locked port
-# that cannot be opened yet so the iButton has somewhere to matter later, and
-# two ways out of the first room so it never reads as a corridor.
-MAPS["cold_boot"] = ("Cold Boot", 12, """
-################################
-#....T....#....................#
-#.........#.....====.....****..#
-#....C....#.....====.....****..#
-#.........D.....====...........#
-#.........#....................#
-#.........#........C......C....#
-###D#######....................#
-#..............................#
-#...****...........#####L#######
-#...****...........#...........#
-#..........C.......#...C...T...#
-#..................#...........#
-#......====........#...........#
-#......====........#############
-################################
+# An AREA is a numbered chain of ROOMS, each about a screen, walked left to
+# right — see RESEARCH.md. A room is a small authored set-piece: an encounter,
+# maybe one obstacle, and something hidden in a corner. It is not a space to
+# explore, so rooms are deliberately close to viewport-sized rather than the
+# 2.5-screen open fields the first sketch used.
+
+# [1] Wake. No foe, no obstacle: a terminal to teach saving and one exit.
+MAPS["cb1"] = ("Cold Boot", 10, """
+################
+#..............#
+#...T..........#
+#..............D
+#..............#
+#.........C....#
+#..............#
+################
 """)
 
-# The Scrapline: chapter one. Open ground broken by a void you must route
-# around, and the chapter's module sits behind a locked port on the far side,
-# so the place is walked twice — once to find it, once to open it.
-MAPS["scrapline"] = ("The Scrapline", 26, """
-########################################
-#......****......########..............#
-#......****......#......#....====......#
-#................#..C...#....====......#
-#....C...........D......#..............#
-#................#......#......C.......#
-#........~~~~~~~~#......D..............#
-#........~~~~~~~~#......#....######L####
-#........~~~~~~~~#......#....#.........#
-#........~~~~~~~~########....#...T.....#
-#........~~~~~~~~...........D..........#
-#........~~~~~~~~#....C......#.........#
-#................#...........#.........#
-#....T...........#....****...#####D#####
-#................#....****...#.........#
-#......C.........#...........#...C.....#
-#................D...........#.........#
-#................#...........#.........#
-#......====......#.....C.....#.........#
-########################################
+# [2] First encounter. Wider than a screen so the foe is seen before it is
+# reached, which is the whole point of visible encounters.
+MAPS["cb2"] = ("Boot Corridor", 18, """
+####################
+#..................#
+D.........*........#
+#....C.......*.....#
+#..................D
+#........*.........#
+#..................#
+####################
+""")
+
+# [3] Vertical section. A terrace splits the room and the ladder is the only
+# way down; the item on the upper shelf is passed before it can be taken.
+MAPS["cb3"] = ("The Drop", 22, """
+##################
+#................#
+D....*...........#
+#................#
+#......C.........#
+#####H############
+#................#
+#................#
+#.........T......#
+#................#
+#................D
+#....*...........#
+#................#
+##################
+""")
+
+# [4] The gate. A sealed side room behind a locked port, which cannot be opened
+# until the iButton several chapters later — the reason to come back.
+MAPS["cb4"] = ("Cold Gate", 14, """
+##################
+#................#
+D................#
+#.....############
+#.....#..........#
+#.....L.....C....#
+#.....#..........#
+#.....############
+#......*.........D
+##################
 """)
 
 
@@ -106,7 +124,8 @@ with open("src/app/ft_maps.h", "w") as fh:
         fh.write(
             'static const FtMap FT_MAP_%s = {FT_MAP_%s_TILES, %u, %u, "%s", %u};\n\n'
             % (key.upper(), key.upper(), w, h, name, scatter))
-        print("%-12s %2ux%-2u tiles  (%u px wide, %.1f screens)" % (key, w, h, w * 8, w / 16))
+        print("%-8s %-16s %2ux%-2u tiles  %.2f x %.2f screens"
+              % (key, name, w, h, w / 16, h / 8))
 
     fh.write("#endif /* FT_MAPS_H */\n")
 

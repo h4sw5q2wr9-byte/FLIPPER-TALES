@@ -65,18 +65,16 @@ static void write_whole_map(const FtMap* m, const char* path) {
 
 int main(void) {
     static const Shot shots[] = {
-        {"cold-start",   &FT_MAP_COLD_BOOT, 40,  40,  FT_FACE_DOWN,  false, 0},
-        {"cold-term",    &FT_MAP_COLD_BOOT, 44,  20,  FT_FACE_UP,    true, 9000},
-        {"cold-door",    &FT_MAP_COLD_BOOT, 76,  36,  FT_FACE_RIGHT, true, 9000},
-        {"cold-grass",   &FT_MAP_COLD_BOOT, 40,  80,  FT_FACE_DOWN,  true, 9000},
-        {"cold-locked",  &FT_MAP_COLD_BOOT, 180, 84,  FT_FACE_RIGHT, false, 9000},
-        {"door-side",    &FT_MAP_COLD_BOOT, 72,  36,  FT_FACE_RIGHT, false, 9000},
-        {"door-front",   &FT_MAP_COLD_BOOT, 24,  52,  FT_FACE_DOWN,  false, 9000},
-        {"lock-front",   &FT_MAP_COLD_BOOT, 184, 76,  FT_FACE_UP,    false, 9000},
-        {"scrap-open",   &FT_MAP_SCRAPLINE, 60,  36,  FT_FACE_DOWN,  false, 0},
-        {"scrap-void",   &FT_MAP_SCRAPLINE, 56,  70,  FT_FACE_RIGHT, true, 9000},
-        {"scrap-corner", &FT_MAP_SCRAPLINE, 240, 60,  FT_FACE_RIGHT, true, 9000},
-        {"scrap-far",    &FT_MAP_SCRAPLINE, 264, 130, FT_FACE_UP,    false, 9000},
+        {"cb1-wake",     &FT_MAP_CB1, 32,  28, FT_FACE_RIGHT, false, 0},
+        {"cb1-terminal", &FT_MAP_CB1, 36,  20, FT_FACE_UP,    false, 9000},
+        {"cb1-exit",     &FT_MAP_CB1, 112, 28, FT_FACE_RIGHT, true,  9000},
+        {"cb2-foe",      &FT_MAP_CB2, 48,  28, FT_FACE_RIGHT, true,  0},
+        {"cb2-mid",      &FT_MAP_CB2, 96,  36, FT_FACE_RIGHT, true,  9000},
+        {"cb3-shelf",    &FT_MAP_CB3, 48,  28, FT_FACE_DOWN,  true,  0},
+        {"cb3-ladder",   &FT_MAP_CB3, 40,  36, FT_FACE_DOWN,  true,  9000},
+        {"cb3-lower",    &FT_MAP_CB3, 80,  68, FT_FACE_RIGHT, true,  9000},
+        {"cb4-lock",     &FT_MAP_CB4, 40,  44, FT_FACE_RIGHT, false, 0},
+        {"cb4-exit",     &FT_MAP_CB4, 120, 68, FT_FACE_RIGHT, true,  9000},
     };
 
     Canvas* canvas = ft_stub_canvas_alloc();
@@ -100,9 +98,9 @@ int main(void) {
     /* Camera must never show outside the map, however far the player pushes. */
     const FtPos corners[] = {{0, 0}, {10000, 10000}, {-500, -500}};
     for(size_t i = 0; i < sizeof(corners) / sizeof(corners[0]); i++) {
-        const FtPos c = ft_map_camera(&FT_MAP_SCRAPLINE, corners[i]);
-        const int32_t max_x = (int32_t)FT_MAP_SCRAPLINE.w * FT_TILE_PX - FT_VIEW_W * FT_TILE_PX;
-        const int32_t max_y = (int32_t)FT_MAP_SCRAPLINE.h * FT_TILE_PX - FT_VIEW_H * FT_TILE_PX;
+        const FtPos c = ft_map_camera(&FT_MAP_CB3, corners[i]);
+        const int32_t max_x = (int32_t)FT_MAP_CB3.w * FT_TILE_PX - FT_VIEW_W * FT_TILE_PX;
+        const int32_t max_y = (int32_t)FT_MAP_CB3.h * FT_TILE_PX - FT_VIEW_H * FT_TILE_PX;
 
         if(c.x < 0 || c.y < 0 || c.x > max_x || c.y > max_y) {
             printf("  CAMERA ESCAPED at (%d,%d) -> (%d,%d)\n", corners[i].x, corners[i].y,
@@ -114,8 +112,10 @@ int main(void) {
     ft_stub_canvas_free(canvas);
 
     /* Whole-level views, for judging layout rather than presentation. */
-    write_whole_map(&FT_MAP_COLD_BOOT, "preview/whole_cold_boot.pbm");
-    write_whole_map(&FT_MAP_SCRAPLINE, "preview/whole_scrapline.pbm");
+    write_whole_map(&FT_MAP_CB1, "preview/whole_1_cb1.pbm");
+    write_whole_map(&FT_MAP_CB2, "preview/whole_2_cb2.pbm");
+    write_whole_map(&FT_MAP_CB3, "preview/whole_3_cb3.pbm");
+    write_whole_map(&FT_MAP_CB4, "preview/whole_4_cb4.pbm");
 
     printf("\n%s\n", clipped_total ? "MAP PREVIEW FAILED" : "map preview clean");
     return clipped_total ? 1 : 0;
