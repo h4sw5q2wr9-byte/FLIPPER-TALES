@@ -171,6 +171,16 @@ typedef enum {
 /* Taking a hit: both fighters flicker, then an iris closes to black, holds,
  * and opens again onto the same fight. Measured from the strike frame. */
 #define FT_FLICKER_MS   180
+/* The wipe between the overworld and a fight. Longer than the hit iris: this
+ * one is a scene change, not a flinch. */
+#define FT_WIPE_CLOSE_MS 260
+#define FT_WIPE_OPEN_MS  260
+
+/* The wipe between the overworld and a fight. Longer than the hit iris: this
+ * one is a scene change, not a flinch. */
+#define FT_WIPE_CLOSE_MS 260
+#define FT_WIPE_OPEN_MS  260
+
 #define FT_IRIS_CLOSE_MS 220
 #define FT_IRIS_HOLD_MS  500
 #define FT_IRIS_OPEN_MS  220

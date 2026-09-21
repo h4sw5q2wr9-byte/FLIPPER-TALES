@@ -328,14 +328,27 @@ invert-on-frame pulse. Arguably clearer than colour.
 │  ▜█▛                    (   ) (   )        │  player left, enemies right
 │                                            │
 ├────────────────────────────────────────────┤  y=44
-│ CHG 18/25  RAM 7  SIG ▮▮▯                  │  player bars, 10px
-│ [ATTACK] [PROTECT] [FOCUS]                 │  root menu, 10px
-│  One foe, strong.                          │  description, 8px
+│ ▮▮▮▮▯▯▯ 18  R7  S ▮▮▯                      │  player bars, 10px
+│ [ATTACK]  PROTECT  FOCUS                   │  root menu, 10px
+│  One foe, strong.                          │  one line, 8px
 └────────────────────────────────────────────┘  y=63
 ```
 
 The attack-telegraph banner overlays the battle scene, centred. So does the
 module panel, on the left half only.
+
+**Three rules keep that from being cluttered**, all learned by looking at it:
+
+- **Only the cursor is boxed.** Three framed buttons over a framed bar over a
+  framed popup is four competing rectangles; the highlight alone already says
+  which entry is selected.
+- **The coach speaks on the description line.** It used to get its own framed
+  callout floating over the arena, which covered the fighters at exactly the
+  moment you were choosing what to do to them. One line, one place: the hint
+  when there is one, the action's description otherwise.
+- **No "CHG" label.** A quarter-ticked bar with a number beside it is already
+  unambiguous, and those three characters were the difference between a row
+  that reads and a row that is merely full.
 
 #### The hit transition
 
@@ -357,6 +370,20 @@ interruption is the punishment, so it is spent only on being hit.
 The XOR goes **over** the drawn sprite. Inverting the empty space first and
 then drawing the sprite black-on-black just yields a solid brick, which is
 what the first pass did.
+
+#### The scene wipe
+
+Starting or ending a fight uses the same ring, from `ft_wipe_at(ms)`:
+`FT_WIPE_CLOSING` for `FT_WIPE_CLOSE_MS`, then `FT_WIPE_OPENING` for
+`FT_WIPE_OPEN_MS`, then nothing. The scene behind it swaps at `FT_WIPE_SWAP`
+— the instant it is fully shut — so the overworld is never seen turning into
+a battle. While the wipe runs the app freezes the world, stops ticking the
+encounter and drops every input but held direction, because anything that
+happens behind the black is something the player did not see and cannot have
+reacted to.
+
+The hit iris and the scene wipe share one shape on purpose: the screen
+closing means *something just changed*, whether that is a room or your Charge.
 
 ### 5.0 Teaching the game
 
@@ -497,6 +524,27 @@ authored as editable ASCII under `tools/`.
 Ten tiles: floor, wall, void, grass, cable, door, terminal, locked port, crate,
 ladder.
 
+#### Drawing the player and the foes
+
+Both get a **white keyline**: the sprite's own shape widened by one pixel,
+drawn white, with the black sprite on top. Two earlier attempts failed in
+ways worth recording, because each looked fine in isolation:
+
+- A white *box* behind the avatar swallowed whatever it stood next to.
+- XOR-ing the sprite fixed that but broke the silhouette — over a dithered
+  tile the body came out checkered, and standing half on a dark tile split it
+  down the middle into two colours.
+
+The keyline erases nothing beyond its own outline and keeps the figure black
+and whole on every background, including the solid wall bands. Foes get the
+same treatment, or one standing on a black band is a smudge in it.
+
+The avatar itself is **solid, with the screen knocked out in white** after the
+body is drawn. Drawing the case as an outline left the head an empty
+rectangle: at 8x12 that reads as a picture frame standing on legs. Facing is
+two pupils on that screen rather than four sprite sets, and facing away simply
+leaves the screen dark.
+
 **Tiles that belong to a run orient themselves to it.** A door in a horizontal
 wall is walked through vertically and reads face-on; the same door in a vertical
 wall is walked through sideways and must read as a gap. Rather than make map
@@ -632,11 +680,21 @@ you did without storing the world.
 
 #### Foe behaviour
 
-Each foe carries its spawn tile as `home_tx/home_ty`, its own xorshift `seed`,
-and an `alert` flag. `foe_think()` runs on a `FT_FOE_THINK_MS` clock, once per
-foe, so they move **independently** rather than as one block — which is how
-the first pass read, and why walking into a room felt like being charged by a
-single object.
+A marker that fights as three **walks as three separate actors**. `FtFoeState`
+is the encounter marker — alive, alert, and a count — and holds one
+`FtFoeWalker` per roster member, each with its own stepper, think clock, home
+tile and xorshift seed. The first pass drew one leader with two sprites pinned
+at fixed offsets, which made a group of three read as a single object being
+dragged about; the pass before that drew one sprite for all three, so what you
+walked into was not what you fought.
+
+Touching **any** walker starts the marker's fight, and beating the marker
+removes the whole group. Walkers also refuse to step onto a tile another
+walker occupies or is stepping into — without that, three wanderers converge
+and sit on top of each other, which is the welded look again.
+
+`foe_think()` runs on a `FT_FOE_THINK_MS` clock, per walker, so they move
+independently rather than as one block.
 
 Unaware, a foe wanders on its own seed and idles through most ticks. Once it
 is more than `FT_FOE_LEASH` tiles from home it heads back, so an idle room

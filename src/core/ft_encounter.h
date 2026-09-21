@@ -232,6 +232,28 @@ FtHitFx ft_encounter_hit_fx(const FtEncounter* e);
  * longer than a jam. */
 uint32_t ft_encounter_impact_hold(const FtEncounter* e);
 
+/* ---- The scene wipe ---------------------------------------------------- */
+
+/* Entering and leaving a fight close the screen and open it again. Same shape
+ * as the hit iris, so the two read as one piece of vocabulary: the screen
+ * shutting means something just changed. This one is free of any encounter,
+ * because at the moment it starts there may not be one yet. */
+typedef enum {
+    FT_WIPE_NONE = 0,
+    FT_WIPE_CLOSING,
+    FT_WIPE_OPENING
+} FtWipeStage;
+
+typedef struct {
+    FtWipeStage stage;
+    uint8_t     amount; /* 0 clear, 255 shut */
+} FtWipe;
+
+#define FT_WIPE_SWAP FT_WIPE_CLOSE_MS
+#define FT_WIPE_MS   (FT_WIPE_CLOSE_MS + FT_WIPE_OPEN_MS)
+
+FtWipe ft_wipe_at(uint32_t ms);
+
 /* ---- Per-foe hit timing ------------------------------------------------ */
 
 /* Anim progress (0-255) at which foe `i` takes the current action's damage.

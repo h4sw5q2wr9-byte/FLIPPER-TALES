@@ -601,26 +601,6 @@ static void draw_enemy_result(Canvas* canvas, const FtEncounter* e) {
     }
 }
 
-/* The coach line during the menu, where the action row is already full. Sits
- * low in the arena so the characters' faces stay visible behind it. */
-static void draw_coach_callout(Canvas* canvas, const char* hint) {
-    canvas_set_font(canvas, FontSecondary);
-
-    int32_t w = (int32_t)canvas_string_width(canvas, hint) + 8;
-    if(w > FT_SCREEN_W - 6) w = FT_SCREEN_W - 6;
-
-    const int32_t x = (FT_SCREEN_W - w) / 2;
-    const int32_t y = FT_ARENA_Y + 14;
-
-    canvas_set_color(canvas, ColorWhite);
-    canvas_draw_box(canvas, x, y, (size_t)w, 11);
-    canvas_set_color(canvas, ColorBlack);
-    canvas_draw_frame(canvas, x, y, (size_t)w, 11);
-    canvas_draw_line(canvas, x + 2, y + 11, x + w, y + 11);
-
-    draw_centred(canvas, FT_SCREEN_W / 2, y + 8, hint);
-}
-
 /* ---- Status ---------------------------------------------------------- */
 
 static void draw_status(Canvas* canvas, const FtEncounter* e) {
@@ -629,9 +609,10 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
 
     canvas_draw_line(canvas, 0, FT_STATUS_Y - 1, FT_SCREEN_W - 1, FT_STATUS_Y - 1);
 
-    canvas_draw_str(canvas, 2, FT_STATUS_Y + 7, "CHG");
-
-    const int32_t bx = 22, bw = 38;
+    /* No "CHG" label. A quarter-ticked bar with a number beside it is already
+     * unambiguous, and the three characters were the difference between a row
+     * that reads and a row that is merely full. */
+    const int32_t bx = 2, bw = 46;
     canvas_draw_frame(canvas, bx, FT_STATUS_Y + 1, (size_t)bw, 7);
     {
         const int32_t fill = ft_bar_fill(e->roll.current, e->stats.charge_max, bw);
@@ -648,18 +629,18 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
     }
 
     snprintf(buf, sizeof(buf), "%d", (int)e->roll.current);
-    canvas_draw_str(canvas, 62, FT_STATUS_Y + 7, buf);
+    canvas_draw_str(canvas, bx + bw + 3, FT_STATUS_Y + 7, buf);
 
     snprintf(buf, sizeof(buf), "R%d", (int)e->stats.ram);
-    canvas_draw_str(canvas, 77, FT_STATUS_Y + 7, buf);
+    canvas_draw_str(canvas, 70, FT_STATUS_Y + 7, buf);
 
     /* One letter, not three: the pips beside it are self-explanatory once
      * they start filling, and the width is needed for four of them. */
-    canvas_draw_str(canvas, 92, FT_STATUS_Y + 7, "S");
+    canvas_draw_str(canvas, 88, FT_STATUS_Y + 7, "S");
 
     const uint8_t bars = ft_signal_bars(&e->signal);
     for(uint8_t i = 0; i < e->signal.max_bars && i < 4u; i++) {
-        const int32_t sx = 100 + i * 7;
+        const int32_t sx = 96 + i * 7;
         if(e->signal.locked) {
             hatch(canvas, sx, FT_STATUS_Y + 1, 5, 7);
             canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 5, 7);
@@ -700,14 +681,15 @@ static void draw_menu(Canvas* canvas, const FtEncounter* e) {
     static const int32_t X[FT_ROOT_COUNT] = {2, 46, 92};
     static const int32_t W[FT_ROOT_COUNT] = {42, 44, 34};
 
+    /* Only the cursor is boxed. Three framed buttons plus a description plus a
+     * status row is three competing rectangles; the highlight alone says
+     * which one is selected, and the row stops shouting. */
     for(uint8_t i = 0; i < FT_ROOT_COUNT; i++) {
         const bool on = (i == e->root_index) && (e->menu_level == FT_MENU_ROOT);
 
         if(on) {
             canvas_draw_box(canvas, X[i], FT_ACTION_Y, (size_t)W[i], 10);
             canvas_set_color(canvas, ColorWhite);
-        } else {
-            canvas_draw_frame(canvas, X[i], FT_ACTION_Y, (size_t)W[i], 10);
         }
 
         const int32_t lw = (int32_t)canvas_string_width(canvas, ROOT[i]);
@@ -716,11 +698,14 @@ static void draw_menu(Canvas* canvas, const FtEncounter* e) {
         if(on) canvas_set_color(canvas, ColorBlack);
     }
 
-    /* One line about whatever is highlighted. It stays in this one place at
-     * both menu levels, so opening the Attack panel moves the cursor without
-     * moving the explanation. */
+    /* One line about whatever is highlighted, or what the coach wants to say.
+     * It stays in this one place at both menu levels, so opening the Attack
+     * panel moves the cursor without moving the explanation — and the coach
+     * no longer needs a framed box floating over the arena to be heard. */
+    const char* hint = ft_tutorial_hint(e);
+
     draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 17,
-                 action_desc(e, (FtAction2)e->menu_index));
+                 hint ? hint : action_desc(e, (FtAction2)e->menu_index));
 }
 
 /* The attack panel, over the player's half. The player does not need to be
@@ -869,7 +854,7 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
 /* The iris: a closing ring of black drawn from the screen edges inward, then
  * reopened. Implemented as four growing bars rather than a filled circle
  * because at 128x64 a true circle's corners are the whole effect. */
-static void draw_iris(Canvas* canvas, uint8_t amount) {
+void ft_render_iris(Canvas* canvas, uint8_t amount) {
     if(amount == 0u) return;
 
     if(amount >= 250u) {
@@ -942,7 +927,7 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
 
     /* Fully black: nothing else is worth drawing under it. */
     if(fx.stage == FT_HIT_FX_BLACK) {
-        draw_iris(canvas, 255);
+        ft_render_iris(canvas, 255);
         return;
     }
 
@@ -958,12 +943,8 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
     const char* hint = ft_tutorial_hint(e);
 
     if(e->phase == FT_PHASE_MENU) {
-        if(e->menu_level == FT_MENU_ATTACK) {
-            draw_attack_panel(canvas, e);
-        } else if(hint) {
-            draw_coach_callout(canvas, hint);
-        }
-        draw_menu(canvas, e);
+        if(e->menu_level == FT_MENU_ATTACK) draw_attack_panel(canvas, e);
+        draw_menu(canvas, e); /* which says its own line, coach included */
     } else if(hint) {
         /* Everywhere else the action row is free, so the coach speaks there. */
         draw_prompt(canvas, hint);
@@ -977,6 +958,6 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
      * and all: an iris that only covered the arena would read as a window
      * shutting rather than the screen doing it. */
     if(fx.stage == FT_HIT_FX_CLOSING || fx.stage == FT_HIT_FX_OPENING) {
-        draw_iris(canvas, fx.amount);
+        ft_render_iris(canvas, fx.amount);
     }
 }

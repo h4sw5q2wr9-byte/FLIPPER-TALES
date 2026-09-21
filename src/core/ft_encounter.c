@@ -418,6 +418,25 @@ uint32_t ft_encounter_impact_hold(const FtEncounter* e) {
     return landed ? FT_IMPACT_HOLD_HIT_MS : FT_IMPACT_HOLD_MS;
 }
 
+FtWipe ft_wipe_at(uint32_t ms) {
+    FtWipe w = {FT_WIPE_NONE, 0};
+
+    if(ms < FT_WIPE_CLOSE_MS) {
+        w.stage = FT_WIPE_CLOSING;
+        w.amount = (uint8_t)((ms * 255u) / FT_WIPE_CLOSE_MS);
+        return w;
+    }
+
+    ms -= FT_WIPE_CLOSE_MS;
+    if(ms < FT_WIPE_OPEN_MS) {
+        w.stage = FT_WIPE_OPENING;
+        w.amount = (uint8_t)(255u - (ms * 255u) / FT_WIPE_OPEN_MS);
+        return w;
+    }
+
+    return w; /* NONE: the new scene is fully visible */
+}
+
 FtHitFx ft_encounter_hit_fx(const FtEncounter* e) {
     FtHitFx fx = {FT_HIT_FX_NONE, 0, false};
 

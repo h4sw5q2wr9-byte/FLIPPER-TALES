@@ -1444,92 +1444,135 @@ static int32_t abs_i32(int32_t v) { return v < 0 ? -v : v; }
 static void test_foe_ai(void) {
     section("foe patrol and pursuit");
 
-    /* Room 2 (The Drop) is the first room carrying two encounter markers, so
-     * it is the one that can show them moving independently. */
-    const uint8_t ROOM = 2;
+    /* Room 3 (Cold Gate) is the marker that fights as three, which is the
+     * case the player reported twice: first as one sprite meaning three, then
+     * as three sprites welded into one moving object. */
+    const uint8_t ROOM = 3;
     const FtRoom* room = ft_room(ROOM);
-    CHECK(room->ent_count >= 2, "the AI test needs at least two foes");
+    CHECK(room->ent_count >= 1, "the AI test needs a foe marker");
 
     FtWorld w;
     ft_world_init(&w);
     ft_world_enter(&w, ROOM, room->exits[0].tx, room->exits[0].ty);
 
-    /* Each foe remembers where it was placed. That home tile is what the
-     * leash pulls it back to. */
-    for(uint8_t i = 0; i < room->ent_count; i++) {
-        CHECK_EQ(w.foes[i].home_tx, room->ents[i].tx);
-        CHECK_EQ(w.foes[i].home_ty, room->ents[i].ty);
-        CHECK(!w.foes[i].alert, "a foe starts unaware");
+    const FtRoster* roster = ft_roster(room->ents[0].roster);
+    CHECK_EQ(w.foes[0].count, roster->count);
+    CHECK(w.foes[0].count >= 2, "this marker walks as a group");
+
+    /* Each walker is its own actor on its own tile. Three of them stacked on
+     * one tile is the bug this replaced. */
+    for(uint8_t m = 0; m < w.foes[0].count; m++) {
+        for(uint8_t n = (uint8_t)(m + 1u); n < w.foes[0].count; n++) {
+            CHECK(w.foes[0].w[m].mv.tx != w.foes[0].w[n].mv.tx ||
+                      w.foes[0].w[m].mv.ty != w.foes[0].w[n].mv.ty,
+                  "walkers %u and %u start on different tiles", m, n);
+        }
+        CHECK(!ft_tile_solid(ft_map_tile(room->map, w.foes[0].w[m].mv.tx,
+                                         w.foes[0].w[m].mv.ty)),
+              "walker %u starts on open ground", m);
     }
 
-    /* Idling far away: they wander on their own seeds rather than in step.
-     * Standing still is not drifting, so the interesting check is that the
-     * set of positions stops being the set they started in. */
-    uint8_t sx[FT_MAX_ROOM_ENTS], sy[FT_MAX_ROOM_ENTS];
-    for(uint8_t i = 0; i < room->ent_count; i++) {
-        sx[i] = w.foes[i].mv.tx;
-        sy[i] = w.foes[i].mv.ty;
+    /* Idling: they wander on their own seeds rather than in step. */
+    uint8_t sx[FT_MAX_ENEMIES], sy[FT_MAX_ENEMIES];
+    for(uint8_t m = 0; m < w.foes[0].count; m++) {
+        sx[m] = w.foes[0].w[m].mv.tx;
+        sy[m] = w.foes[0].w[m].mv.ty;
     }
 
     for(int t = 0; t < 400; t++) ft_world_update(&w, 0, 0, 20);
 
     int moved = 0, in_lockstep = 1;
     int32_t d0x = 0, d0y = 0;
-    for(uint8_t i = 0; i < room->ent_count; i++) {
-        const int32_t dx = (int32_t)w.foes[i].mv.tx - (int32_t)sx[i];
-        const int32_t dy = (int32_t)w.foes[i].mv.ty - (int32_t)sy[i];
+    for(uint8_t m = 0; m < w.foes[0].count; m++) {
+        const int32_t dx = (int32_t)w.foes[0].w[m].mv.tx - (int32_t)sx[m];
+        const int32_t dy = (int32_t)w.foes[0].w[m].mv.ty - (int32_t)sy[m];
         if(dx || dy) moved++;
-        if(i == 0) { d0x = dx; d0y = dy; }
+        if(m == 0) { d0x = dx; d0y = dy; }
         else if(dx != d0x || dy != d0y) in_lockstep = 0;
     }
-    CHECK(moved > 0, "an idle room is not frozen");
-    CHECK(!in_lockstep, "foes drift independently, not as one block");
+    CHECK(moved > 0, "an idle group is not frozen");
+    CHECK(!in_lockstep, "walkers drift independently, not as one block");
 
-    /* The leash: however long they wander, none of them abandons its post. */
-    for(int t = 0; t < 2000; t++) {
+    /* And they never converge onto one tile. Three wanderers with nothing
+     * keeping them apart end up stacked, which is the welded look again. */
+    for(int t = 0; t < 1200; t++) {
         ft_world_update(&w, 0, 0, 20);
-        for(uint8_t i = 0; i < room->ent_count; i++) {
-            if(w.foes[i].alert) continue; /* only the idle rule leashes */
-            const int32_t hx = (int32_t)w.foes[i].mv.tx - (int32_t)w.foes[i].home_tx;
-            const int32_t hy = (int32_t)w.foes[i].mv.ty - (int32_t)w.foes[i].home_ty;
-            const int32_t dist = (hx < 0 ? -hx : hx) + (hy < 0 ? -hy : hy);
-            /* One step of overshoot past the leash is the turnaround itself. */
-            CHECK(dist <= FT_FOE_LEASH + 1, "foe %u stays in its region (%d)",
-                  i, (int)dist);
+
+        for(uint8_t m = 0; m < w.foes[0].count; m++) {
+            for(uint8_t n = (uint8_t)(m + 1u); n < w.foes[0].count; n++) {
+                CHECK(w.foes[0].w[m].mv.tx != w.foes[0].w[n].mv.tx ||
+                          w.foes[0].w[m].mv.ty != w.foes[0].w[n].mv.ty,
+                      "walkers %u and %u never stack", m, n);
+            }
         }
     }
 
-    /* Aggro is shared. Walking into one foe's range must alert the room, not
-     * just the one that saw you. */
+    /* The leash, per walker: however long they wander, none abandons its
+     * post, so the group stays a group without being welded together. */
+    for(int t = 0; t < 2000; t++) {
+        ft_world_update(&w, 0, 0, 20);
+        if(w.foes[0].alert) continue; /* only the idle rule leashes */
+
+        for(uint8_t m = 0; m < w.foes[0].count; m++) {
+            const FtFoeWalker* k = &w.foes[0].w[m];
+            const int32_t hx = (int32_t)k->mv.tx - (int32_t)k->home_tx;
+            const int32_t hy = (int32_t)k->mv.ty - (int32_t)k->home_ty;
+            /* One step of overshoot past the leash is the turnaround itself. */
+            CHECK(abs_i32(hx) + abs_i32(hy) <= FT_FOE_LEASH + 1,
+                  "walker %u stays in its region", m);
+        }
+    }
+
+    /* Aggro is shared across the room, walkers included. */
     FtWorld c;
     ft_world_init(&c);
     ft_world_enter(&c, ROOM, room->ents[0].tx, (uint8_t)(room->ents[0].ty + 1u));
     ft_world_update(&c, 0, 0, 1);
+    CHECK(c.foes[0].alert, "walking into the group alerts it");
 
-    CHECK(c.foes[0].alert, "the foe you walked up to notices");
-    for(uint8_t i = 0; i < room->ent_count; i++) {
-        CHECK(c.foes[i].alert, "foe %u is brought along by the alarm", i);
+    /* An alerted group closes the distance instead of milling about, and
+     * every walker comes, not just the one that saw you. */
+    for(uint8_t m = 0; m < c.foes[0].count; m++) {
+        FtWorld chase;
+        ft_world_init(&chase);
+        ft_world_enter(&chase, ROOM, room->exits[0].tx, room->exits[0].ty);
+        chase.foes[0].alert = true;
+
+        const int32_t before =
+            abs_i32((int32_t)chase.foes[0].w[m].mv.tx - (int32_t)chase.mv.tx) +
+            abs_i32((int32_t)chase.foes[0].w[m].mv.ty - (int32_t)chase.mv.ty);
+
+        for(int t = 0; t < 80; t++) ft_world_update(&chase, 0, 0, 20);
+
+        const int32_t after =
+            abs_i32((int32_t)chase.foes[0].w[m].mv.tx - (int32_t)chase.mv.tx) +
+            abs_i32((int32_t)chase.foes[0].w[m].mv.ty - (int32_t)chase.mv.ty);
+
+        CHECK(after < before, "walker %u closes in (%d -> %d)",
+              m, (int)before, (int)after);
     }
 
-    /* And an alerted foe closes the distance instead of milling about. */
-    FtWorld chase;
-    ft_world_init(&chase);
-    ft_world_enter(&chase, ROOM, room->ents[0].tx, (uint8_t)(room->ents[0].ty + 1u));
+    /* Touching any walker starts the marker's fight — the group is one
+     * encounter however spread out it happens to be standing. */
+    for(uint8_t m = 0; m < c.foes[0].count; m++) {
+        FtWorld touch;
+        ft_world_init(&touch);
+        ft_world_enter(&touch, ROOM, room->exits[0].tx, room->exits[0].ty);
 
-    const int32_t before = (int32_t)chase.foes[0].mv.tx - (int32_t)chase.mv.tx;
-    const int32_t before_d =
-        (before < 0 ? -before : before) +
-        abs_i32((int32_t)chase.foes[0].mv.ty - (int32_t)chase.mv.ty);
+        touch.mv.tx = touch.foes[0].w[m].mv.tx;
+        touch.mv.ty = touch.foes[0].w[m].mv.ty;
+        CHECK_EQ(ft_world_foe_contact(&touch), 0);
+    }
 
-    for(int t = 0; t < 60; t++) ft_world_update(&chase, 0, 0, 20);
+    /* Beating the marker removes the whole group, not just the one touched. */
+    FtWorld done;
+    ft_world_init(&done);
+    ft_world_enter(&done, ROOM, room->exits[0].tx, room->exits[0].ty);
+    ft_world_clear_entity(&done, 0);
+    CHECK(!done.foes[0].alive, "clearing the marker clears the group");
+    CHECK_EQ(ft_world_foe_contact(&done), -1);
 
-    const int32_t after_d =
-        abs_i32((int32_t)chase.foes[0].mv.tx - (int32_t)chase.mv.tx) +
-        abs_i32((int32_t)chase.foes[0].mv.ty - (int32_t)chase.mv.ty);
-    CHECK(after_d <= before_d, "a chaser does not wander away (%d -> %d)",
-          (int)before_d, (int)after_d);
-
-    /* Chasing is faster than patrolling: the foe steps every think tick
+    /* Chasing is faster than patrolling: the walker steps every think tick
      * instead of idling through most of them. */
     CHECK(FT_FOE_STEP_MS <= FT_STEP_MS + 40,
           "a chase can nearly keep pace with the player");
@@ -1603,6 +1646,45 @@ static void test_hit_fx(void) {
         else off++;
     }
     CHECK(on > 0 && off > 0, "the flicker alternates (%d on, %d off)", on, off);
+}
+
+static void test_scene_wipe(void) {
+    section("scene wipe");
+
+    /* Closes, then opens, then gets out of the way — and the swap point is
+     * inside the closed part, so the scene never changes in plain sight. */
+    CHECK_EQ(ft_wipe_at(0).stage, FT_WIPE_CLOSING);
+    CHECK_EQ(ft_wipe_at(0).amount, 0);
+
+    CHECK_EQ(ft_wipe_at(FT_WIPE_CLOSE_MS - 1).stage, FT_WIPE_CLOSING);
+    CHECK(ft_wipe_at(FT_WIPE_CLOSE_MS - 1).amount > 245,
+          "the close finishes shut (%u)", ft_wipe_at(FT_WIPE_CLOSE_MS - 1).amount);
+
+    CHECK_EQ(ft_wipe_at(FT_WIPE_SWAP).stage, FT_WIPE_OPENING);
+    CHECK_EQ(ft_wipe_at(FT_WIPE_SWAP).amount, 255);
+
+    CHECK_EQ(ft_wipe_at(FT_WIPE_MS).stage, FT_WIPE_NONE);
+    CHECK_EQ(ft_wipe_at(FT_WIPE_MS + 5000u).stage, FT_WIPE_NONE);
+
+    /* Monotone: shut on the way in, clear on the way out, no jump back. */
+    uint8_t prev = 0;
+    for(uint32_t t = 0; t < FT_WIPE_CLOSE_MS; t += 5) {
+        const uint8_t a = ft_wipe_at(t).amount;
+        CHECK(a >= prev, "closing never reopens (%u -> %u)", prev, a);
+        prev = a;
+    }
+
+    prev = 255;
+    for(uint32_t t = FT_WIPE_SWAP; t < FT_WIPE_MS; t += 5) {
+        const uint8_t a = ft_wipe_at(t).amount;
+        CHECK(a <= prev, "opening never recloses (%u -> %u)", prev, a);
+        prev = a;
+    }
+    CHECK(prev < 20, "the open reaches nearly clear (%u)", prev);
+
+    /* The swap happens at full black, which is the whole point of the wipe:
+     * the player never sees the overworld replaced by a battle. */
+    CHECK_EQ(ft_wipe_at(FT_WIPE_SWAP - 1).amount, 254);
 }
 
 static void test_broadcast_sweep(void) {
@@ -1738,6 +1820,7 @@ int main(void) {
     test_world();
     test_foe_ai();
     test_hit_fx();
+    test_scene_wipe();
     test_broadcast_sweep();
     test_world_links();
     test_rng();

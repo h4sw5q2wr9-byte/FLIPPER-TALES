@@ -138,6 +138,17 @@ void ft_world_clear_entity(FtWorld* w, uint8_t index) {
     if(index < FT_MAX_ROOM_ENTS) w->foes[index].alive = false;
 }
 
+/* Where a roster's walkers stand relative to their marker, in preference
+ * order. Loose, not a formation: they wander off it immediately. The list is
+ * long because a marker can stand in a corridor — Cold Gate's group blocks a
+ * two-tile-wide exit — and a blocked spot that fell back to the marker put
+ * the whole group on one tile, which is the welded-together look again. */
+static const int8_t SPREAD[][2] = {
+    {0, 0},  {-1, 1}, {1, 1},  {-1, 0}, {1, 0},
+    {0, 1},  {0, -1}, {-1, -1}, {1, -1}, {-2, 0}, {2, 0},
+};
+#define SPREAD_COUNT (sizeof(SPREAD) / sizeof(SPREAD[0]))
+
 void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
     w->room = (room < ft_room_count()) ? room : 0u;
 
@@ -155,24 +166,61 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
     /* Foes start where the room says, and are alive unless already beaten. */
     const FtRoom* r = ft_room(w->room);
     for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) {
-        w->foes[i].mv.dx = 0;
-        w->foes[i].mv.dy = 0;
-        w->foes[i].mv.step_ms = 0;
-        w->foes[i].think_ms = (uint32_t)(i * 53u); /* stagger, so they do not think in lockstep */
-        w->foes[i].alive = false;
-        w->foes[i].alert = false;
+        FtFoeState* f = &w->foes[i];
 
-        if(i < r->ent_count && r->ents[i].kind == FT_ENT_FOE) {
-            w->foes[i].mv.tx = r->ents[i].tx;
-            w->foes[i].mv.ty = r->ents[i].ty;
-            w->foes[i].home_tx = r->ents[i].tx;
-            w->foes[i].home_ty = r->ents[i].ty;
-            w->foes[i].alive = !ft_world_entity_gone(w, i);
+        f->alive = false;
+        f->alert = false;
+        f->count = 0;
 
-            /* Each foe wanders on its own stream. Sharing one made a room of
-             * them shuffle identically, which reads as a single organism. */
-            w->foes[i].seed = 0x2545F491u ^ ((uint32_t)room * 2654435761u) ^
-                              ((uint32_t)i * 40503u) ^ ((uint32_t)r->ents[i].tx << 8);
+        if(i >= r->ent_count || r->ents[i].kind != FT_ENT_FOE) continue;
+
+        const FtRoster* roster = ft_roster(r->ents[i].roster);
+        f->alive = !ft_world_entity_gone(w, i);
+        f->count = roster->count ? roster->count : 1u;
+        if(f->count > FT_MAX_ENEMIES) f->count = FT_MAX_ENEMIES;
+
+        for(uint8_t m = 0; m < f->count; m++) {
+            FtFoeWalker* k = &f->w[m];
+
+            /* Spread the group around the marker, taking the first open spot
+             * nobody in this group has claimed, so three of them never start
+             * life stacked on one tile. */
+            k->home_tx = r->ents[i].tx;
+            k->home_ty = r->ents[i].ty;
+
+            for(size_t sp = 0; sp < SPREAD_COUNT; sp++) {
+                const int32_t cx = (int32_t)r->ents[i].tx + SPREAD[sp][0];
+                const int32_t cy = (int32_t)r->ents[i].ty + SPREAD[sp][1];
+                if(cx < 0 || cy < 0) continue;
+
+                const uint8_t hx = (uint8_t)cx, hy = (uint8_t)cy;
+                if(ft_tile_solid(ft_map_tile(r->map, hx, hy))) continue;
+
+                bool taken = false;
+                for(uint8_t o = 0; o < m; o++) {
+                    if(f->w[o].home_tx == hx && f->w[o].home_ty == hy) taken = true;
+                }
+                if(taken) continue;
+
+                k->home_tx = hx;
+                k->home_ty = hy;
+                break;
+            }
+            k->mv.tx = k->home_tx;
+            k->mv.ty = k->home_ty;
+            k->mv.dx = 0;
+            k->mv.dy = 0;
+            k->mv.step_ms = 0;
+
+            /* Stagger the think clocks, or the group steps in unison however
+             * separate its positions are. */
+            k->think_ms = (uint32_t)((i * 3u + m) * 53u);
+
+            /* Each walker wanders on its own stream. Sharing one made a group
+             * shuffle identically, which reads as a single organism. */
+            k->seed = 0x2545F491u ^ ((uint32_t)room * 2654435761u) ^
+                      ((uint32_t)i * 40503u) ^ ((uint32_t)m * 2246822519u) ^
+                      ((uint32_t)r->ents[i].tx << 8);
         }
     }
 }
@@ -200,32 +248,56 @@ static int32_t abs32(int32_t v) {
     return v < 0 ? -v : v;
 }
 
-/* Each foe's own xorshift, so a room does not shuffle in unison. */
-static uint32_t foe_rand(FtFoeState* f) {
-    uint32_t x = f->seed ? f->seed : 0x9E3779B9u;
+/* Each walker's own xorshift, so a group does not shuffle in unison. */
+static uint32_t foe_rand(FtFoeWalker* k) {
+    uint32_t x = k->seed ? k->seed : 0x9E3779B9u;
     x ^= x << 13;
     x ^= x >> 17;
     x ^= x << 5;
-    f->seed = x;
+    k->seed = x;
     return x;
 }
 
-/* Can this foe see the player? */
-static bool foe_spots(const FtWorld* w, const FtFoeState* f) {
-    const int32_t dx = (int32_t)w->mv.tx - (int32_t)f->mv.tx;
-    const int32_t dy = (int32_t)w->mv.ty - (int32_t)f->mv.ty;
+/* Can this walker see the player? */
+static bool foe_spots(const FtWorld* w, const FtFoeWalker* k) {
+    const int32_t dx = (int32_t)w->mv.tx - (int32_t)k->mv.tx;
+    const int32_t dy = (int32_t)w->mv.ty - (int32_t)k->mv.ty;
     return (abs32(dx) + abs32(dy)) <= FT_FOE_ALERT;
 }
 
-static void foe_think(FtWorld* w, uint8_t i, const FtMap* map) {
-    FtFoeState* f = &w->foes[i];
+/* Is another walker standing on, or stepping into, this tile? Without this
+ * three wanderers converge and sit on top of each other, which puts the
+ * group straight back to looking like one object. */
+static bool walker_occupied(const FtWorld* w, const FtFoeWalker* self,
+                            int32_t tx, int32_t ty) {
+    const FtRoom* r = ft_room(w->room);
 
+    for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        const FtFoeState* f = &w->foes[i];
+        if(!f->alive) continue;
+
+        for(uint8_t m = 0; m < f->count; m++) {
+            const FtFoeWalker* k = &f->w[m];
+            if(k == self) continue;
+
+            if((int32_t)k->mv.tx == tx && (int32_t)k->mv.ty == ty) return true;
+            if((int32_t)k->mv.tx + k->mv.dx == tx &&
+               (int32_t)k->mv.ty + k->mv.dy == ty) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static void foe_think(FtWorld* w, FtFoeWalker* k, bool alert, const FtMap* map) {
+    FtFoeWalker* f = k;
     const int32_t dx = (int32_t)w->mv.tx - (int32_t)f->mv.tx;
     const int32_t dy = (int32_t)w->mv.ty - (int32_t)f->mv.ty;
 
     int8_t sx = 0, sy = 0;
 
-    if(f->alert) {
+    if(alert) {
         /* Close the larger gap first, so a chase reads as deliberate rather
          * than as a diagonal stagger. A little jitter keeps several chasers
          * from stacking into one column. */
@@ -259,11 +331,13 @@ static void foe_think(FtWorld* w, uint8_t i, const FtMap* map) {
         }
     }
 
-    if((sx || sy) && step_target_free(map, f->mv.tx, f->mv.ty, sx, sy)) {
-        f->mv.dx = sx;
-        f->mv.dy = sy;
-        f->mv.step_ms = 0;
-    }
+    if(!sx && !sy) return;
+    if(!step_target_free(map, f->mv.tx, f->mv.ty, sx, sy)) return;
+    if(walker_occupied(w, f, (int32_t)f->mv.tx + sx, (int32_t)f->mv.ty + sy)) return;
+
+    f->mv.dx = sx;
+    f->mv.dy = sy;
+    f->mv.step_ms = 0;
 }
 
 /* ---- Update ------------------------------------------------------------ */
@@ -308,7 +382,12 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
      * something that has seen you. */
     bool any_spotted = false;
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
-        if(w->foes[i].alive && foe_spots(w, &w->foes[i])) any_spotted = true;
+        const FtFoeState* f = &w->foes[i];
+        if(!f->alive) continue;
+
+        for(uint8_t m = 0; m < f->count; m++) {
+            if(foe_spots(w, &f->w[m])) any_spotted = true;
+        }
     }
     if(any_spotted) {
         for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
@@ -320,16 +399,21 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
         FtFoeState* f = &w->foes[i];
         if(!f->alive) continue;
 
-        if(f->mv.dx || f->mv.dy) {
-            step_advance(&f->mv, dt_ms, FT_FOE_STEP_MS);
-            continue;
+        /* Every walker steps and thinks on its own clock. */
+        for(uint8_t m = 0; m < f->count; m++) {
+            FtFoeWalker* k = &f->w[m];
+
+            if(k->mv.dx || k->mv.dy) {
+                step_advance(&k->mv, dt_ms, FT_FOE_STEP_MS);
+                continue;
+            }
+
+            k->think_ms += dt_ms;
+            if(k->think_ms < FT_FOE_THINK_MS) continue;
+
+            k->think_ms = 0;
+            foe_think(w, k, f->alert, map);
         }
-
-        f->think_ms += dt_ms;
-        if(f->think_ms < FT_FOE_THINK_MS) continue;
-
-        f->think_ms = 0;
-        foe_think(w, i, map);
     }
 }
 
@@ -344,16 +428,21 @@ static int foe_at_tile(const FtWorld* w, int32_t tx, int32_t ty) {
     const FtRoom* r = ft_room(w->room);
 
     for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
-        if(!w->foes[i].alive) continue;
+        const FtFoeState* f = &w->foes[i];
+        if(!f->alive) continue;
 
-        /* A foe mid-step counts as occupying the tile it is heading for, so
-         * you cannot walk through one that is moving toward you. */
-        const int32_t fx = (int32_t)w->foes[i].mv.tx + w->foes[i].mv.dx;
-        const int32_t fy = (int32_t)w->foes[i].mv.ty + w->foes[i].mv.dy;
+        /* Touching any walker starts the marker's fight: the group is one
+         * encounter however spread out it is standing. */
+        for(uint8_t m = 0; m < f->count; m++) {
+            /* A walker mid-step counts as occupying the tile it is heading
+             * for, so you cannot walk through one moving toward you. */
+            const int32_t fx = (int32_t)f->w[m].mv.tx + f->w[m].mv.dx;
+            const int32_t fy = (int32_t)f->w[m].mv.ty + f->w[m].mv.dy;
 
-        if((fx == tx && fy == ty) ||
-           ((int32_t)w->foes[i].mv.tx == tx && (int32_t)w->foes[i].mv.ty == ty)) {
-            return (int)i;
+            if((fx == tx && fy == ty) ||
+               ((int32_t)f->w[m].mv.tx == tx && (int32_t)f->w[m].mv.ty == ty)) {
+                return (int)i;
+            }
         }
     }
     return -1;

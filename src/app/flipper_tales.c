@@ -43,6 +43,13 @@ typedef enum {
     FT_MODE_PAUSE
 } FtMode;
 
+/* What the wipe is hiding. */
+typedef enum {
+    FT_PEND_NONE = 0,
+    FT_PEND_BEGIN,
+    FT_PEND_END
+} FtPend;
+
 typedef struct {
     FuriMessageQueue* queue;
     FuriMutex*        mutex;
@@ -56,6 +63,18 @@ typedef struct {
     /* Which entity started the current battle, so it can be removed on a win. */
     int  battle_entity;
     bool battle_first_strike;
+
+    /* The scene wipe. Starting or ending a fight does not swap the screen on
+     * the spot: the iris closes, the swap happens behind it, and it opens on
+     * the new scene. Input and the world are both frozen while it runs, so
+     * nothing can happen behind the black. */
+    uint32_t wipe_ms;
+    bool     wipe_active;
+    bool     wipe_swapped;
+    FtPend   pend;
+    int      pend_entity;
+    bool     pend_first_strike;
+    bool     pend_won;
 
     /* D-pad is level-triggered: the queue gives presses and releases, and the
      * walk needs to know what is held right now. */
@@ -97,7 +116,16 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
     } else {
         ft_overworld_render(canvas, &app->world);
 
-        if(app->toast_ms > 0) ft_overworld_toast(canvas, app->toast);
+        /* A toast under the wipe is a toast nobody reads. */
+        if(app->toast_ms > 0 && !app->wipe_active) {
+            ft_overworld_toast(canvas, app->toast);
+        }
+    }
+
+    /* Over everything, including the pause menu, so nothing outruns it. */
+    if(app->wipe_active) {
+        const FtWipe wipe = ft_wipe_at(app->wipe_ms);
+        ft_render_iris(canvas, wipe.amount);
     }
 
     furi_mutex_release(app->mutex);
@@ -122,7 +150,7 @@ static void ft_toast(FlipperTales* app, const char* text) {
     app->toast_ms = FT_TOAST_MS;
 }
 
-static void ft_begin_battle(FlipperTales* app, int entity, bool first_strike) {
+static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike) {
     const FtRoom* room = ft_room(app->world.room);
     const FtRoster* roster = ft_roster(room->ents[entity].roster);
 
@@ -149,7 +177,7 @@ static void ft_begin_battle(FlipperTales* app, int entity, bool first_strike) {
     app->mode = FT_MODE_BATTLE;
 }
 
-static void ft_end_battle(FlipperTales* app, bool won) {
+static void ft_leave_battle_now(FlipperTales* app, bool won) {
     /* Carry the player back out, including anything captured in the fight. */
     app->world.stats = app->encounter.stats;
     app->world.stats.charge = app->encounter.roll.current;
@@ -172,6 +200,52 @@ static void ft_end_battle(FlipperTales* app, bool won) {
 
     app->battle_entity = -1;
     app->mode = FT_MODE_OVERWORLD;
+}
+
+/* ---- The scene wipe --------------------------------------------------- */
+
+static bool ft_wiping(const FlipperTales* app) {
+    return app->wipe_active;
+}
+
+static void ft_start_wipe(FlipperTales* app, FtPend pend) {
+    app->wipe_active = true;
+    app->wipe_swapped = false;
+    app->wipe_ms = 0;
+    app->pend = pend;
+}
+
+static void ft_begin_battle(FlipperTales* app, int entity, bool first_strike) {
+    if(ft_wiping(app)) return;
+
+    app->pend_entity = entity;
+    app->pend_first_strike = first_strike;
+    ft_start_wipe(app, FT_PEND_BEGIN);
+}
+
+static void ft_end_battle(FlipperTales* app, bool won) {
+    if(ft_wiping(app)) return;
+
+    app->pend_won = won;
+    ft_start_wipe(app, FT_PEND_END);
+}
+
+static void ft_wipe_update(FlipperTales* app, uint32_t dt_ms) {
+    app->wipe_ms += dt_ms;
+
+    /* The swap happens at full black, once. */
+    if(!app->wipe_swapped && app->wipe_ms >= FT_WIPE_SWAP) {
+        app->wipe_swapped = true;
+
+        if(app->pend == FT_PEND_BEGIN) {
+            ft_enter_battle_now(app, app->pend_entity, app->pend_first_strike);
+        } else if(app->pend == FT_PEND_END) {
+            ft_leave_battle_now(app, app->pend_won);
+        }
+        app->pend = FT_PEND_NONE;
+    }
+
+    if(app->wipe_ms >= FT_WIPE_MS) app->wipe_active = false;
 }
 
 /* ---- Input ----------------------------------------------------------- */
@@ -216,6 +290,10 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
     }
 
     if(!pressed && !repeated) return;
+
+    /* Nothing is actionable behind the wipe. Held direction is still tracked
+     * above, so walking resumes the instant the screen opens. */
+    if(app->wipe_active) return;
 
     /* OK acts on the physical press only. Holding it emits Repeat events, and
      * accepting those would let a held confirm in a menu fall straight through
@@ -344,6 +422,13 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
         app->toast_ms = (app->toast_ms > dt_ms) ? app->toast_ms - dt_ms : 0u;
     }
 
+    /* The wipe owns the frame: the world does not walk and the fight does not
+     * tick behind the black. */
+    if(app->wipe_active) {
+        ft_wipe_update(app, dt_ms);
+        return;
+    }
+
     if(app->show_help || app->mode == FT_MODE_PAUSE) return;
 
     if(app->mode == FT_MODE_BATTLE) {
@@ -395,6 +480,13 @@ static FlipperTales* ft_alloc(void) {
     app->mode = FT_MODE_OVERWORLD;
     app->battle_entity = -1;
     app->battle_first_strike = false;
+    app->wipe_ms = 0;
+    app->wipe_active = false;
+    app->wipe_swapped = false;
+    app->pend = FT_PEND_NONE;
+    app->pend_entity = -1;
+    app->pend_first_strike = false;
+    app->pend_won = false;
     app->held = 0;
     app->toast = NULL;
     app->toast_ms = 0;

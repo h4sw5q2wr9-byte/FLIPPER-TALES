@@ -57,21 +57,33 @@ typedef struct {
     uint32_t step_ms;  /* elapsed within the current step */
 } FtStepper;
 
+/* One walker. A roster of three walks the room as three of these, each with
+ * its own step, think clock and wander seed — drawing one leader with two
+ * sprites pinned at fixed offsets made a group read as a single object being
+ * dragged around, which is not what standing in front of three things looks
+ * like. */
 typedef struct {
     FtStepper mv;
     uint32_t  think_ms;
-    bool      alive;
 
     /* Where this one was placed. It drifts around here rather than wandering
-     * off, so a room keeps its shape. */
+     * off, so a group keeps its shape and a room keeps its shape. */
     uint8_t home_tx, home_ty;
 
-    /* Its own wander state, so foes in a room do not move in lockstep. */
+    /* Its own wander state, so walkers do not move in lockstep. */
     uint32_t seed;
+} FtFoeWalker;
 
-    /* Alerted foes head for the player. Alert is shared across the room: one
-     * of them noticing you brings the rest. */
-    bool alert;
+/* One encounter marker: the thing you fight, made of one or more walkers. */
+typedef struct {
+    bool    alive;
+
+    /* Alerted foes head for the player. Alert is shared across the whole
+     * room: one of them noticing you brings the rest. */
+    bool    alert;
+
+    uint8_t count; /* walkers, from the roster */
+    FtFoeWalker w[FT_MAX_ENEMIES];
 } FtFoeState;
 
 typedef struct {

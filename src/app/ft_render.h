@@ -37,6 +37,10 @@ typedef enum {
 void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on);
 
 void ft_render_battle(Canvas* canvas, const FtEncounter* e);
+
+/* The closing/opening ring, over whatever is already on the canvas. Shared by
+ * the hit transition and the wipe in and out of a fight. */
+void ft_render_iris(Canvas* canvas, uint8_t amount);
 void ft_render_help(Canvas* canvas, uint8_t page);
 
 #endif /* FT_RENDER_H */
