@@ -119,11 +119,13 @@ void ft_overworld_render(
 
     for(int32_t ty = 0; ty <= FT_VIEW_H; ty++) {
         for(int32_t tx = 0; tx <= FT_VIEW_W; tx++) {
-            const FtTile t = ft_map_tile(map, first_tx + tx, first_ty + ty);
+            /* Art index, not the raw tile: doors, locked ports and conduit
+             * face the way their run does (see ft_map_art_index). */
+            const uint8_t art = ft_map_art_index(map, first_tx + tx, first_ty + ty);
 
             blit_rows(
                 canvas,
-                FT_TILE_ART[t],
+                FT_TILE_ART[art],
                 FT_TILE_PX,
                 tx * FT_TILE_PX - off_x,
                 ty * FT_TILE_PX - off_y,

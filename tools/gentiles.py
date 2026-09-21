@@ -67,16 +67,55 @@ TILES["cable"] = """
 ........
 """
 
-# Door / area transition.
+# Door seen face-on. Correct only in a HORIZONTAL wall, where you walk up or
+# down through it. Heavy frame, clear opening, handle on the right.
 TILES["door"] = """
-.######.
+########
+#......#
+#.####.#
+#.#..#.#
+#.#..#.#
+#.#.##.#
+#.#..#.#
+########
+"""
+
+# The same door in a VERTICAL wall, where you pass left-to-right. Drawn as a
+# gap with the wall continuing above and below — a face-on door here reads as
+# if it were lying on its back.
+TILES["door_side"] = """
+########
+#......#
+........
+........
+........
+........
+#......#
+########
+"""
+
+# Locked port in a vertical wall: the same gap, barred.
+TILES["lock_side"] = """
+########
+#......#
+.##..##.
+.##..##.
+.##..##.
+.##..##.
+#......#
+########
+"""
+
+# Conduit running vertically, for cable runs that go up the screen.
+TILES["cable_v"] = """
 .#....#.
-.#.##.#.
-.#.##.#.
 .#....#.
-.#.##.#.
 .#....#.
-.######.
+.#....#.
+.#....#.
+.#....#.
+.#....#.
+.#....#.
 """
 
 # Terminal: save point and full restore.
@@ -163,9 +202,11 @@ with open("src/app/ft_tiles.h", "w") as fh:
 
 #include "../core/ft_map.h"
 
-static const uint8_t FT_TILE_ART[FT_TILE_COUNT][FT_TILE_PX] = {
+static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
 """)
-    order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock", "crate"]
+    # Must match FtTile, then the orientation variants (FT_TILE_ART_*).
+    order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock", "crate",
+             "door_side", "lock_side", "cable_v"]
     for name in order:
         fh.write("    /* %-6s */ {%s},\n" % (name, ", ".join("0x%02X" % b for b in data[name])))
     fh.write("};\n\n#endif /* FT_TILES_H */\n")

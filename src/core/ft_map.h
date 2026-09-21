@@ -31,6 +31,18 @@ typedef enum {
     FT_TILE_COUNT
 } FtTile;
 
+/* Some tiles belong to a run and must face the way that run does — a door in a
+ * horizontal wall is walked through vertically and reads front-on, while a
+ * door in a vertical wall is walked through sideways and must read as a gap.
+ *
+ * Rather than make map authors pick the right tile (and get it wrong), the
+ * renderer asks for an art index and the orientation is derived from the
+ * neighbours. Map data keeps one byte per tile. */
+#define FT_TILE_ART_DOOR_SIDE FT_TILE_COUNT
+#define FT_TILE_ART_LOCK_SIDE (FT_TILE_COUNT + 1)
+#define FT_TILE_ART_CABLE_V   (FT_TILE_COUNT + 2)
+#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 3)
+
 /* Maps are stored as one byte per tile, streamed from the SD card. Kept as a
  * borrowed pointer so a map is never copied into RAM wholesale. */
 typedef struct {
@@ -64,6 +76,14 @@ FtPos ft_map_move(const FtMap* m, FtPos from, int32_t dx, int32_t dy);
 /* Top-left pixel of the viewport that keeps `focus` centred, clamped so the
  * camera never shows outside the map. */
 FtPos ft_map_camera(const FtMap* m, FtPos focus);
+
+/* Which art to draw at this position, accounting for orientation. Always less
+ * than FT_TILE_ART_COUNT. */
+uint8_t ft_map_art_index(const FtMap* m, int32_t tx, int32_t ty);
+
+/* Is the passage through this tile horizontal — that is, does solid wall sit
+ * above and below it? Used to orient doors and locked ports. */
+bool ft_map_side_passage(const FtMap* m, int32_t tx, int32_t ty);
 
 /* Does this tile stop movement? */
 bool ft_tile_solid(FtTile t);

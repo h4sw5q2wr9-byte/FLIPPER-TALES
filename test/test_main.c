@@ -1063,6 +1063,89 @@ static void test_map(void) {
     CHECK_EQ(c4.y, 0);
 }
 
+static void test_tile_orientation(void) {
+    section("tile orientation");
+
+    /* Column 2 is a vertical wall with a door in it at (2,2); row 4 is a
+     * horizontal wall with a door in it at (1,4).
+     *
+     *   # # # # #
+     *   # . # . #
+     *   # . D . #     <- passage runs left-right: side-on
+     *   # . # . #
+     *   # D # # #     <- passage runs up-down: front-on
+     *   # . # . #
+     */
+    static const uint8_t TILES[5 * 6] = {
+        1, 1, 1, 1, 1,
+        1, 0, 1, 0, 1,
+        1, 0, 5, 0, 1,
+        1, 0, 1, 0, 1,
+        1, 5, 1, 1, 1,
+        1, 0, 1, 0, 1,
+    };
+    const FtMap m = {TILES, 5, 6, "Orient"};
+
+    /* Wall above and below means you pass through sideways. */
+    CHECK(ft_map_side_passage(&m, 2, 2), "a door in a vertical wall is side-on");
+    CHECK_EQ(ft_map_art_index(&m, 2, 2), FT_TILE_ART_DOOR_SIDE);
+
+    /* Wall left and right means you pass through vertically: front-facing. */
+    CHECK(!ft_map_side_passage(&m, 1, 4), "a door in a horizontal wall faces you");
+    CHECK_EQ(ft_map_art_index(&m, 1, 4), FT_TILE_DOOR);
+
+    /* Ordinary tiles are unaffected. */
+    CHECK_EQ(ft_map_art_index(&m, 1, 1), FT_TILE_FLOOR);
+    CHECK_EQ(ft_map_art_index(&m, 0, 0), FT_TILE_WALL);
+
+    /* Locked ports orient the same way, since they are doors that are shut. */
+    static const uint8_t LOCKED[5 * 3] = {
+        1, 1, 1, 1, 1,
+        1, 0, 7, 0, 1,
+        1, 1, 1, 1, 1,
+    };
+    const FtMap lk = {LOCKED, 5, 3, "Lock"};
+    /* Walls above and below, floor either side: side-on. */
+    CHECK_EQ(ft_map_art_index(&lk, 2, 1), FT_TILE_ART_LOCK_SIDE);
+
+    static const uint8_t LOCKED_H[3 * 3] = {
+        1, 0, 1,
+        1, 7, 1,
+        1, 0, 1,
+    };
+    const FtMap lh = {LOCKED_H, 3, 3, "LockH"};
+    /* Walls either side, floor above and below: front-on. */
+    CHECK_EQ(ft_map_art_index(&lh, 1, 1), FT_TILE_LOCK);
+
+    /* Conduit follows its own run rather than the walls. */
+    static const uint8_t CABLES[4 * 4] = {
+        0, 4, 0, 0,
+        0, 4, 0, 0,
+        0, 4, 0, 0,
+        0, 0, 4, 4,
+    };
+    const FtMap cb = {CABLES, 4, 4, "Cable"};
+    CHECK_EQ(ft_map_art_index(&cb, 1, 1), FT_TILE_ART_CABLE_V);
+    CHECK_EQ(ft_map_art_index(&cb, 2, 3), FT_TILE_CABLE);
+
+    /* A lone conduit tile stays horizontal rather than picking at random. */
+    static const uint8_t LONE[3 * 3] = {
+        0, 0, 0,
+        0, 4, 0,
+        0, 0, 0,
+    };
+    const FtMap ln = {LONE, 3, 3, "Lone"};
+    CHECK_EQ(ft_map_art_index(&ln, 1, 1), FT_TILE_CABLE);
+
+    /* Every index the renderer can be handed must be a real art entry. */
+    for(int32_t y = 0; y < 6; y++) {
+        for(int32_t x = 0; x < 5; x++) {
+            CHECK(ft_map_art_index(&m, x, y) < FT_TILE_ART_COUNT,
+                  "art index out of range at %d,%d", x, y);
+        }
+    }
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -1087,6 +1170,7 @@ int main(void) {
     test_tutorial();
     test_anim();
     test_map();
+    test_tile_orientation();
     test_rng();
 
     printf("\n%d checks, %d failures\n\n", checks, failures);
