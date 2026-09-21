@@ -41,6 +41,23 @@ static bool cable_is_vertical(const FtMap* m, int32_t tx, int32_t ty) {
     return (up || down) && !(left || right);
 }
 
+bool ft_map_scatter(const FtMap* m, int32_t tx, int32_t ty) {
+    if(!m || m->scatter == 0u) return false;
+
+    /* Only bare floor. Growing weeds through a crate or a doorway looks like
+     * a bug rather than like nature. */
+    if(ft_map_tile(m, tx, ty) != FT_TILE_FLOOR) return false;
+
+    /* Cheap spatial hash: deterministic per tile, so the scatter is stable as
+     * the camera scrolls rather than reseeding every frame. */
+    uint32_t h = ((uint32_t)tx * 73856093u) ^ ((uint32_t)ty * 19349663u);
+    h ^= h >> 13;
+    h *= 0x5BD1E995u;
+    h ^= h >> 15;
+
+    return (h & 0xFFu) < m->scatter;
+}
+
 bool ft_map_has_shadow(const FtMap* m, int32_t tx, int32_t ty) {
     if(ft_tile_solid(ft_map_tile(m, tx, ty))) return false;
     return ft_tile_solid(ft_map_tile(m, tx, ty - 1));

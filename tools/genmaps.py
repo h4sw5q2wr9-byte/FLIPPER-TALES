@@ -25,7 +25,7 @@ MAPS = {}
 # Cold Boot: where the game opens. A terminal to teach saving, a locked port
 # that cannot be opened yet so the iButton has somewhere to matter later, and
 # two ways out of the first room so it never reads as a corridor.
-MAPS["cold_boot"] = ("Cold Boot", """
+MAPS["cold_boot"] = ("Cold Boot", 12, """
 ################################
 #....T....#....................#
 #.........#.....====.....****..#
@@ -47,7 +47,7 @@ MAPS["cold_boot"] = ("Cold Boot", """
 # The Scrapline: chapter one. Open ground broken by a void you must route
 # around, and the chapter's module sits behind a locked port on the far side,
 # so the place is walked twice — once to find it, once to open it.
-MAPS["scrapline"] = ("The Scrapline", """
+MAPS["scrapline"] = ("The Scrapline", 26, """
 ########################################
 #......****......########..............#
 #......****......#......#....====......#
@@ -96,7 +96,7 @@ with open("src/app/ft_maps.h", "w") as fh:
 #include "../core/ft_map.h"
 
 """)
-    for key, (name, art) in MAPS.items():
+    for key, (name, scatter, art) in MAPS.items():
         w, h, rows = parse(art)
         fh.write("/* %s: %ux%u tiles (%ux%u px) */\n" % (name, w, h, w * 8, h * 8))
         fh.write("static const uint8_t FT_MAP_%s_TILES[%u] = {\n" % (key.upper(), w * h))
@@ -104,8 +104,8 @@ with open("src/app/ft_maps.h", "w") as fh:
             fh.write("    " + ",".join(str(v) for v in r) + ",\n")
         fh.write("};\n\n")
         fh.write(
-            'static const FtMap FT_MAP_%s = {FT_MAP_%s_TILES, %u, %u, "%s"};\n\n'
-            % (key.upper(), key.upper(), w, h, name))
+            'static const FtMap FT_MAP_%s = {FT_MAP_%s_TILES, %u, %u, "%s", %u};\n\n'
+            % (key.upper(), key.upper(), w, h, name, scatter))
         print("%-12s %2ux%-2u tiles  (%u px wide, %.1f screens)" % (key, w, h, w * 8, w / 16))
 
     fh.write("#endif /* FT_MAPS_H */\n")

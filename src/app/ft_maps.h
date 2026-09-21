@@ -31,7 +31,7 @@ static const uint8_t FT_MAP_COLD_BOOT_TILES[512] = {
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
 };
 
-static const FtMap FT_MAP_COLD_BOOT = {FT_MAP_COLD_BOOT_TILES, 32, 16, "Cold Boot"};
+static const FtMap FT_MAP_COLD_BOOT = {FT_MAP_COLD_BOOT_TILES, 32, 16, "Cold Boot", 12};
 
 /* The Scrapline: 40x20 tiles (320x160 px) */
 static const uint8_t FT_MAP_SCRAPLINE_TILES[800] = {
@@ -57,6 +57,6 @@ static const uint8_t FT_MAP_SCRAPLINE_TILES[800] = {
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
 };
 
-static const FtMap FT_MAP_SCRAPLINE = {FT_MAP_SCRAPLINE_TILES, 40, 20, "The Scrapline"};
+static const FtMap FT_MAP_SCRAPLINE = {FT_MAP_SCRAPLINE_TILES, 40, 20, "The Scrapline", 26};
 
 #endif /* FT_MAPS_H */

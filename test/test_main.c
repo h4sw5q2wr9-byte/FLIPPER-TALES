@@ -985,7 +985,7 @@ static void test_map(void) {
         1, 0, 8, 0, 3, 1,
         1, 1, 1, 1, 1, 1,
     };
-    const FtMap m = {TILES, 6, 4, "Test"};
+    const FtMap m = {TILES, 6, 4, "Test", 0};
 
     CHECK_EQ(ft_map_tile(&m, 0, 0), FT_TILE_WALL);
     CHECK_EQ(ft_map_tile(&m, 1, 1), FT_TILE_FLOOR);
@@ -1036,7 +1036,7 @@ static void test_map(void) {
 
     /* Camera never shows outside the map, however far the focus runs. */
     static const uint8_t BIG[40 * 20] = {0};
-    const FtMap big = {BIG, 40, 20, "Big"};
+    const FtMap big = {BIG, 40, 20, "Big", 0};
     const int32_t max_x = 40 * FT_TILE_PX - FT_VIEW_W * FT_TILE_PX;
     const int32_t max_y = 20 * FT_TILE_PX - FT_VIEW_H * FT_TILE_PX;
 
@@ -1084,7 +1084,7 @@ static void test_tile_orientation(void) {
         1, 5, 1, 1, 1,
         1, 0, 1, 0, 1,
     };
-    const FtMap m = {TILES, 5, 6, "Orient"};
+    const FtMap m = {TILES, 5, 6, "Orient", 0};
 
     /* Wall above and below means you pass through sideways. */
     CHECK(ft_map_side_passage(&m, 2, 2), "a door in a vertical wall is side-on");
@@ -1107,7 +1107,7 @@ static void test_tile_orientation(void) {
         1, 0, 7, 0, 1,
         1, 1, 1, 1, 1,
     };
-    const FtMap lk = {LOCKED, 5, 3, "Lock"};
+    const FtMap lk = {LOCKED, 5, 3, "Lock", 0};
     /* Walls above and below, floor either side: side-on. */
     CHECK_EQ(ft_map_art_index(&lk, 2, 1), FT_TILE_ART_LOCK_SIDE);
 
@@ -1116,7 +1116,7 @@ static void test_tile_orientation(void) {
         1, 7, 1,
         1, 0, 1,
     };
-    const FtMap lh = {LOCKED_H, 3, 3, "LockH"};
+    const FtMap lh = {LOCKED_H, 3, 3, "LockH", 0};
     /* Walls either side, floor above and below: front-on. */
     CHECK_EQ(ft_map_art_index(&lh, 1, 1), FT_TILE_LOCK);
 
@@ -1127,7 +1127,7 @@ static void test_tile_orientation(void) {
         0, 4, 0, 0,
         0, 0, 4, 4,
     };
-    const FtMap cb = {CABLES, 4, 4, "Cable"};
+    const FtMap cb = {CABLES, 4, 4, "Cable", 0};
     CHECK_EQ(ft_map_art_index(&cb, 1, 1), FT_TILE_ART_CABLE_V);
     CHECK_EQ(ft_map_art_index(&cb, 2, 3), FT_TILE_CABLE);
 
@@ -1137,7 +1137,7 @@ static void test_tile_orientation(void) {
         0, 4, 0,
         0, 0, 0,
     };
-    const FtMap ln = {LONE, 3, 3, "Lone"};
+    const FtMap ln = {LONE, 3, 3, "Lone", 0};
     CHECK_EQ(ft_map_art_index(&ln, 1, 1), FT_TILE_CABLE);
 
     /* Walls show a face where floor lies below and a cap where the wall
@@ -1153,7 +1153,7 @@ static void test_tile_orientation(void) {
         1, 1, 1,
         1, 0, 1,
     };
-    const FtMap wl = {WALLS, 3, 4, "Walls"};
+    const FtMap wl = {WALLS, 3, 4, "Walls", 0};
 
     CHECK_EQ(ft_map_art_index(&wl, 1, 1), FT_TILE_ART_WALL_TOP);
     CHECK_EQ(ft_map_art_index(&wl, 1, 2), FT_TILE_WALL);
@@ -1171,12 +1171,63 @@ static void test_tile_orientation(void) {
         0, 0, 0,
         0, 0, 0,
     };
-    const FtMap op = {OPEN, 3, 3, "Open"};
+    const FtMap op = {OPEN, 3, 3, "Open", 0};
     CHECK(!ft_map_has_shadow(&op, 1, 1), "open floor casts no shadow");
 
     /* The top row has off-map wall above it, so it is shadowed too — the
      * world's edge behaves like any other wall. */
     CHECK(ft_map_has_shadow(&op, 1, 0), "the map edge shadows like a wall");
+
+    /* Scattered greenery: procedural, so it must be deterministic and must
+     * only ever land on bare floor. */
+    static const uint8_t GROUND[4 * 4] = {
+        0, 0, 8, 0,
+        0, 1, 0, 0,
+        0, 0, 0, 3,
+        0, 5, 0, 0,
+    };
+    FtMap gr = {GROUND, 4, 4, "Ground", 0};
+
+    /* Off by default: indoors grows nothing. */
+    for(int32_t y = 0; y < 4; y++) {
+        for(int32_t x = 0; x < 4; x++) {
+            CHECK(!ft_map_scatter(&gr, x, y), "scatter 0 grows nothing");
+        }
+    }
+
+    /* Turned all the way up, it still refuses anything that is not floor:
+     * weeds through a crate or a doorway read as a bug, not as nature. */
+    gr.scatter = 255;
+    CHECK(!ft_map_scatter(&gr, 2, 0), "not on a crate");
+    CHECK(!ft_map_scatter(&gr, 1, 1), "not on a wall");
+    CHECK(!ft_map_scatter(&gr, 3, 2), "not on existing grass");
+    CHECK(!ft_map_scatter(&gr, 1, 3), "not in a doorway");
+    CHECK(ft_map_scatter(&gr, 0, 0), "but yes on bare floor");
+
+    /* Deterministic: the camera scrolling must not reseed the world. */
+    gr.scatter = 128;
+    for(int32_t y = 0; y < 4; y++) {
+        for(int32_t x = 0; x < 4; x++) {
+            const bool first = ft_map_scatter(&gr, x, y);
+            for(int i = 0; i < 8; i++) {
+                CHECK_EQ(ft_map_scatter(&gr, x, y), first);
+            }
+        }
+    }
+
+    /* And the density roughly tracks the setting, rather than clustering into
+     * a hedge or vanishing. Sampled over open ground. */
+    static const uint8_t BARE[64 * 64] = {0};
+    FtMap field = {BARE, 64, 64, "Field", 26};
+    int grown = 0;
+    for(int32_t y = 0; y < 64; y++) {
+        for(int32_t x = 0; x < 64; x++) {
+            if(ft_map_scatter(&field, x, y)) grown++;
+        }
+    }
+    const int expected = (64 * 64 * 26) / 256;
+    CHECK(grown > expected / 2 && grown < expected * 2,
+          "scatter density %d should be near %d", grown, expected);
 
     /* Every index the renderer can be handed must be a real art entry. */
     for(int32_t y = 0; y < 6; y++) {

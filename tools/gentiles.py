@@ -99,13 +99,13 @@ TILES["cable"] = """
 # down through it. Heavy frame, clear opening, handle on the right.
 TILES["door"] = """
 ########
+##....##
 #......#
-#.####.#
-#.#..#.#
-#.#..#.#
-#.#.##.#
-#.#..#.#
-########
+#......#
+#......#
+#......#
+#......#
+#......#
 """
 
 # The same door in a VERTICAL wall, where you pass left-to-right. Drawn as a
@@ -132,6 +132,20 @@ TILES["lock_side"] = """
 .##..##.
 #......#
 ########
+"""
+
+# A single weed, scattered procedurally over floor (see ft_map_scatter).
+# Kept inset from the tile edges so neighbouring tufts never merge into a
+# hedge, and kept light so it does not fight the floor stipple.
+TILES["tuft"] = """
+........
+........
+...#....
+..###...
+...#....
+........
+........
+........
 """
 
 # Conduit running vertically, for cable runs that go up the screen.
@@ -237,7 +251,7 @@ static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
 """)
     # Must match FtTile, then the orientation variants (FT_TILE_ART_*).
     order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock", "crate",
-             "door_side", "lock_side", "cable_v", "wall_top", "shadow"]
+             "door_side", "lock_side", "cable_v", "wall_top", "shadow", "tuft"]
     for name in order:
         fh.write("    /* %-6s */ {%s},\n" % (name, ", ".join("0x%02X" % b for b in data[name])))
     fh.write("};\n\n#endif /* FT_TILES_H */\n")

@@ -50,7 +50,10 @@ typedef enum {
 /* Dithered band laid over whatever sits directly below a wall. */
 #define FT_TILE_ART_SHADOW    (FT_TILE_COUNT + 4)
 
-#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 5)
+/* Weeds scattered over open floor, placed procedurally rather than authored. */
+#define FT_TILE_ART_TUFT      (FT_TILE_COUNT + 5)
+
+#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 6)
 
 /* Maps are stored as one byte per tile, streamed from the SD card. Kept as a
  * borrowed pointer so a map is never copied into RAM wholesale. */
@@ -59,6 +62,11 @@ typedef struct {
     uint16_t       w;
     uint16_t       h;
     const char*    name;
+
+    /* How much loose greenery to scatter over open floor, 0-255 as a fraction
+     * of 256. Zero indoors. Placing this procedurally keeps it out of the map
+     * data, where hand-dotting every weed would be unreadable to edit. */
+    uint8_t scatter;
 } FtMap;
 
 /* Pixel-space position. Sub-tile so movement is smooth rather than grid-locked. */
@@ -89,6 +97,10 @@ FtPos ft_map_camera(const FtMap* m, FtPos focus);
 /* Which art to draw at this position, accounting for orientation. Always less
  * than FT_TILE_ART_COUNT. */
 uint8_t ft_map_art_index(const FtMap* m, int32_t tx, int32_t ty);
+
+/* Should a decorative tuft be drawn on this tile? Deterministic, so the same
+ * tile always grows the same weed and nothing shimmers as the camera moves. */
+bool ft_map_scatter(const FtMap* m, int32_t tx, int32_t ty);
 
 /* Should a wall shadow be laid over this tile? True for walkable tiles with a
  * solid tile directly above. */

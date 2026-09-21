@@ -2,21 +2,27 @@
 
 #include "ft_tiles.h"
 
-/* The overworld avatar, 8x12. Smaller than the battle sprite on purpose: a
- * 16x16 character would eat a quarter of the viewport's height. */
-static const uint16_t FT_AVATAR[FT_AVATAR_H] = {
-    0x3C, /* ..####.. */
+/* The overworld avatar, 8x12: the same handheld device as the battle sprite,
+ * shrunk. It is the player character, so it must be recognisably the thing you
+ * are in combat — antenna, screen, stubby legs — not a generic little figure.
+ *
+ * Smaller than the 16x16 battle sprite on purpose: that would eat a quarter of
+ * the viewport's height. */
+#define AV_SCREEN_ROW 5
+
+static const uint8_t FT_AVATAR[FT_AVATAR_H] = {
+    0x18, /* ...##...  antenna */
+    0x18, /* ...##... */
+    0x7E, /* .######.  case */
     0x7E, /* .######. */
-    0x5A, /* .#.##.#. */
-    0x7E, /* .######. */
+    0x42, /* .#....#.  screen */
+    0x66, /* .##..##.  eyes      <- AV_SCREEN_ROW */
     0x42, /* .#....#. */
     0x7E, /* .######. */
     0x7E, /* .######. */
-    0x3C, /* ..####.. */
+    0x24, /* ..#..#..  legs */
     0x24, /* ..#..#.. */
-    0x24, /* ..#..#.. */
-    0x66, /* .##..##. */
-    0x00,
+    0x66, /* .##..##.  feet */
 };
 
 #define FT_SCREEN_PX_W (FT_VIEW_W * FT_TILE_PX)
@@ -75,25 +81,21 @@ static void draw_avatar_halo(Canvas* c, int32_t x, int32_t y) {
 
 static void draw_avatar(Canvas* c, int32_t x, int32_t y, FtFacing facing, int32_t bob) {
     uint8_t rows[FT_AVATAR_H];
-    for(int32_t i = 0; i < FT_AVATAR_H; i++) rows[i] = (uint8_t)FT_AVATAR[i];
+    for(int32_t i = 0; i < FT_AVATAR_H; i++) rows[i] = FT_AVATAR[i];
 
-    /* Facing is carried by the eyes rather than four sprite sets: at 8px wide
-     * a turned body is unreadable, but a shifted pupil is not. */
+    /* Facing lives in the screen rather than in four sprite sets: at 8px wide
+     * a turned body is unreadable, but shifted pupils are not. */
     switch(facing) {
-    case FT_FACE_LEFT:  rows[2] = 0x4A; break; /* both pupils left  */
-    case FT_FACE_RIGHT: rows[2] = 0x52; break; /* both pupils right */
-    case FT_FACE_UP:    rows[2] = 0x7E; break; /* back of the head  */
+    case FT_FACE_LEFT:  rows[AV_SCREEN_ROW] = 0x56; break; /* .##.#.#. */
+    case FT_FACE_RIGHT: rows[AV_SCREEN_ROW] = 0x6A; break; /* .#.#.##. */
+    case FT_FACE_UP:    rows[AV_SCREEN_ROW] = 0x42; break; /* screen dark */
     case FT_FACE_DOWN:
     default:            break;
     }
 
-    /* A two-frame walk: the legs swap rather than animate, which is all that
-     * survives at this size. */
-    if(bob) {
-        rows[8] = 0x0C;
-        rows[9] = 0x0C;
-        rows[10] = 0x6C;
-    }
+    /* Two-frame walk: the feet close and open. Anything more elaborate is
+     * invisible at this size. */
+    if(bob) rows[FT_AVATAR_H - 1] = 0x24;
 
     blit_rows(c, rows, FT_AVATAR_H, x, y, FT_AVATAR_W);
 }
@@ -130,6 +132,13 @@ void ft_overworld_render(
             blit_rows(
                 canvas, FT_TILE_ART[ft_map_art_index(map, mx, my)], FT_TILE_PX, sx, sy,
                 FT_TILE_PX);
+
+            /* Loose greenery over open floor, placed procedurally. */
+            if(ft_map_scatter(map, mx, my)) {
+                blit_rows(
+                    canvas, FT_TILE_ART[FT_TILE_ART_TUFT], FT_TILE_PX, sx, sy,
+                    FT_TILE_PX);
+            }
 
             /* Then the wall's shadow, over the top of whatever is below it. */
             if(ft_map_has_shadow(map, mx, my)) {
