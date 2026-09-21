@@ -43,6 +43,12 @@ bool ft_level_apply(FtStats* s, FtLevelChoice choice) {
         return false;
     }
 
+    /* Applying the choice is what actually levels you: ft_xp_gain reports how
+     * many are *owed*, and they are spent one at a time as the player picks.
+     * Without this the level never moved, so the level cap never bit and
+     * every enemy stayed worth full XP forever. */
+    s->level++;
+
     /* A level-up is also a full restore. */
     s->charge = s->charge_max;
     s->ram = s->ram_max;

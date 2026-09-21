@@ -268,6 +268,10 @@ uint8_t ft_encounter_foe_hit_at(const FtEncounter* e, uint8_t i);
  * still travelling, its real value afterwards. */
 int16_t ft_encounter_foe_shown_charge(const FtEncounter* e, uint8_t i);
 
+/* XP this fight is worth, after the underlevelling taper on each foe. Zero
+ * unless it was actually won. */
+int16_t ft_encounter_xp(const FtEncounter* e);
+
 /* Should this foe still be drawn? A foe killed by the action in flight stays
  * on screen until the strike frame. */
 /* How far through falling over a foe this attack just killed is: 0 before the

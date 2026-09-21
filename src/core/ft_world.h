@@ -12,6 +12,9 @@
 #include "ft_signal.h"
 
 #define FT_MAX_ROOM_ENTS 6
+
+/* One bit per entity per room, for what has been beaten or taken. */
+#define FT_CLEARED_BYTES 8
 #define FT_MAX_ROOM_EXITS 4
 
 typedef enum {
@@ -100,7 +103,11 @@ typedef struct {
     FtFoeState foes[FT_MAX_ROOM_ENTS];
 
     /* Which entities are gone, one bit per entity per room. */
-    uint8_t cleared[8];
+    uint8_t cleared[FT_CLEARED_BYTES];
+
+    /* The terminal last saved at. Being downed returns you here, so the save
+     * point and the respawn point cannot drift apart. */
+    uint8_t save_room, save_tx, save_ty;
 
     /* Carried between battles, since an encounter starts from scratch. */
     FtStats         stats;

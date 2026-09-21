@@ -207,6 +207,54 @@ int main(void) {
     }
 
     {
+        /* The irreversible gate, both ways round. */
+        for(uint8_t i = 0; i < 2u; i++) {
+            ft_render_confirm(canvas, "Erase this run?", i != 0u);
+
+            char cp[64];
+            snprintf(cp, sizeof(cp), "preview/86_confirm%u.pbm", i);
+            ft_stub_canvas_write_pbm(canvas, cp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  confirm %u           %s\n", i, c ? "CLIPPED" : "ok");
+        }
+    }
+
+    {
+        /* The level-up screen: each row, and the capped case, which changes
+         * what the value column says. */
+        FtStats st;
+        ft_stats_init(&st);
+        st.level = 7;
+
+        for(uint8_t i = 0; i < 3u; i++) {
+            ft_render_levelup(canvas, &st, i, (i == 0u) ? 3 : 1);
+
+            char lp[64];
+            snprintf(lp, sizeof(lp), "preview/87_level%u.pbm", i);
+            ft_stub_canvas_write_pbm(canvas, lp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  level row %u         %s\n", i, c ? "CLIPPED" : "ok");
+        }
+
+        /* Every stat at its cap, and at three digits, which is the widest the
+         * value column ever gets. */
+        st.charge_max = FT_CAP_CHARGE;
+        st.ram_max = FT_CAP_RAM;
+        st.flash_max = FT_CAP_FLASH;
+        st.level = 99;
+
+        ft_render_levelup(canvas, &st, 0, 1);
+        ft_stub_canvas_write_pbm(canvas, "preview/88_levelcap.pbm");
+        total_clipped += ft_stub_canvas_clipped(canvas);
+        printf("  level capped        %s\n",
+               ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
+    }
+
+    {
         /* Every row of the arena, and the widest value each one can show. */
         FtPractice pr;
         ft_practice_init(&pr, 1u);

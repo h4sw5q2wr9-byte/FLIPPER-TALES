@@ -529,6 +529,59 @@ raise the ceiling and that a match terminates. The preview renders every row
 and every value and fails on overflow, which is how the FIGHT row was caught
 colliding with the help line.
 
+### 5.3 Saving
+
+The format lives in `src/core/ft_save.c`; the SD card lives in
+`src/app/ft_storage.c`. That split is the point: every byte of the layout,
+every rejection and the whole world round trip are tested on a host with no
+card in sight.
+
+A file is a 6-byte header (magic, version, payload length), the payload, and a
+4-byte FNV-1a checksum **over the header as well**. Fields are written
+little-endian one byte at a time rather than by memcpy-ing structs, so the
+layout cannot change silently when a field is reordered or the compiler pads
+differently. A file that is foreign, the wrong version, the wrong declared
+length, truncated or corrupt is **refused**, and a refusal means a new game —
+a garbled save is worse than a missing one. The tests flip every single bit in
+a save and assert none of them decodes.
+
+**Terminals are the save point**, and saving is what a terminal is for: using
+one restores Charge and RAM *and* writes the run out, because walking across a
+room for something that does half its job is a bad deal. The pause menu's
+**Save** works only at a terminal and says where to find one otherwise, which
+is how the rule teaches itself.
+
+A save also records **where you came back from**. Being downed used to return
+you to a hardcoded room 0, which quietly undid everything past it; it now
+returns you to the terminal you last saved at. Levelling also writes the file
+straight away, because a stat you chose and then lost on the next screen is
+the worst possible outcome.
+
+`ft_save_to_world()` restores the cleared-entity flags **before** entering the
+room, because entering is what decides which foes spawn. Load-then-enter would
+put a foe you already beat back on its tile and only then mark it dead.
+
+**New game** is the one irreversible thing on the menu, so it asks first, and
+No is the default answer.
+
+### 5.4 Levelling
+
+`ft_encounter_xp()` totals a won fight, tapering each foe against the player's
+level separately so a mixed group pays properly rather than being averaged.
+`ft_xp_gain()` banks it — capped at `FT_XP_BATTLE_CAP` per battle, so no one
+fight ever hands over two levels — and reports how many level-ups are **owed**.
+
+Owed levels take the screen before the world comes back, one at a time,
+because each one is a choice: Charge, RAM or Flash, each row showing what the
+stat is now and what it would become. A capped stat still shows, reading
+"MAX", so the list does not change shape between level-ups; picking it refuses
+and the level stays owed. BACK does not dismiss the screen — a screen you can
+escape from is a stat you can lose.
+
+`ft_level_apply()` is what actually raises `level`. It did not, which meant
+the level never moved, the chapter cap never bit, and every enemy was worth
+full XP forever. The anti-farming taper only started working once this did.
+
 ## 6. Architecture
 
 Two layers. Because §2.1 keeps all hardware out of scope, **the entire game is pure logic** and the
@@ -610,9 +663,10 @@ Open balance watch-items:
 ### M2 — Overworld *(partly built)*
 
 Built: tiles, collision, camera, renderer, grid stepping, a four-room prologue
-chain, room transitions, the pause menu, and patrolling foes.
-`make -C test map` renders every room at panel resolution and whole.
-Still to build: the strike, terminals, items, and saving.
+chain, room transitions, the pause menu, patrolling foes, terminals, saving
+and levelling. `make -C test map` renders every room at panel resolution and
+whole.
+Still to build: the overworld strike's feedback, items, and NPCs.
 
 #### Tiles and the viewport
 

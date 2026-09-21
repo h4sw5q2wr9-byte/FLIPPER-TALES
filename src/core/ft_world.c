@@ -239,6 +239,12 @@ void ft_world_init(FtWorld* w) {
     w->stats.charge = w->stats.charge_max;
     w->stats.flash_used = fx.flash_used;
 
+    /* The first room's terminal is where a new run starts and, until you save
+     * somewhere else, where being downed puts you back. */
+    w->save_room = 0;
+    w->save_tx = 5;
+    w->save_ty = 3;
+
     ft_world_enter(w, 0, 3, 4);
 }
 

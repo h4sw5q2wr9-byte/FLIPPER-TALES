@@ -29,9 +29,11 @@
 /* The pause menu, opened with Back. */
 typedef enum {
     FT_PAUSE_RESUME = 0,
+    FT_PAUSE_SAVE,
     FT_PAUSE_PRACTICE,
     FT_PAUSE_HELP,
     FT_PAUSE_TIPS,
+    FT_PAUSE_NEWGAME,
     FT_PAUSE_QUIT,
     FT_PAUSE_COUNT
 } FtPauseItem;
@@ -40,6 +42,14 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on);
 
 /* The practice arena's setup screen. */
 void ft_render_practice(Canvas* canvas, const FtPractice* p);
+
+/* A yes/no gate in front of something irreversible. */
+void ft_render_confirm(Canvas* canvas, const char* what, bool yes);
+
+/* The level-up screen: pick which stat the level goes into. `owed` is how
+ * many more follow this one, so the player knows to expect them. */
+void ft_render_levelup(
+    Canvas* canvas, const FtStats* stats, uint8_t selected, int16_t owed);
 
 void ft_render_battle(Canvas* canvas, const FtEncounter* e);
 

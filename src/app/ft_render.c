@@ -943,31 +943,92 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
 
     static const char* const ITEMS[FT_PAUSE_COUNT] = {
         "Resume",
+        "Save",
         "Practice arena",
         "How to play",
         "Tips",
+        "New game",
         "Quit",
     };
 
-    /* Five rows in the 51px below the rule: 10 each, the tightest that still
-     * leaves a pixel of air around the highlight. */
-    for(uint8_t i = 0; i < FT_PAUSE_COUNT; i++) {
-        const int32_t y = 13 + (int32_t)i * 10;
+    /* The list scrolls rather than squeezing. Seven rows crammed into the
+     * 52px below the rule gave 7px each: legible, but the highlight touched
+     * the rows either side and descenders ran into the next line. Five rows
+     * of ten and a window that follows the cursor costs one scrollbar and
+     * stops the menu from getting worse every time an item is added. */
+#define PAUSE_VISIBLE 5
+    const int32_t top = 13;
+    const int32_t step = 10;
+
+    uint8_t first = 0;
+    if(selected >= PAUSE_VISIBLE) first = (uint8_t)(selected - (PAUSE_VISIBLE - 1));
+    if(first > FT_PAUSE_COUNT - PAUSE_VISIBLE) first = FT_PAUSE_COUNT - PAUSE_VISIBLE;
+
+    /* Room for the scrollbar, which only appears when there is more to see. */
+    const int32_t right = (FT_PAUSE_COUNT > PAUSE_VISIBLE) ? 118 : 124;
+
+    for(uint8_t row = 0; row < PAUSE_VISIBLE; row++) {
+        const uint8_t i = (uint8_t)(first + row);
+        if(i >= FT_PAUSE_COUNT) break;
+
+        const int32_t y = top + (int32_t)row * step;
         const bool on = (i == selected);
 
         if(on) {
-            canvas_draw_box(canvas, 4, y, 120, 10);
+            canvas_draw_box(canvas, 4, y, (size_t)(right - 4), 9);
             canvas_set_color(canvas, ColorWhite);
         }
 
-        canvas_draw_str(canvas, 9, y + 8, ITEMS[i]);
+        canvas_draw_str(canvas, 9, y + 7, ITEMS[i]);
 
         /* Tips carries its state on the row rather than needing a submenu. */
         if(i == FT_PAUSE_TIPS) {
             const char* state = tips_on ? "ON" : "OFF";
             const int32_t w = (int32_t)canvas_string_width(canvas, state);
-            canvas_draw_str(canvas, 119 - w, y + 8, state);
+            canvas_draw_str(canvas, right - 5 - w, y + 7, state);
         }
+
+        if(on) canvas_set_color(canvas, ColorBlack);
+    }
+
+    if(FT_PAUSE_COUNT > PAUSE_VISIBLE) {
+        const int32_t track_y = top, track_h = PAUSE_VISIBLE * step - 1;
+        const int32_t grip_h = (track_h * PAUSE_VISIBLE) / FT_PAUSE_COUNT;
+        const int32_t grip_y =
+            track_y + (track_h - grip_h) * (int32_t)first /
+                          (int32_t)(FT_PAUSE_COUNT - PAUSE_VISIBLE);
+
+        canvas_draw_frame(canvas, 121, track_y, 5, (size_t)track_h);
+        canvas_draw_box(canvas, 122, grip_y + 1, 3, (size_t)(grip_h - 2));
+    }
+#undef PAUSE_VISIBLE
+}
+
+/* Erasing a run is the one thing on that menu that cannot be undone, so it
+ * asks. OK is deliberately not the default answer. */
+void ft_render_confirm(Canvas* canvas, const char* what, bool yes) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 18, what);
+    draw_centred(canvas, FT_SCREEN_W / 2, 30, "Cannot be undone.");
+
+    static const char* const OPT[2] = {"No", "Yes"};
+    static const int32_t X[2] = {26, 74};
+
+    for(uint8_t i = 0; i < 2u; i++) {
+        const bool on = (yes == (i == 1u));
+
+        if(on) {
+            canvas_draw_box(canvas, X[i], 42, 28, 12);
+            canvas_set_color(canvas, ColorWhite);
+        } else {
+            canvas_draw_frame(canvas, X[i], 42, 28, 12);
+        }
+
+        const int32_t w = (int32_t)canvas_string_width(canvas, OPT[i]);
+        canvas_draw_str(canvas, X[i] + (28 - w) / 2, 51, OPT[i]);
 
         if(on) canvas_set_color(canvas, ColorBlack);
     }
@@ -1021,6 +1082,59 @@ void ft_render_practice(Canvas* canvas, const FtPractice* p) {
     }
 
     draw_centred(canvas, FT_SCREEN_W / 2, 62, ft_practice_help(p));
+}
+
+/* The level-up screen. Three stats, what each is worth, and what it would
+ * become — a choice nobody can make from the stat's name alone. */
+void ft_render_levelup(
+    Canvas* canvas, const FtStats* stats, uint8_t selected, int16_t owed) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+
+    char head[32];
+    if(owed > 1) {
+        snprintf(head, sizeof(head), "LEVEL %d  (%d more)", (int)stats->level, (int)owed - 1);
+    } else {
+        snprintf(head, sizeof(head), "LEVEL %d", (int)stats->level);
+    }
+    draw_centred(canvas, FT_SCREEN_W / 2, 8, head);
+    canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
+
+    static const char* const NAMES[3] = {"Charge", "RAM", "Flash"};
+    static const FtLevelChoice CHOICE[3] = {FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
+    static const int16_t STEP[3] = {FT_LEVEL_UP_CHARGE, FT_LEVEL_UP_RAM, FT_LEVEL_UP_FLASH};
+
+    const int16_t now[3] = {stats->charge_max, stats->ram_max, stats->flash_max};
+
+    for(uint8_t i = 0; i < 3u; i++) {
+        const int32_t y = 14 + (int32_t)i * 12;
+        const bool on = (i == selected);
+        const bool can = ft_level_choice_available(stats, CHOICE[i]);
+
+        if(on) {
+            canvas_draw_box(canvas, 4, y, 120, 11);
+            canvas_set_color(canvas, ColorWhite);
+        }
+
+        canvas_draw_str(canvas, 9, y + 8, NAMES[i]);
+
+        char value[16];
+        if(can) {
+            snprintf(value, sizeof(value), "%d>%d", (int)now[i], (int)(now[i] + STEP[i]));
+        } else {
+            /* Capped, not hidden: the row stays so the list does not change
+             * shape between level-ups. */
+            snprintf(value, sizeof(value), "%d MAX", (int)now[i]);
+        }
+
+        const int32_t vw = (int32_t)canvas_string_width(canvas, value);
+        canvas_draw_str(canvas, 119 - vw, y + 8, value);
+
+        if(on) canvas_set_color(canvas, ColorBlack);
+    }
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 62, "OK to take it");
 }
 
 /* ---- Entry ----------------------------------------------------------- */

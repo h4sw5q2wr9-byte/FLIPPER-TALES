@@ -405,6 +405,19 @@ int16_t ft_encounter_foe_shown_charge(const FtEncounter* e, uint8_t i) {
     return e->foes[i].charge;
 }
 
+int16_t ft_encounter_xp(const FtEncounter* e) {
+    if(e->phase != FT_PHASE_WIN) return 0;
+
+    /* Each foe is tapered against the player's level separately, so a mixed
+     * group pays properly rather than being averaged. */
+    int16_t total = 0;
+    for(uint8_t i = 0; i < e->foe_count; i++) {
+        const FtEnemy* proto = &FT_ENEMIES[e->foes[i].id];
+        total = (int16_t)(total + ft_xp_award(proto->level, e->stats.level, proto->xp));
+    }
+    return total;
+}
+
 uint8_t ft_encounter_foe_defeat(const FtEncounter* e, uint8_t i) {
     if(i >= e->foe_count) return 0u;
     if(e->foes[i].charge > 0) return 0u;

@@ -26,8 +26,9 @@ int16_t ft_level_cap(int16_t chapters_completed);
 /* Can this stat still be raised? Caps make some choices unavailable. */
 bool ft_level_choice_available(const FtStats* s, FtLevelChoice choice);
 
-/* Apply one level-up choice. Restores Charge and RAM in full, as levelling
- * always does. Returns false if that stat is already capped. */
+/* Spend one owed level-up on this stat. Raises `level`, and restores Charge
+ * and RAM in full as levelling always does. Returns false if that stat is
+ * already capped, in which case nothing changes and the level is not spent. */
 bool ft_level_apply(FtStats* s, FtLevelChoice choice);
 
 /* Bank XP and report how many level-ups are now owed. XP is capped per battle

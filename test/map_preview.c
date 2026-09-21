@@ -80,7 +80,30 @@ int main(void) {
     };
 
     Canvas* canvas = ft_stub_canvas_alloc();
+
+    /* Every line the overworld can toast, checked for width rather than
+     * counted by hand. The toast box is text + 8 and is not clipped, so one
+     * long string is one off-panel banner. */
+    static const char* const TOASTS[] = {
+        "Saved. Restored.", "Restored. No card.", "Find a terminal.",
+        "Not in a fight.",  "No card.",           "New run.",
+        "Cleared.",         "Rebooted.",          "Nothing here.",
+    };
+
     int clipped_total = 0;
+
+    for(size_t i = 0; i < sizeof(TOASTS) / sizeof(TOASTS[0]); i++) {
+        FtWorld tw;
+        ft_world_init(&tw);
+        ft_overworld_render(canvas, &tw);
+        ft_overworld_toast(canvas, TOASTS[i]);
+
+        const int c = ft_stub_canvas_clipped(canvas);
+        clipped_total += c;
+        if(c) printf("  TOAST CLIPPED: \"%s\"\n", TOASTS[i]);
+    }
+    printf("  %zu toasts fit\n", sizeof(TOASTS) / sizeof(TOASTS[0]));
+
 
     for(size_t i = 0; i < sizeof(shots) / sizeof(shots[0]); i++) {
         const Shot* s = &shots[i];

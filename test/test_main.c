@@ -7,6 +7,7 @@
 #include "ft_data.h"
 #include "ft_encounter.h"
 #include "ft_practice.h"
+#include "ft_save.h"
 #include "ft_priority.h"
 #include "ft_progress.h"
 #include "ft_map.h"
@@ -2019,6 +2020,305 @@ static void test_defeat(void) {
     CHECK_EQ(ft_encounter_foe_defeat(&old, 1), 0);
 }
 
+static void fill_save(FtSaveData* d) {
+    /* Deliberately not defaults: a round trip that only ever sees zeroes
+     * proves nothing about whether a field is written at all. */
+    d->stats.charge = 17;
+    d->stats.charge_max = 34;
+    d->stats.ram = 3;
+    d->stats.ram_max = 11;
+    d->stats.flash_used = 5;
+    d->stats.flash_max = 9;
+    d->stats.level = 6;
+    d->stats.xp = 73;
+
+    for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) d->loadout.stacks[i] = (uint8_t)(i + 1u);
+
+    for(uint8_t i = 0; i < FT_SIGLIB_SLOTS; i++) {
+        d->lib.ids[i] = (uint16_t)(1000u + i);
+    }
+    d->lib.count = 3;
+    d->lib.next = 2;
+
+    d->room = 2;
+    d->tx = 13;
+    d->ty = 7;
+    d->save_room = 1;
+    d->save_tx = 4;
+    d->save_ty = 5;
+
+    for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) d->cleared[i] = (uint8_t)(0xA5u ^ i);
+    d->coach = true;
+}
+
+static bool save_eq(const FtSaveData* a, const FtSaveData* b) {
+    if(a->stats.charge != b->stats.charge) return false;
+    if(a->stats.charge_max != b->stats.charge_max) return false;
+    if(a->stats.ram != b->stats.ram) return false;
+    if(a->stats.ram_max != b->stats.ram_max) return false;
+    if(a->stats.flash_used != b->stats.flash_used) return false;
+    if(a->stats.flash_max != b->stats.flash_max) return false;
+    if(a->stats.level != b->stats.level) return false;
+    if(a->stats.xp != b->stats.xp) return false;
+
+    for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) {
+        if(a->loadout.stacks[i] != b->loadout.stacks[i]) return false;
+    }
+    for(uint8_t i = 0; i < FT_SIGLIB_SLOTS; i++) {
+        if(a->lib.ids[i] != b->lib.ids[i]) return false;
+    }
+    if(a->lib.count != b->lib.count || a->lib.next != b->lib.next) return false;
+
+    if(a->room != b->room || a->tx != b->tx || a->ty != b->ty) return false;
+    if(a->save_room != b->save_room) return false;
+    if(a->save_tx != b->save_tx || a->save_ty != b->save_ty) return false;
+
+    for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) {
+        if(a->cleared[i] != b->cleared[i]) return false;
+    }
+    return a->coach == b->coach;
+}
+
+static void test_save(void) {
+    section("save format");
+
+    FtSaveData src;
+    fill_save(&src);
+
+    uint8_t buf[FT_SAVE_MAX_BYTES];
+    const uint8_t len = ft_save_encode(&src, buf, sizeof(buf));
+
+    CHECK(len > 0, "a save encodes");
+    CHECK(len <= FT_SAVE_MAX_BYTES, "and fits the declared budget (%u)", len);
+
+    /* Every field survives the trip. A save that loses one field is worse
+     * than no save at all, because it looks like it worked. */
+    FtSaveData back;
+    CHECK(ft_save_decode(buf, len, &back), "and decodes");
+    CHECK(save_eq(&src, &back), "every field round trips");
+
+    /* A buffer too small refuses rather than writing part of a file. */
+    uint8_t tiny[4];
+    CHECK_EQ(ft_save_encode(&src, tiny, sizeof(tiny)), 0);
+
+    /* Someone else's file, or a version we do not know, is refused. */
+    uint8_t alien[FT_SAVE_MAX_BYTES];
+    for(uint8_t i = 0; i < len; i++) alien[i] = buf[i];
+    alien[0] = 'X';
+    CHECK(!ft_save_decode(alien, len, &back), "a foreign file is refused");
+
+    for(uint8_t i = 0; i < len; i++) alien[i] = buf[i];
+    alien[4] = FT_SAVE_VERSION + 1u;
+    CHECK(!ft_save_decode(alien, len, &back), "a future version is refused");
+
+    for(uint8_t i = 0; i < len; i++) alien[i] = buf[i];
+    alien[5] = (uint8_t)(alien[5] + 1u);
+    CHECK(!ft_save_decode(alien, len, &back), "a wrong declared length is refused");
+
+    /* Truncation at every length, which is what a card pulled mid-write
+     * actually looks like. */
+    for(uint8_t cut = 0; cut < len; cut++) {
+        CHECK(!ft_save_decode(buf, cut, &back), "a file cut to %u bytes is refused", cut);
+    }
+
+    /* Every single-bit flip in the file is caught. This is the whole reason
+     * the checksum covers the header as well as the payload. */
+    int missed = 0;
+    for(uint8_t i = 0; i < len; i++) {
+        for(uint8_t bit = 0; bit < 8u; bit++) {
+            uint8_t bad[FT_SAVE_MAX_BYTES];
+            for(uint8_t k = 0; k < len; k++) bad[k] = buf[k];
+            bad[i] = (uint8_t)(bad[i] ^ (uint8_t)(1u << bit));
+
+            if(ft_save_decode(bad, len, &back)) missed++;
+        }
+    }
+    CHECK_EQ(missed, 0);
+
+    /* Nulls are refused rather than dereferenced. */
+    CHECK(!ft_save_decode(NULL, len, &back), "a null buffer is refused");
+    CHECK(!ft_save_decode(buf, len, NULL), "a null destination is refused");
+    CHECK_EQ(ft_save_encode(&src, NULL, sizeof(buf)), 0);
+
+    /* Encoding is deterministic, so an unchanged run does not rewrite a
+     * different file every time. */
+    uint8_t again[FT_SAVE_MAX_BYTES];
+    CHECK_EQ(ft_save_encode(&src, again, sizeof(again)), len);
+    for(uint8_t i = 0; i < len; i++) CHECK_EQ(again[i], buf[i]);
+}
+
+static void test_save_world(void) {
+    section("saving a run");
+
+    FtWorld w;
+    ft_world_init(&w);
+
+    /* Play a little: move rooms, beat something, level up, capture a signal. */
+    ft_world_enter(&w, 2, 3, 4);
+    ft_world_clear_entity(&w, 0);
+    ft_siglib_capture(&w.lib, 4242u);
+    ft_level_apply(&w.stats, FT_UP_RAM);
+    ft_loadout_add(&w.loadout, FT_MOD_AMPLIFY);
+
+    w.save_room = 2;
+    w.save_tx = 3;
+    w.save_ty = 4;
+
+    FtSaveData d;
+    ft_save_from_world(&w, false, &d);
+
+    uint8_t buf[FT_SAVE_MAX_BYTES];
+    const uint8_t len = ft_save_encode(&d, buf, sizeof(buf));
+    CHECK(len > 0, "the run encodes");
+
+    FtSaveData back;
+    CHECK(ft_save_decode(buf, len, &back), "and decodes");
+
+    FtWorld loaded;
+    bool coach = true;
+    ft_save_to_world(&back, &loaded, &coach);
+
+    CHECK_EQ(loaded.room, 2);
+    CHECK_EQ(loaded.mv.tx, 3);
+    CHECK_EQ(loaded.mv.ty, 4);
+    CHECK_EQ(loaded.save_room, 2);
+    CHECK_EQ(loaded.stats.ram_max, w.stats.ram_max);
+    CHECK_EQ(loaded.stats.level, w.stats.level);
+    CHECK(ft_siglib_holds(&loaded.lib, 4242u), "captures survive a save");
+    CHECK_EQ(loaded.loadout.stacks[FT_MOD_AMPLIFY], 1);
+    CHECK(!coach, "the tips setting survives too");
+
+    /* The one that matters: a foe you already beat must not be standing
+     * there again. Restoring the flags after entering the room would spawn
+     * it and only then mark it dead. */
+    CHECK(ft_world_entity_gone(&loaded, 0), "a beaten foe stays beaten");
+    CHECK(!loaded.foes[0].alive, "and is not spawned by the load");
+
+    /* Loading is a clean slate otherwise: no stepping half-finished, nothing
+     * carried over from whatever the struct held before. */
+    CHECK_EQ(loaded.mv.dx, 0);
+    CHECK_EQ(loaded.mv.dy, 0);
+    CHECK(!loaded.arrived, "a fresh load has not just arrived anywhere");
+
+    /* And a saved position in another room really is another room. */
+    FtSaveData other = back;
+    other.room = 0;
+    other.tx = 3;
+    other.ty = 4;
+
+    FtWorld elsewhere;
+    ft_save_to_world(&other, &elsewhere, NULL);
+    CHECK_EQ(elsewhere.room, 0);
+    CHECK(ft_world_entity_gone(&elsewhere, 0) == false ||
+              ft_room(0)->ent_count == 0,
+          "clearing is per room, not global");
+}
+
+static void test_levelup(void) {
+    section("levelling up");
+
+    FtStats s;
+    ft_stats_init(&s);
+    CHECK_EQ(s.level, 1);
+
+    /* Applying a choice is what actually levels you. Before this, level never
+     * moved, so the cap never bit and every enemy paid full XP forever. */
+    const int16_t charge_before = s.charge_max;
+    CHECK(ft_level_apply(&s, FT_UP_CHARGE), "the level is spent");
+    CHECK_EQ(s.level, 2);
+    CHECK_EQ(s.charge_max, charge_before + FT_LEVEL_UP_CHARGE);
+
+    /* A refused choice costs nothing: the level stays owed. */
+    FtStats capped;
+    ft_stats_init(&capped);
+    capped.flash_max = FT_CAP_FLASH;
+    const int16_t lv = capped.level;
+    CHECK(!ft_level_apply(&capped, FT_UP_FLASH), "a capped stat refuses");
+    CHECK_EQ(capped.level, lv);
+
+    /* XP banks into levels, and stops at the cap for the chapters done. */
+    FtStats p;
+    ft_stats_init(&p);
+    const int16_t cap = ft_level_cap(0);
+    CHECK(cap > 1, "the prologue allows at least one level");
+
+    CHECK_EQ(ft_xp_gain(&p, FT_XP_PER_LEVEL - 1, cap), 0);
+    CHECK_EQ(ft_xp_gain(&p, 1, cap), 1);
+
+    /* One battle can never be worth more than FT_XP_BATTLE_CAP, so no single
+     * fight hands over two levels however overtuned it is. */
+    CHECK_EQ(ft_xp_gain(&p, FT_XP_PER_LEVEL * 5, cap), 1);
+
+    /* Spending them raises the level once each. */
+    CHECK(ft_level_apply(&p, FT_UP_CHARGE), "first");
+    CHECK(ft_level_apply(&p, FT_UP_RAM), "second");
+    CHECK_EQ(p.level, 3);
+
+    /* At the cap, XP stops being awarded at all rather than banking up for a
+     * chapter that has not been unlocked. */
+    FtStats maxed;
+    ft_stats_init(&maxed);
+    maxed.level = cap;
+    CHECK_EQ(ft_xp_gain(&maxed, FT_XP_PER_LEVEL * 5, cap), 0);
+    CHECK_EQ(maxed.xp, 0);
+
+    /* A won fight is worth the sum of its foes, tapered individually. */
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    const FtEnemyId trio[FT_MAX_ENEMIES] = {
+        FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK};
+    FtEncounter e;
+    ft_encounter_init(&e, trio, 3, &lo, 1);
+
+    /* Not won yet: nothing owed. */
+    CHECK_EQ(ft_encounter_xp(&e), 0);
+
+    e.phase = FT_PHASE_WIN;
+    e.stats.level = 1;
+
+    int16_t expect = 0;
+    for(uint8_t i = 0; i < 3u; i++) {
+        const FtEnemy* proto = &FT_ENEMIES[trio[i]];
+        expect = (int16_t)(expect + ft_xp_award(proto->level, 1, proto->xp));
+    }
+    CHECK_EQ(ft_encounter_xp(&e), expect);
+    CHECK(expect > 0, "the prologue's last fight is worth something");
+
+    /* Overlevelled, the same fight pays nothing — which is the anti-farming
+     * rule actually taking effect now that levels move. */
+    e.stats.level = 20;
+    CHECK_EQ(ft_encounter_xp(&e), 0);
+
+    /* A full run of the prologue should be able to level at least once, or
+     * the whole system is decoration. */
+    FtStats run;
+    ft_stats_init(&run);
+
+    int16_t owed = 0;
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        const FtRoom* room = ft_room(r);
+        for(uint8_t i = 0; i < room->ent_count; i++) {
+            if(room->ents[i].kind != FT_ENT_FOE) continue;
+
+            const FtRoster* roster = ft_roster(room->ents[i].roster);
+            int16_t fight = 0;
+            for(uint8_t m = 0; m < roster->count; m++) {
+                const FtEnemy* proto = &FT_ENEMIES[roster->foes[m]];
+                fight = (int16_t)(fight + ft_xp_award(proto->level, run.level, proto->xp));
+            }
+            owed = (int16_t)(owed + ft_xp_gain(&run, fight, ft_level_cap(0)));
+
+            while(owed > 0) {
+                ft_level_apply(&run, FT_UP_CHARGE);
+                owed--;
+            }
+        }
+    }
+    CHECK(run.level > 1, "clearing the prologue levels you (reached %d)", (int)run.level);
+    CHECK(run.level <= ft_level_cap(0), "but never past the chapter's cap");
+}
+
 static void test_scene_wipe(void) {
     section("scene wipe");
 
@@ -2194,6 +2494,9 @@ int main(void) {
     test_reach();
     test_practice();
     test_defeat();
+    test_save();
+    test_save_world();
+    test_levelup();
     test_scene_wipe();
     test_broadcast_sweep();
     test_world_links();

@@ -13,6 +13,7 @@
 #include "ft_overworld.h"
 #include "../core/ft_practice.h"
 #include "ft_render.h"
+#include "ft_storage.h"
 
 #define FT_TAG        "FlipperTales"
 #define FT_TICK_MS    10   /* ~100 Hz: the capture window is only 50 ms, so the
@@ -42,7 +43,9 @@ typedef enum {
     FT_MODE_OVERWORLD = 0,
     FT_MODE_BATTLE,
     FT_MODE_PAUSE,
-    FT_MODE_PRACTICE /* the arena's setup screen */
+    FT_MODE_PRACTICE, /* the arena's setup screen */
+    FT_MODE_LEVELUP,  /* spending the levels a win just paid out */
+    FT_MODE_CONFIRM   /* the gate in front of erasing a run */
 } FtMode;
 
 /* What the wipe is hiding. */
@@ -68,6 +71,14 @@ typedef struct {
      * point is to try things, not to gain or lose anything. */
     FtPractice practice;
     bool       in_practice;
+
+    /* Levels a win owes but the player has not spent yet. They are spent one
+     * at a time, because each one is a choice. */
+    int16_t levels_owed;
+    uint8_t levelup_item;
+
+    /* The New game confirmation. Defaults to No. */
+    bool confirm_yes;
 
     /* Which entity started the current battle, so it can be removed on a win. */
     int  battle_entity;
@@ -97,6 +108,10 @@ typedef struct {
     bool    coach;
 
     FtMode  paused_from;
+
+    /* Chapters finished, which is what caps the level. The prologue is
+     * chapter zero, so this stays at 0 until Chapter 1 exists. */
+    int16_t chapters_done;
     uint8_t pause_item;
 
     bool running;
@@ -122,6 +137,11 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
         ft_render_pause(canvas, app->pause_item, app->coach);
     } else if(app->mode == FT_MODE_PRACTICE) {
         ft_render_practice(canvas, &app->practice);
+    } else if(app->mode == FT_MODE_CONFIRM) {
+        ft_render_confirm(canvas, "Erase this run?", app->confirm_yes);
+    } else if(app->mode == FT_MODE_LEVELUP) {
+        ft_render_levelup(
+            canvas, &app->world.stats, app->levelup_item, app->levels_owed);
     } else if(app->mode == FT_MODE_BATTLE) {
         ft_render_battle(canvas, &app->encounter);
     } else {
@@ -200,16 +220,34 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
             ft_world_clear_entity(&app->world, (uint8_t)app->battle_entity);
         }
         if(app->world.stats.charge < 1) app->world.stats.charge = 1;
+
+        /* XP is banked on the way out, and any levels it bought are spent on
+         * the next frame — the level-up screen owns that, not this. */
+        const int16_t xp = ft_encounter_xp(&app->encounter);
+        app->levels_owed = (int16_t)(
+            app->levels_owed +
+            ft_xp_gain(&app->world.stats, xp, ft_level_cap(app->chapters_done)));
+
         ft_toast(app, "Cleared.");
     } else {
-        /* Downed: back to the first terminal, patched up. Terminals are the
-         * only save point, so they are also where you come back. */
+        /* Downed: back to the terminal you last saved at, patched up. It used
+         * to be hardcoded to the first room, which quietly undid any progress
+         * past it. */
         app->world.stats.charge = app->world.stats.charge_max;
-        ft_world_enter(&app->world, 0, 5, 3);
+        ft_world_enter(
+            &app->world, app->world.save_room, app->world.save_tx, app->world.save_ty);
         ft_toast(app, "Rebooted.");
     }
 
     app->battle_entity = -1;
+
+    /* A level owed takes the screen before the world comes back. */
+    if(app->levels_owed > 0) {
+        app->levelup_item = 0;
+        app->mode = FT_MODE_LEVELUP;
+        return;
+    }
+
     app->mode = FT_MODE_OVERWORLD;
 }
 
@@ -284,6 +322,23 @@ static void ft_wipe_update(FlipperTales* app, uint32_t dt_ms) {
 
 /* ---- Input ----------------------------------------------------------- */
 
+/* ---- Saving ----------------------------------------------------------- */
+
+/* Mark where the player is standing as the place a reboot returns to. */
+static void ft_save_here(FlipperTales* app) {
+    app->world.save_room = app->world.room;
+    app->world.save_tx = app->world.mv.tx;
+    app->world.save_ty = app->world.mv.ty;
+}
+
+/* Write the run out. False means no card, a full card, or a failed write —
+ * never a reason to stop the game, only a reason to say so. */
+static bool ft_save_now(FlipperTales* app) {
+    FtSaveData data;
+    ft_save_from_world(&app->world, app->coach, &data);
+    return ft_storage_save(&data);
+}
+
 static void ft_overworld_ok(FlipperTales* app) {
     /* A foe you are facing is struck before it can react. */
     const int ahead = ft_world_foe_ahead(&app->world);
@@ -295,7 +350,12 @@ static void ft_overworld_ok(FlipperTales* app) {
     if(ft_world_terminal_near(&app->world)) {
         app->world.stats.charge = app->world.stats.charge_max;
         app->world.stats.ram = app->world.stats.ram_max;
-        ft_toast(app, "Restored.");
+
+        /* A terminal is the save point, so using one saves. Restoring without
+         * saving would mean the thing you walked across the room for did only
+         * half of what it is for. */
+        ft_save_here(app);
+        ft_toast(app, ft_save_now(app) ? "Saved. Restored." : "Restored. No card.");
         return;
     }
 
@@ -374,12 +434,29 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 app->show_help = true;
                 app->help_page = 0;
                 break;
+            case FT_PAUSE_SAVE:
+                /* Terminals are the save point, so this says where to find
+                 * one rather than quietly doing nothing. */
+                if(app->paused_from != FT_MODE_OVERWORLD) {
+                    ft_toast(app, "Not in a fight.");
+                } else if(!ft_world_terminal_near(&app->world)) {
+                    ft_toast(app, "Find a terminal.");
+                } else {
+                    ft_save_here(app);
+                    ft_toast(app, ft_save_now(app) ? "Saved." : "No card.");
+                }
+                app->mode = app->paused_from;
+                break;
             case FT_PAUSE_PRACTICE:
                 /* The arena replaces whatever is on screen, so it never
                  * resumes into a half-finished fight. */
                 app->paused_from = FT_MODE_PRACTICE;
                 app->in_practice = false;
                 app->mode = FT_MODE_PRACTICE;
+                break;
+            case FT_PAUSE_NEWGAME:
+                app->confirm_yes = false;
+                app->mode = FT_MODE_CONFIRM;
                 break;
             case FT_PAUSE_TIPS:
                 app->coach = !app->coach;
@@ -392,6 +469,64 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
             }
             break;
         default:
+            break;
+        }
+        return;
+    }
+
+    if(app->mode == FT_MODE_CONFIRM) {
+        switch(event->key) {
+        case InputKeyLeft:
+        case InputKeyRight:
+            app->confirm_yes = !app->confirm_yes;
+            break;
+        case InputKeyOk:
+            if(app->confirm_yes) {
+                ft_storage_erase();
+                ft_world_init(&app->world);
+                app->coach = true;
+                app->levels_owed = 0;
+                app->battle_entity = -1;
+                ft_toast(app, "New run.");
+            }
+            app->mode = FT_MODE_OVERWORLD;
+            break;
+        case InputKeyBack:
+        default:
+            app->mode = FT_MODE_PAUSE;
+            break;
+        }
+        return;
+    }
+
+    if(app->mode == FT_MODE_LEVELUP) {
+        switch(event->key) {
+        case InputKeyUp:
+            app->levelup_item = (uint8_t)((app->levelup_item + 2u) % 3u);
+            break;
+        case InputKeyDown:
+            app->levelup_item = (uint8_t)((app->levelup_item + 1u) % 3u);
+            break;
+        case InputKeyOk: {
+            static const FtLevelChoice CHOICE[3] = {
+                FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
+
+            /* A capped stat refuses, and the level stays owed — there is no
+             * way to lose one by pressing OK on the wrong row. */
+            if(!ft_level_apply(&app->world.stats, CHOICE[app->levelup_item])) break;
+
+            app->levels_owed--;
+            if(app->levels_owed > 0) break; /* straight on to the next one */
+
+            /* Levelling is progress worth keeping even if the player walks
+             * into something and goes down on the next screen. */
+            ft_save_now(app);
+            app->mode = FT_MODE_OVERWORLD;
+            break;
+        }
+        default:
+            /* BACK does not dismiss it: the level is owed either way, and a
+             * screen you can escape from is a stat you can lose. */
             break;
         }
         return;
@@ -490,6 +625,7 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
 
     if(app->show_help) return;
     if(app->mode == FT_MODE_PAUSE || app->mode == FT_MODE_PRACTICE) return;
+    if(app->mode == FT_MODE_LEVELUP || app->mode == FT_MODE_CONFIRM) return;
 
     if(app->mode == FT_MODE_BATTLE) {
         ft_encounter_tick(&app->encounter, dt_ms);
@@ -548,13 +684,26 @@ static FlipperTales* ft_alloc(void) {
     app->pend_first_strike = false;
     app->pend_won = false;
     app->in_practice = false;
+    app->levels_owed = 0;
+    app->levelup_item = 0;
+    app->chapters_done = 0;
+    app->confirm_yes = false;
     ft_practice_init(&app->practice, furi_get_tick());
     app->held = 0;
     app->toast = NULL;
     app->toast_ms = 0;
     app->coach = true;
 
-    app->show_help = true;
+    /* Pick the run back up where it was left. A missing, corrupt or
+     * wrong-version file just means a new game — never a refusal to start.
+     *
+     * This is also why the tutorial is skipped on a resume: someone with a
+     * save has already seen it. */
+    FtSaveData saved;
+    const bool resumed = ft_storage_load(&saved);
+    if(resumed) ft_save_to_world(&saved, &app->world, &app->coach);
+
+    app->show_help = !resumed;
     app->help_page = 0;
     app->paused_from = FT_MODE_OVERWORLD;
     app->pause_item = FT_PAUSE_RESUME;
