@@ -16,3 +16,6 @@ test/bin/
 .idea/
 .DS_Store
 compile_commands.json
+
+# preview harness output
+test/preview/

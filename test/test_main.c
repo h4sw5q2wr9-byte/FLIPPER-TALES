@@ -610,12 +610,17 @@ static void test_rating_timing(void) {
     section("action command bands");
 
     CHECK_EQ(ft_rating_from_timing(0), FT_RATING_EXCELLENT);
-    CHECK_EQ(ft_rating_from_timing(30), FT_RATING_EXCELLENT);
-    CHECK_EQ(ft_rating_from_timing(31), FT_RATING_AMAZING);
-    CHECK_EQ(ft_rating_from_timing(60), FT_RATING_AMAZING);
-    CHECK_EQ(ft_rating_from_timing(100), FT_RATING_GREAT);
-    CHECK_EQ(ft_rating_from_timing(160), FT_RATING_GOOD);
-    CHECK_EQ(ft_rating_from_timing(161), FT_RATING_MISS);
+    CHECK_EQ(ft_rating_from_timing(FT_BAND_EXCELLENT_MS), FT_RATING_EXCELLENT);
+    CHECK_EQ(ft_rating_from_timing(FT_BAND_EXCELLENT_MS + 1), FT_RATING_AMAZING);
+    CHECK_EQ(ft_rating_from_timing(FT_BAND_GREAT_MS), FT_RATING_AMAZING);
+    CHECK_EQ(ft_rating_from_timing(FT_BAND_GOOD_MS), FT_RATING_GREAT);
+    CHECK_EQ(ft_rating_from_timing(FT_BAND_NICE_MS), FT_RATING_GOOD);
+    CHECK_EQ(ft_rating_from_timing(FT_BAND_NICE_MS + 1), FT_RATING_MISS);
+
+    /* Each band must be wide enough to render as a visible block on a 120px
+     * track, or the skill check cannot be read (see ft_render.c). */
+    CHECK((FT_BAND_EXCELLENT_MS * 2 * 120) / FT_ACTION_WINDOW_MS >= 10,
+          "EXCELLENT band must be at least 10px wide");
 
     /* Early and late are punished identically. */
     for(int32_t d = 0; d <= 300; d += 7) {

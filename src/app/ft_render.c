@@ -1,167 +1,270 @@
 #include "ft_render.h"
 
 #include <stdio.h>
+#include <string.h>
 
-/* ---- Small helpers --------------------------------------------------- */
+/* ---- Text helpers ---------------------------------------------------- */
 
-/* A hatched frame: the GUARDED attack class, encoded without colour.
- * See DESIGN.md 5 — on a 1-bit panel the border style carries what the source
- * game carried with yellow and red text. */
-static void draw_hatched_frame(Canvas* canvas, int32_t x, int32_t y, int32_t w, int32_t h) {
-    for(int32_t i = 0; i < w; i += 2) {
-        canvas_draw_dot(canvas, x + i, y);
-        canvas_draw_dot(canvas, x + i, y + h - 1);
+/* Draw a string, truncating it to fit. Every label on this screen comes from
+ * data that could be longer than the space it has, so nothing is drawn without
+ * a measured budget — that is what stops content running off the panel. */
+static void draw_clipped(Canvas* c, int32_t x, int32_t y, const char* s, int32_t max_w) {
+    if(max_w <= 0 || !s || !*s) return;
+
+    if((int32_t)canvas_string_width(c, s) <= max_w) {
+        canvas_draw_str(c, x, y, s);
+        return;
     }
-    for(int32_t i = 0; i < h; i += 2) {
-        canvas_draw_dot(canvas, x, y + i);
-        canvas_draw_dot(canvas, x + w - 1, y + i);
+
+    char buf[32];
+    size_t n = strlen(s);
+    if(n >= sizeof(buf)) n = sizeof(buf) - 1;
+
+    while(n > 0) {
+        memcpy(buf, s, n);
+        buf[n] = '\0';
+        if((int32_t)canvas_string_width(c, buf) <= max_w) break;
+        n--;
+    }
+    canvas_draw_str(c, x, y, buf);
+}
+
+/* Centre a string, nudged so it can never overhang either edge. */
+static void draw_centred(Canvas* c, int32_t cx, int32_t y, const char* s) {
+    const int32_t w = (int32_t)canvas_string_width(c, s);
+    int32_t x = cx - w / 2;
+
+    if(x + w > FT_SCREEN_W - 1) x = FT_SCREEN_W - 1 - w;
+    if(x < 1) x = 1;
+
+    canvas_draw_str(c, x, y, s);
+}
+
+/* Interior width of a bar for the given value, clamped at BOTH ends. Without
+ * the upper clamp a value above max draws straight through the frame. */
+static int32_t ft_bar_fill(int32_t value, int32_t max, int32_t bar_w) {
+    const int32_t inner = bar_w - 2;
+    if(value <= 0 || max <= 0 || inner <= 0) return 0;
+
+    int32_t fill = (value * inner) / max;
+    if(fill < 1) fill = 1;
+    if(fill > inner) fill = inner;
+
+    return fill;
+}
+
+/* A hatched region: on a panel with no colour, texture is the only way to say
+ * "this is different but not solid" (DESIGN.md 5). */
+static void hatch(Canvas* c, int32_t x, int32_t y, int32_t w, int32_t h) {
+    for(int32_t j = 0; j < h; j++) {
+        for(int32_t i = (j % 2); i < w; i += 2) canvas_draw_dot(c, x + i, y + j);
     }
 }
 
-/* A labelled bar, e.g. "CHG 18/25". */
-static void draw_meter(
-    Canvas* canvas,
-    int32_t x,
-    int32_t y,
-    int32_t w,
-    const char* label,
-    int32_t value,
-    int32_t max) {
+/* ---- Header ---------------------------------------------------------- */
+
+static void draw_header(Canvas* canvas, const FtEncounter* e) {
+    const FtEnemy* en = ft_encounter_enemy(e);
+
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str(canvas, x, y + 7, label);
 
-    const int32_t bx = x + 20;
-    const int32_t bw = w - 20;
-    canvas_draw_frame(canvas, bx, y + 1, bw, 6);
+    /* Tags are laid out from the right using measured widths, and the name
+     * gets whatever is left over. */
+    int32_t right = FT_SCREEN_W - 2;
 
-    if(max > 0 && value > 0) {
-        int32_t fill = (value * (bw - 2)) / max;
-        if(fill > bw - 2) fill = bw - 2;
-        if(fill < 1) fill = 1;
-        canvas_draw_box(canvas, bx + 1, y + 2, fill, 4);
+    char tag[10];
+    if(en->attrs & FT_ATTR_ENCRYPTED) {
+        strcpy(tag, "ENC");
+        right -= (int32_t)canvas_string_width(canvas, tag);
+        canvas_draw_str(canvas, right, 7, tag);
+        right -= 3;
     }
+    if(en->attrs & FT_ATTR_AIRBORNE) {
+        strcpy(tag, "AIR");
+        right -= (int32_t)canvas_string_width(canvas, tag);
+        canvas_draw_str(canvas, right, 7, tag);
+        right -= 3;
+    }
+    if(en->shielded > 0) {
+        snprintf(tag, sizeof(tag), "SH%d", (int)en->shielded);
+        right -= (int32_t)canvas_string_width(canvas, tag);
+        canvas_draw_str(canvas, right, 7, tag);
+        right -= 3;
+    }
+
+    draw_clipped(canvas, 2, 7, en->name, right - 4);
+    canvas_draw_line(canvas, 0, FT_HEADER_H, FT_SCREEN_W - 1, FT_HEADER_H);
 }
 
-/* ---- Scene ----------------------------------------------------------- */
+/* ---- Arena ----------------------------------------------------------- */
 
-/* Placeholder 1-bit art: the player reads as a small handheld device. */
-static void draw_player(Canvas* canvas, int32_t x, int32_t y, bool hurt) {
-    canvas_draw_rframe(canvas, x, y, 12, 18, 2);
-    canvas_draw_box(canvas, x + 2, y + 3, 8, 6); /* screen */
+static void draw_player(Canvas* c, int32_t x, int32_t y, bool hurt) {
+    canvas_draw_rframe(c, x, y, 10, 14, 2);
+    canvas_draw_box(c, x + 2, y + 2, 6, 5);
 
     if(hurt) {
-        /* A cracked screen while the roll is draining. */
-        canvas_set_color(canvas, ColorWhite);
-        canvas_draw_line(canvas, x + 3, y + 4, x + 8, y + 8);
-        canvas_set_color(canvas, ColorBlack);
+        canvas_set_color(c, ColorWhite);
+        canvas_draw_line(c, x + 3, y + 3, x + 6, y + 6);
+        canvas_set_color(c, ColorBlack);
     }
-
-    canvas_draw_dot(canvas, x + 4, y + 13);
-    canvas_draw_dot(canvas, x + 7, y + 13);
+    canvas_draw_dot(c, x + 3, y + 10);
+    canvas_draw_dot(c, x + 6, y + 10);
 }
 
-/* Enemy silhouette keyed to its attributes, so the lock is legible at a glance. */
-static void draw_enemy(Canvas* canvas, int32_t x, int32_t y, uint32_t attrs) {
+/* Silhouette keyed to attributes, so the lock is legible at a glance. */
+static void draw_enemy(Canvas* c, int32_t x, int32_t y, uint32_t attrs) {
     if(attrs & FT_ATTR_AIRBORNE) {
-        canvas_draw_circle(canvas, x + 8, y + 8, 6);
-        canvas_draw_line(canvas, x + 1, y + 4, x - 3, y + 1);  /* wings */
-        canvas_draw_line(canvas, x + 15, y + 4, x + 19, y + 1);
-        canvas_draw_dot(canvas, x + 6, y + 7);
-        canvas_draw_dot(canvas, x + 10, y + 7);
+        canvas_draw_circle(c, x + 7, y + 6, 5);
+        canvas_draw_line(c, x + 2, y + 3, x - 1, y);
+        canvas_draw_line(c, x + 12, y + 3, x + 15, y);
+        canvas_draw_dot(c, x + 5, y + 5);
+        canvas_draw_dot(c, x + 9, y + 5);
     } else if(attrs & FT_ATTR_ENCRYPTED) {
-        canvas_draw_box(canvas, x + 1, y + 6, 14, 11); /* padlock body */
-        canvas_draw_circle(canvas, x + 8, y + 5, 4);   /* shackle */
-        canvas_set_color(canvas, ColorWhite);
-        canvas_draw_dot(canvas, x + 8, y + 11);
-        canvas_set_color(canvas, ColorBlack);
+        canvas_draw_box(c, x + 1, y + 5, 12, 9);
+        canvas_draw_circle(c, x + 7, y + 4, 3);
+        canvas_set_color(c, ColorWhite);
+        canvas_draw_dot(c, x + 7, y + 9);
+        canvas_set_color(c, ColorBlack);
     } else {
-        canvas_draw_rframe(canvas, x, y + 3, 16, 13, 3);
-        canvas_draw_dot(canvas, x + 5, y + 8);
-        canvas_draw_dot(canvas, x + 10, y + 8);
-        canvas_draw_line(canvas, x + 5, y + 12, x + 10, y + 12);
+        canvas_draw_rframe(c, x, y + 2, 14, 11, 3);
+        canvas_draw_dot(c, x + 4, y + 6);
+        canvas_draw_dot(c, x + 9, y + 6);
+        canvas_draw_line(c, x + 4, y + 9, x + 9, y + 9);
     }
 }
 
-/* ---- Overlays -------------------------------------------------------- */
+static void draw_arena(Canvas* canvas, const FtEncounter* e) {
+    draw_player(canvas, 6, FT_ARENA_Y + 5, ft_roll_active(&e->roll));
+    draw_enemy(canvas, 104, FT_ARENA_Y + 5, ft_encounter_enemy(e)->attrs);
 
-/* The attack telegraph. The border encodes the class; near impact the whole
- * banner inverts on alternate frames, which is the guard cue. */
-static void draw_telegraph(Canvas* canvas, const FtEncounter* e) {
+    /* Enemy health, directly under its sprite. */
+    const int32_t bw = 24;
+    const int32_t bx = 100;
+    const int32_t by = FT_ARENA_Y + 21;
+
+    canvas_draw_frame(canvas, bx, by, (size_t)bw, 4);
+    {
+        const int32_t fill = ft_bar_fill(e->enemy_charge, e->enemy_charge_max, bw);
+        if(fill > 0) canvas_draw_box(canvas, bx + 1, by + 1, (size_t)fill, 2);
+    }
+}
+
+/* ---- Skill checks ---------------------------------------------------- */
+
+#define TRACK_X 4
+#define TRACK_W 120
+#define TRACK_Y (FT_ARENA_Y + 8)
+#define TRACK_H 15
+
+/* The cursor must stay visible over both empty track and solid zones, so it is
+ * XORed across the track and given plain black flags above and below. */
+static void draw_cursor(Canvas* c, int32_t x) {
+    if(x < TRACK_X) x = TRACK_X;
+    if(x > TRACK_X + TRACK_W - 3) x = TRACK_X + TRACK_W - 3;
+
+    canvas_set_color(c, ColorXOR);
+    canvas_draw_box(c, x, TRACK_Y + 1, 3, TRACK_H - 2);
+    canvas_set_color(c, ColorBlack);
+
+    canvas_draw_box(c, x - 1, TRACK_Y - 3, 5, 3);
+    canvas_draw_box(c, x - 1, TRACK_Y + TRACK_H, 5, 3);
+}
+
+static int32_t ms_to_px(uint32_t ms, uint32_t window) {
+    if(window == 0u) return 0;
+    return (int32_t)((ms * (uint32_t)TRACK_W) / window);
+}
+
+/* "Time your strike": hit the solid block in the middle. */
+static void draw_strike_check(Canvas* canvas, const FtEncounter* e) {
+    canvas_set_font(canvas, FontSecondary);
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 4, "TIME YOUR STRIKE");
+
+    canvas_draw_frame(canvas, TRACK_X, TRACK_Y, TRACK_W, TRACK_H);
+
+    const int32_t mid = TRACK_X + TRACK_W / 2;
+    const int32_t good = ms_to_px(FT_BAND_GOOD_MS, FT_ACTION_WINDOW_MS);
+    const int32_t best = ms_to_px(FT_BAND_EXCELLENT_MS, FT_ACTION_WINDOW_MS);
+
+    /* Widening bands, drawn from loosest to tightest. */
+    hatch(canvas, mid - good, TRACK_Y + 1, good * 2, TRACK_H - 2);
+    canvas_draw_box(canvas, mid - best, TRACK_Y + 1, (size_t)(best * 2), TRACK_H - 2);
+
+    draw_cursor(canvas, TRACK_X + ms_to_px(e->phase_ms, FT_ACTION_WINDOW_MS));
+
+    if(e->action_pressed) draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 25, "LOCKED IN");
+}
+
+/* The guard check. Only the zones the player can actually hit are drawn, so
+ * the attack class teaches itself: GUARDED loses its capture block, and
+ * UNDODGEABLE has no zones at all. */
+static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
     const FtAttack* atk = ft_encounter_incoming(e);
     if(atk == NULL) return;
 
-    const int32_t w = 92, h = 18;
-    const int32_t x = (FT_SCREEN_W - w) / 2, y = 20;
-
-    const int32_t remaining = (int32_t)FT_TELEGRAPH_MS - (int32_t)e->phase_ms;
-    const bool imminent = remaining <= FT_JAM_WINDOW_MS && remaining >= 0;
-
-    /* Clear behind the banner so the scene does not bleed through. */
-    canvas_set_color(canvas, ColorWhite);
-    canvas_draw_box(canvas, x, y, w, h);
-    canvas_set_color(canvas, ColorBlack);
-
-    const char* label;
-    switch(atk->klass) {
-    case FT_CLASS_UNDODGEABLE:
-        /* Inverted: cannot be jammed or captured. */
-        canvas_draw_box(canvas, x, y, w, h);
-        label = "UNDODGEABLE";
-        break;
-    case FT_CLASS_GUARDED:
-        draw_hatched_frame(canvas, x, y, w, h);
-        label = "GUARDED";
-        break;
-    case FT_CLASS_NORMAL:
-    default:
-        canvas_draw_frame(canvas, x, y, w, h);
-        label = "INCOMING";
-        break;
-    }
-
-    if(atk->klass == FT_CLASS_UNDODGEABLE) canvas_set_color(canvas, ColorWhite);
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str_aligned(canvas, x + w / 2, y + 5, AlignCenter, AlignTop, label);
-    canvas_set_color(canvas, ColorBlack);
 
-    /* Wind-up bar: closes on the impact point. */
-    const int32_t bar_w = w - 8;
-    int32_t done = ((int32_t)e->phase_ms * bar_w) / (int32_t)FT_TELEGRAPH_MS;
-    if(done > bar_w) done = bar_w;
-
-    canvas_draw_frame(canvas, x + 4, y + h - 5, bar_w, 3);
-    canvas_draw_box(canvas, x + 4, y + h - 5, done, 3);
-
-    if(imminent) {
-        /* The guard cue: a bracket closing around the impact point. */
-        canvas_draw_line(canvas, x + 4 + bar_w, y + h - 8, x + 4 + bar_w, y + h - 1);
+    const char* title;
+    switch(atk->klass) {
+    case FT_CLASS_UNDODGEABLE: title = "UNDODGEABLE"; break;
+    case FT_CLASS_GUARDED:     title = "GUARDED - NO CAPTURE"; break;
+    default:                   title = "INCOMING"; break;
     }
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 4, title);
+
+    canvas_draw_frame(canvas, TRACK_X, TRACK_Y, TRACK_W, TRACK_H);
+
+    if(atk->klass == FT_CLASS_UNDODGEABLE) {
+        /* Nothing to aim at: say so rather than leaving an empty track. */
+        canvas_draw_line(canvas, TRACK_X + 1, TRACK_Y + 1, TRACK_X + TRACK_W - 2,
+                         TRACK_Y + TRACK_H - 2);
+        canvas_draw_line(canvas, TRACK_X + 1, TRACK_Y + TRACK_H - 2, TRACK_X + TRACK_W - 2,
+                         TRACK_Y + 1);
+    } else {
+        const bool hard = e->fx.hard_mode;
+        const uint32_t jam_ms = hard ? FT_JAM_WINDOW_MS / 2u : FT_JAM_WINDOW_MS;
+        const uint32_t cap_ms = hard ? FT_CAPTURE_WINDOW_MS / 2u : FT_CAPTURE_WINDOW_MS;
+
+        const int32_t jam_w = ms_to_px(jam_ms, FT_TELEGRAPH_MS);
+        const int32_t cap_w = ms_to_px(cap_ms, FT_TELEGRAPH_MS);
+        const int32_t right = TRACK_X + TRACK_W - 1;
+
+        hatch(canvas, right - jam_w, TRACK_Y + 1, jam_w, TRACK_H - 2);
+
+        /* Only NORMAL attacks can be captured, so only they get the block. */
+        if(atk->klass == FT_CLASS_NORMAL) {
+            canvas_draw_box(canvas, right - cap_w, TRACK_Y + 1, (size_t)cap_w, TRACK_H - 2);
+        }
+    }
+
+    draw_cursor(canvas, TRACK_X + ms_to_px(e->phase_ms, FT_TELEGRAPH_MS));
 }
 
-/* The action command sweep: hit the centre for EXCELLENT. */
-static void draw_action_bar(Canvas* canvas, const FtEncounter* e) {
-    const int32_t w = 88, h = 9;
-    const int32_t x = (FT_SCREEN_W - w) / 2, y = 26;
+/* ---- Popups ---------------------------------------------------------- */
+
+/* Sized to its own content, then clamped, so a long line can never overflow. */
+static void draw_popup(Canvas* canvas, const char* top, const char* bottom) {
+    canvas_set_font(canvas, FontSecondary);
+
+    int32_t w = (int32_t)canvas_string_width(canvas, top);
+    if(bottom) {
+        const int32_t bw = (int32_t)canvas_string_width(canvas, bottom);
+        if(bw > w) w = bw;
+    }
+    w += 10;
+    if(w > FT_SCREEN_W - 8) w = FT_SCREEN_W - 8;
+
+    const int32_t h = bottom ? 21 : 13;
+    const int32_t x = (FT_SCREEN_W - w) / 2;
+    const int32_t y = FT_ARENA_Y + 2;
 
     canvas_set_color(canvas, ColorWhite);
-    canvas_draw_box(canvas, x - 1, y - 1, w + 2, h + 2);
+    canvas_draw_box(canvas, x, y, (size_t)w, (size_t)h);
     canvas_set_color(canvas, ColorBlack);
-    canvas_draw_frame(canvas, x, y, w, h);
+    canvas_draw_frame(canvas, x, y, (size_t)w, (size_t)h);
 
-    /* The target band, centred. */
-    const int32_t mid = x + w / 2;
-    const int32_t band = (FT_BAND_GREAT_MS * w) / FT_ACTION_WINDOW_MS;
-    canvas_draw_frame(canvas, mid - band, y + 1, band * 2, h - 2);
-
-    /* The sweeping cursor. */
-    int32_t pos = ((int32_t)e->phase_ms * w) / (int32_t)FT_ACTION_WINDOW_MS;
-    if(pos > w - 1) pos = w - 1;
-    canvas_draw_box(canvas, x + pos, y + 1, 2, h - 2);
-
-    if(e->action_pressed) {
-        canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str_aligned(canvas, mid, y + h + 2, AlignCenter, AlignTop, "LOCKED");
-    }
+    draw_centred(canvas, FT_SCREEN_W / 2, y + 8, top);
+    if(bottom) draw_centred(canvas, FT_SCREEN_W / 2, y + 17, bottom);
 }
 
 static const char* rating_text(FtRating r) {
@@ -175,32 +278,13 @@ static const char* rating_text(FtRating r) {
     }
 }
 
-/* What just happened, in one line. */
-static void draw_popup(Canvas* canvas, const char* top, const char* bottom) {
-    const int32_t w = 90, h = 22;
-    const int32_t x = (FT_SCREEN_W - w) / 2, y = 18;
-
-    canvas_set_color(canvas, ColorWhite);
-    canvas_draw_box(canvas, x, y, w, h);
-    canvas_set_color(canvas, ColorBlack);
-    canvas_draw_frame(canvas, x, y, w, h);
-
-    canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str_aligned(canvas, x + w / 2, y + 3, AlignCenter, AlignTop, top);
-
-    if(bottom) {
-        canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str_aligned(canvas, x + w / 2, y + 13, AlignCenter, AlignTop, bottom);
-    }
-}
-
 static void draw_player_result(Canvas* canvas, const FtEncounter* e) {
-    char detail[24];
     const FtHitResult* r = &e->last_player_hit;
+    char detail[24];
 
     switch(r->outcome) {
     case FT_HIT_LOCKED:
-        draw_popup(canvas, "NO EFFECT", r->ram_refund ? "encrypted: RAM back" : "out of reach");
+        draw_popup(canvas, "NO EFFECT", r->ram_refund ? "encrypted" : "out of reach");
         return;
     case FT_HIT_DEFLECTED:
         draw_popup(canvas, "DEFLECTED", "shield held");
@@ -208,7 +292,6 @@ static void draw_player_result(Canvas* canvas, const FtEncounter* e) {
     case FT_HIT_MISSED:
         draw_popup(canvas, "MISS", NULL);
         return;
-    case FT_HIT_OK:
     default:
         break;
     }
@@ -216,6 +299,8 @@ static void draw_player_result(Canvas* canvas, const FtEncounter* e) {
     if(r->damage > 0) {
         snprintf(detail, sizeof(detail), "-%d", (int)r->damage);
         draw_popup(canvas, rating_text(e->last_rating), detail);
+    } else {
+        draw_popup(canvas, "NO DAMAGE", NULL);
     }
 }
 
@@ -228,13 +313,11 @@ static void draw_enemy_result(Canvas* canvas, const FtEncounter* e) {
                    e->last_capture_was_new ? "signal stored" : "already held");
         return;
     }
-
     if(e->last_guard == FT_GUARD_JAM) {
         snprintf(detail, sizeof(detail), "jammed  -%d", (int)r->damage);
         draw_popup(canvas, "JAM", detail);
         return;
     }
-
     if(r->damage > 0) {
         snprintf(detail, sizeof(detail), "-%d", (int)r->damage);
         draw_popup(canvas, "HIT", detail);
@@ -243,100 +326,112 @@ static void draw_enemy_result(Canvas* canvas, const FtEncounter* e) {
     }
 }
 
-/* ---- Chrome ---------------------------------------------------------- */
+/* ---- Status ---------------------------------------------------------- */
 
-static void draw_top_strip(Canvas* canvas, const FtEncounter* e) {
-    const FtEnemy* en = ft_encounter_enemy(e);
-
+static void draw_status(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str(canvas, 2, 9, en->name);
+    char buf[12];
 
-    /* Attribute tags, right-aligned. */
-    int32_t x = FT_SCREEN_W - 2;
-    char tag[12];
+    canvas_draw_str(canvas, 2, FT_STATUS_Y + 7, "CHG");
 
-    if(en->shielded > 0) {
-        snprintf(tag, sizeof(tag), "SHLD%d", (int)en->shielded);
-        x -= 26;
-        canvas_draw_str(canvas, x, 9, tag);
-    }
-    if(en->attrs & FT_ATTR_AIRBORNE) {
-        x -= 20;
-        canvas_draw_str(canvas, x, 9, "AIR");
-    }
-    if(en->attrs & FT_ATTR_ENCRYPTED) {
-        x -= 22;
-        canvas_draw_str(canvas, x, 9, "ENC");
+    const int32_t bx = 22, bw = 38;
+    canvas_draw_frame(canvas, bx, FT_STATUS_Y + 1, (size_t)bw, 7);
+    {
+        const int32_t fill = ft_bar_fill(e->roll.current, e->stats.charge_max, bw);
+        if(fill > 0) canvas_draw_box(canvas, bx + 1, FT_STATUS_Y + 2, (size_t)fill, 5);
     }
 
-    canvas_draw_line(canvas, 0, FT_STRIP_H - 1, FT_SCREEN_W - 1, FT_STRIP_H - 1);
-}
+    snprintf(buf, sizeof(buf), "%d", (int)e->roll.current);
+    canvas_draw_str(canvas, 63, FT_STATUS_Y + 7, buf);
 
-static void draw_bars(Canvas* canvas, const FtEncounter* e) {
-    char label[12];
+    snprintf(buf, sizeof(buf), "R%d", (int)e->stats.ram);
+    canvas_draw_str(canvas, 78, FT_STATUS_Y + 7, buf);
 
-    /* Charge shows the rolling value, which is the whole point of the system:
-     * the number the player reads is the one they can still act on. */
-    snprintf(label, sizeof(label), "CHG");
-    draw_meter(canvas, 2, FT_BARS_Y, 58, label, e->roll.current, e->stats.charge_max);
-
-    snprintf(label, sizeof(label), "%d", (int)e->roll.current);
-    canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str(canvas, 62, FT_BARS_Y + 8, label);
-
-    /* Signal, drawn as discrete bars because it is spent in whole bars. */
-    const int32_t sx = 82;
-    canvas_draw_str(canvas, sx, FT_BARS_Y + 8, "SIG");
+    canvas_draw_str(canvas, 93, FT_STATUS_Y + 7, "SIG");
 
     const uint8_t bars = ft_signal_bars(&e->signal);
-    for(uint8_t i = 0; i < e->signal.max_bars; i++) {
-        const int32_t bx = sx + 20 + i * 7;
+    for(uint8_t i = 0; i < e->signal.max_bars && i < 2u; i++) {
+        const int32_t sx = 112 + i * 7;
         if(e->signal.locked) {
-            draw_hatched_frame(canvas, bx, FT_BARS_Y + 1, 6, 7);
+            hatch(canvas, sx, FT_STATUS_Y + 1, 6, 7);
+            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 6, 7);
         } else if(i < bars) {
-            canvas_draw_box(canvas, bx, FT_BARS_Y + 1, 6, 7);
+            canvas_draw_box(canvas, sx, FT_STATUS_Y + 1, 6, 7);
         } else {
-            canvas_draw_frame(canvas, bx, FT_BARS_Y + 1, 6, 7);
+            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 6, 7);
         }
     }
 }
+
+/* ---- Action row ------------------------------------------------------ */
 
 static const char* action_label(FtAction2 a) {
     switch(a) {
     case FT_ACTION_BROADCAST: return "SUBGHZ";
     case FT_ACTION_CONTACT:   return "NFC";
-    case FT_ACTION_DEFEND:    return "DEF";
+    case FT_ACTION_DEFEND:    return "DEFEND";
     case FT_ACTION_FOCUS:     return "FOCUS";
     default:                  return "?";
     }
 }
 
+/* Two rows of two. One row of four cannot hold these labels at this font
+ * without either truncating them to initials or running off the panel. */
 static void draw_menu(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
 
-    static const int32_t xs[FT_ACTION_COUNT] = {2, 42, 70, 96};
-
     for(uint8_t i = 0; i < FT_ACTION_COUNT; i++) {
-        const int32_t x = xs[i];
-        const bool available = ft_encounter_action_available(e, (FtAction2)i);
+        const int32_t col = i % 2;
+        const int32_t row = i / 2;
+        const int32_t x = col ? 64 : 2;
+        const int32_t w = 61;
+        const int32_t y = FT_ACTION_Y + row * 9;
+
         const bool selected = (i == e->menu_index);
+        const bool available = ft_encounter_action_available(e, (FtAction2)i);
+        const char* label = action_label((FtAction2)i);
 
         if(selected) {
-            canvas_draw_box(canvas, x - 2, FT_MENU_Y, 38, 10);
+            canvas_draw_box(canvas, x, y, (size_t)w, 9);
             canvas_set_color(canvas, ColorWhite);
         }
 
-        canvas_draw_str(canvas, x, FT_MENU_Y + 8, action_label((FtAction2)i));
+        draw_clipped(canvas, x + 3, y + 7, label, w - 6);
 
-        /* A locked module is shown struck through rather than hidden, so the
-         * player reads the attribute instead of wondering where it went. */
+        /* A locked module is struck through rather than hidden, so the player
+         * reads the attribute instead of wondering where the option went. */
         if(!available) {
-            const size_t len = 6u * 4u;
-            canvas_draw_line(canvas, x, FT_MENU_Y + 5, x + (int32_t)len, FT_MENU_Y + 5);
+            const int32_t w = (int32_t)canvas_string_width(canvas, label);
+            canvas_draw_line(canvas, x + 3, y + 4, x + 3 + w, y + 4);
         }
 
         if(selected) canvas_set_color(canvas, ColorBlack);
     }
+}
+
+static void draw_prompt(Canvas* canvas, const char* s) {
+    canvas_set_font(canvas, FontSecondary);
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 12, s);
+}
+
+/* ---- Help ------------------------------------------------------------ */
+
+void ft_render_help(Canvas* canvas) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+
+    canvas_set_font(canvas, FontSecondary);
+    draw_centred(canvas, FT_SCREEN_W / 2, 7, "HOW TO PLAY");
+    canvas_draw_line(canvas, 0, 9, FT_SCREEN_W - 1, 9);
+
+    /* At ~6px per character, 20 characters is the width budget per line. */
+    canvas_draw_str(canvas, 2, 18, "Pick a module, tap");
+    canvas_draw_str(canvas, 2, 26, "OK inside the black");
+    canvas_draw_str(canvas, 2, 34, "block: harder hit.");
+
+    canvas_draw_str(canvas, 2, 46, "Attacked? Tap OK in");
+    canvas_draw_str(canvas, 2, 54, "the end zone. Solid");
+    canvas_draw_str(canvas, 2, 62, "= capture, dots = jam");
 }
 
 /* ---- Entry ----------------------------------------------------------- */
@@ -347,48 +442,42 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
 
     if(e->phase == FT_PHASE_WIN || e->phase == FT_PHASE_LOSE) {
         const bool won = (e->phase == FT_PHASE_WIN);
-        char detail[28];
+        char detail[26];
+
+        canvas_set_font(canvas, FontSecondary);
+        draw_centred(canvas, FT_SCREEN_W / 2, 20, won ? "VICTORY" : "DOWNED");
 
         if(won) {
             snprintf(detail, sizeof(detail), "%d signal(s) held", (int)e->lib.count);
         } else {
             snprintf(detail, sizeof(detail), "charge depleted");
         }
+        draw_centred(canvas, FT_SCREEN_W / 2, 34, detail);
 
-        canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str_aligned(canvas, FT_SCREEN_W / 2, 20, AlignCenter, AlignTop,
-                                won ? "VICTORY" : "DOWNED");
-        canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str_aligned(canvas, FT_SCREEN_W / 2, 34, AlignCenter, AlignTop, detail);
-        canvas_draw_str_aligned(canvas, FT_SCREEN_W / 2, 50, AlignCenter, AlignTop,
-                                "OK: again   BACK: exit");
+        /* Baselines stay at or below 62: a glyph cell extends one row past
+         * its baseline, and descenders need that row. */
+        draw_centred(canvas, FT_SCREEN_W / 2, 46, "OK: next fight");
+        draw_centred(canvas, FT_SCREEN_W / 2, 54, "UP: how to play");
+        draw_centred(canvas, FT_SCREEN_W / 2, 62, "BACK: quit");
         return;
     }
 
-    draw_top_strip(canvas, e);
+    draw_header(canvas, e);
 
-    /* Scene. The player sprite cracks while Charge is still draining. */
-    draw_player(canvas, 8, FT_SCENE_Y + 8, ft_roll_active(&e->roll));
-    draw_enemy(canvas, 96, FT_SCENE_Y + 8, ft_encounter_enemy(e)->attrs);
-
-    /* Enemy charge bar under its sprite. */
-    {
-        const int32_t bw = 26;
-        canvas_draw_frame(canvas, 92, FT_SCENE_Y + 27, bw, 4);
-        if(e->enemy_charge > 0) {
-            int32_t fill = ((int32_t)e->enemy_charge * (bw - 2)) / e->enemy_charge_max;
-            if(fill < 1) fill = 1;
-            canvas_draw_box(canvas, 93, FT_SCENE_Y + 28, fill, 2);
-        }
+    /* The arena and the skill check share the middle band. */
+    switch(e->phase) {
+    case FT_PHASE_PLAYER_ACT:
+        draw_strike_check(canvas, e);
+        break;
+    case FT_PHASE_TELEGRAPH:
+        draw_guard_check(canvas, e);
+        break;
+    default:
+        draw_arena(canvas, e);
+        break;
     }
 
     switch(e->phase) {
-    case FT_PHASE_PLAYER_ACT:
-        draw_action_bar(canvas, e);
-        break;
-    case FT_PHASE_TELEGRAPH:
-        draw_telegraph(canvas, e);
-        break;
     case FT_PHASE_RESULT:
         draw_player_result(canvas, e);
         break;
@@ -399,16 +488,19 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
         break;
     }
 
-    draw_bars(canvas, e);
+    draw_status(canvas, e);
 
-    if(e->phase == FT_PHASE_MENU) {
+    switch(e->phase) {
+    case FT_PHASE_MENU:
         draw_menu(canvas, e);
-    } else {
-        canvas_set_font(canvas, FontSecondary);
-        if(e->phase == FT_PHASE_TELEGRAPH) {
-            canvas_draw_str(canvas, 2, FT_MENU_Y + 8, "OK: guard");
-        } else if(e->phase == FT_PHASE_PLAYER_ACT) {
-            canvas_draw_str(canvas, 2, FT_MENU_Y + 8, "OK: strike");
-        }
+        break;
+    case FT_PHASE_PLAYER_ACT:
+        draw_prompt(canvas, "OK to strike");
+        break;
+    case FT_PHASE_TELEGRAPH:
+        draw_prompt(canvas, "OK to guard");
+        break;
+    default:
+        break;
     }
 }

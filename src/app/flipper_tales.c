@@ -12,7 +12,8 @@
 #include "ft_render.h"
 
 #define FT_TAG        "FlipperTales"
-#define FT_TICK_MS    20   /* ~50 Hz: fine enough for a 50 ms capture window */
+#define FT_TICK_MS    10   /* ~100 Hz: the capture window is only 50 ms, so the
+                            * press must be timestamped finer than that */
 #define FT_QUEUE_SIZE 8
 
 typedef enum {
@@ -35,6 +36,10 @@ typedef struct {
     FtEncounter encounter;
     uint8_t     enemy_index;
 
+    /* Shown on launch: the timing windows are the whole game and are not
+     * self-evident, so the rules go up before the first turn rather than
+     * hiding behind a hint in the corner. */
+    bool show_help;
     bool running;
 } FlipperTales;
 
@@ -47,7 +52,11 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
      * rather than stall the compositor. */
     if(furi_mutex_acquire(app->mutex, 25) != FuriStatusOk) return;
 
-    ft_render_battle(canvas, &app->encounter);
+    if(app->show_help) {
+        ft_render_help(canvas);
+    } else {
+        ft_render_battle(canvas, &app->encounter);
+    }
 
     furi_mutex_release(app->mutex);
 }
@@ -80,6 +89,12 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
      * automatic miss for anyone who does not tap cleanly. */
     if(event->key == InputKeyOk && !pressed) return;
 
+    /* Any key dismisses the help card. */
+    if(app->show_help) {
+        if(pressed) app->show_help = false;
+        return;
+    }
+
     switch(event->key) {
     case InputKeyBack:
         if(!pressed) return;
@@ -101,6 +116,21 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
 
     case InputKeyRight:
         ft_encounter_menu_move(&app->encounter, 1);
+        break;
+
+    /* The menu is a 2x2 grid, so vertical movement is a step of two. */
+    case InputKeyUp:
+        if(ft_encounter_over(&app->encounter) || app->encounter.phase == FT_PHASE_MENU) {
+            if(ft_encounter_over(&app->encounter)) {
+                app->show_help = true;
+            } else {
+                ft_encounter_menu_move(&app->encounter, -2);
+            }
+        }
+        break;
+
+    case InputKeyDown:
+        ft_encounter_menu_move(&app->encounter, 2);
         break;
 
     default:
@@ -127,6 +157,7 @@ static FlipperTales* ft_alloc(void) {
     app->enemy_index = 0;
     ft_start_encounter(app, 0);
 
+    app->show_help = true;
     app->running = true;
 
     return app;

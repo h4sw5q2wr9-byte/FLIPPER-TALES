@@ -9,9 +9,15 @@ BIN      := bin
 CFLAGS := -std=c99 -Wall -Wextra -Werror -Wpedantic -Wshadow \
           -Wconversion -Wsign-conversion -O2 -g -I$(CORE_DIR)
 
+APP_DIR  := ../src/app
 CORE_SRC := $(wildcard $(CORE_DIR)/*.c)
 
-.PHONY: all test sim check-nofloat clean
+# The preview harness compiles the real renderer against a stub canvas, so the
+# 128x64 layout can be inspected (and clipping caught) without a device.
+PREVIEW_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wpedantic -O2 -g \
+                  -I$(CORE_DIR) -I$(APP_DIR) -Istub -I.
+
+.PHONY: all test sim preview check-nofloat clean
 
 all: test
 
@@ -30,6 +36,15 @@ test: $(BIN)/test_main check-nofloat
 sim: $(BIN)/sim
 	@./$(BIN)/sim
 
+$(BIN)/preview: $(CORE_SRC) $(APP_DIR)/ft_render.c canvas_stub.c preview.c | $(BIN)
+	$(CC) $(PREVIEW_CFLAGS) $^ -o $@
+
+preview: $(BIN)/preview
+	@rm -rf preview
+	@mkdir -p preview
+	@./$(BIN)/preview
+	@python3 topng.py
+
 # The MCU has no FPU budget, so the core must stay integer-only.
 check-nofloat:
 	@if grep -nE '\b(float|double)\b' $(CORE_DIR)/*.c $(CORE_DIR)/*.h; then \
@@ -39,4 +54,4 @@ check-nofloat:
 	@echo "no floating point in src/core"
 
 clean:
-	@rm -rf $(BIN)
+	@rm -rf $(BIN) preview

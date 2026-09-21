@@ -143,8 +143,8 @@ Measured backwards from the impact frame. Tunable constants:
 | Jam window | 150 ms | 75 ms |
 | Capture window | innermost 50 ms | innermost 25 ms |
 
-The app polls at 50 Hz (20 ms), which resolves the 50 ms capture window to
-roughly two or three frames. These are the numbers most likely to need changing
+The app polls at 100 Hz (10 ms), which resolves the 50 ms capture window to
+about five samples. These are the numbers most likely to need changing
 once the game is played on hardware — they are constants in `ft_types.h` for
 exactly that reason.
 
@@ -237,6 +237,21 @@ invert-on-frame pulse. Arguably clearer than colour.
 ```
 
 The attack-telegraph banner overlays the battle scene, centred.
+
+### 5.1 Verifying the layout
+
+`make -C test preview` compiles the real renderer against a stub canvas
+(`test/canvas_stub.c`), rasterises every battle phase to an image, and **fails
+the build if a single pixel lands off-panel**. This exists because the first
+pass at this screen was designed without ever seeing it, and shipped with text
+running off both edges.
+
+The stub's font advances are deliberately wider than the firmware's, so the
+check errs toward reporting overflow the device would not actually show.
+
+**Width budget: 20 characters per line** at the standard font. Anything
+data-driven (enemy names, attack titles) is measured with `canvas_string_width`
+and truncated rather than trusted to fit.
 
 ## 6. Architecture
 

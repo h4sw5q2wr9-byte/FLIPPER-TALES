@@ -131,15 +131,17 @@ typedef enum {
 #define FT_CAPTURE_WINDOW_MS 50
 
 /* Action command: tolerance around the perfect moment, per rating band. */
-#define FT_BAND_EXCELLENT_MS 30
-#define FT_BAND_GREAT_MS     60
-#define FT_BAND_GOOD_MS      100
-#define FT_BAND_NICE_MS      160
+#define FT_BAND_EXCELLENT_MS 40
+#define FT_BAND_GREAT_MS     80
+#define FT_BAND_GOOD_MS      130
+#define FT_BAND_NICE_MS      190
 
 /* ---- Battle pacing --------------------------------------------------- */
 
-#define FT_ACTION_WINDOW_MS    900  /* action command bar sweep */
-#define FT_TELEGRAPH_MS       1100  /* enemy wind-up before impact */
+/* Both sweeps are short on purpose. The bar that shows them is only ~120px
+ * wide, so a longer sweep makes every timing band too few pixels to read. */
+#define FT_ACTION_WINDOW_MS    700  /* action command bar sweep */
+#define FT_TELEGRAPH_MS        800  /* enemy wind-up before impact */
 #define FT_IMPACT_HOLD_MS      450  /* result popup lingers */
 #define FT_OUTCOME_HOLD_MS    1400  /* win/lose banner */
 
