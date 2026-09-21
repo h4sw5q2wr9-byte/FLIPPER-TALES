@@ -6,6 +6,7 @@
 #include "ft_combat.h"
 #include "ft_data.h"
 #include "ft_encounter.h"
+#include "ft_practice.h"
 #include "ft_priority.h"
 #include "ft_progress.h"
 #include "ft_map.h"
@@ -840,22 +841,29 @@ static void test_encounter(void) {
     CHECK_EQ(e.roll.current, before);
     CHECK_EQ(e.phase, FT_PHASE_MENU);
 
-    /* Attribute locks are surfaced as unavailable menu entries. */
+    /* Attributes never take a module off the list: every attack is always
+     * selectable, and reach decides who it lands on. */
     FtEncounter beacon;
     ft_encounter_init_single(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 1);
-    CHECK(ft_encounter_action_available(&beacon, FT_ACTION_BROADCAST), "broadcast reaches AIRBORNE");
-    CHECK(!ft_encounter_action_available(&beacon, FT_ACTION_CONTACT), "contact cannot reach AIRBORNE");
+    CHECK(ft_encounter_action_available(&beacon, FT_ACTION_BROADCAST), "broadcast is offered");
+    CHECK(ft_encounter_action_available(&beacon, FT_ACTION_CONTACT), "so is contact");
     CHECK(ft_encounter_action_available(&beacon, FT_ACTION_DEFEND), "Defend is always available");
+    CHECK(!ft_encounter_can_reach(&beacon, FT_ACTION_CONTACT, 0), "but contact cannot reach it");
 
     FtEncounter lock;
     ft_encounter_init_single(&lock, FT_ENEMY_SEALED_LOCK, &lo, 1);
-    CHECK(!ft_encounter_action_available(&lock, FT_ACTION_BROADCAST), "broadcast is refused by ENCRYPTED");
-    CHECK(ft_encounter_action_available(&lock, FT_ACTION_CONTACT), "contact works on ENCRYPTED");
+    CHECK(ft_encounter_action_available(&lock, FT_ACTION_BROADCAST), "broadcast is offered");
+    CHECK(!ft_encounter_can_reach(&lock, FT_ACTION_BROADCAST, 0), "but bounces off ENCRYPTED");
+    CHECK(ft_encounter_can_reach(&lock, FT_ACTION_CONTACT, 0), "contact opens ENCRYPTED");
 
-    /* Confirming an unavailable action does nothing at all. */
-    beacon.menu_index = FT_ACTION_CONTACT;
-    ft_encounter_press_ok(&beacon);
-    CHECK_EQ(beacon.phase, FT_PHASE_MENU);
+    /* A resource you do not have still stops the press — that is the only
+     * thing left that can. */
+    FtEncounter empty;
+    ft_encounter_init_single(&empty, FT_ENEMY_STRAY_PACKET, &lo, 1);
+    CHECK(!ft_encounter_action_available(&empty, FT_ACTION_SIGNAL), "no capture, no replay");
+    empty.menu_index = FT_ACTION_SIGNAL;
+    ft_encounter_press_ok(&empty);
+    CHECK_EQ(empty.phase, FT_PHASE_MENU);
 
     /* A perfectly timed action command earns the top rating. */
     FtEncounter fight;
@@ -978,26 +986,18 @@ static void test_tutorial(void) {
     CHECK(ft_tutorial_hint(&e) == NULL, "coaching off means silence");
     e.coach = true;
 
-    /* A refused action explains itself, and names the remedy rather than just
-     * stating the problem. This is shown in the menu's description row, so the
-     * reason lives on the action rather than in the coach line. */
+    /* Only a missing resource refuses an action now, and it still explains
+     * itself in the menu's description row. */
     FtEncounter beacon;
     ft_encounter_init_single(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 3);
-    const char* flies = ft_encounter_action_block(&beacon, FT_ACTION_CONTACT);
-    CHECK(flies && strstr(flies, "SUB"), "an airborne lock should name the fix");
-    CHECK(!ft_encounter_action_available(&beacon, FT_ACTION_CONTACT),
-          "contact cannot reach an airborne target");
+    CHECK(ft_encounter_action_block(&beacon, FT_ACTION_CONTACT) == NULL,
+          "an attribute is not a refusal");
+    CHECK(ft_encounter_action_block(&beacon, FT_ACTION_BROADCAST) == NULL,
+          "nor is any other attribute");
 
-    FtEncounter lock;
-    ft_encounter_init_single(&lock, FT_ENEMY_SEALED_LOCK, &lo, 3);
-    const char* enc = ft_encounter_action_block(&lock, FT_ACTION_BROADCAST);
-    CHECK(enc && strstr(enc, "NFC"), "an encrypted lock should name the fix");
-
-    /* The coach must not simply echo that reason back. */
-    beacon.menu_index = FT_ACTION_CONTACT;
-    const char* coached = ft_tutorial_hint(&beacon);
-    CHECK(coached && !strstr(coached, "Flying"),
-          "the coach should not duplicate the description row");
+    const char* need = ft_encounter_action_block(&beacon, FT_ACTION_SIGNAL);
+    CHECK(need != NULL, "a replay with nothing captured still refuses");
+    CHECK(strlen(need) <= FT_TUTORIAL_MAX_CHARS, "and says so in one line");
 
     /* The line tracks the phase, including the ready beat. */
     e.phase = FT_PHASE_PLAYER_ACT;
@@ -1579,7 +1579,7 @@ static void test_foe_ai(void) {
 }
 
 static void test_hit_fx(void) {
-    section("hit iris");
+    section("hit flinch");
 
     FtLoadout lo;
     ft_loadout_init(&lo);
@@ -1589,63 +1589,324 @@ static void test_hit_fx(void) {
 
     /* Nothing outside an impact that actually hurt. */
     CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
-    CHECK_EQ(ft_encounter_impact_hold(&e), FT_IMPACT_HOLD_MS);
 
     e.phase = FT_PHASE_IMPACT;
     e.last_enemy_hit.damage = 0;
     e.phase_ms = 1000;
     CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
-    CHECK_EQ(ft_encounter_impact_hold(&e), FT_IMPACT_HOLD_MS);
 
-    /* A landed hit runs flicker, close, hold, open, and then hands the arena
-     * back — in that order, without skipping a stage. */
+    /* A landed hit gets a strobe and nothing else. The iris that used to run
+     * here took the fight off the screen for a second every time a foe
+     * connected, three times in a three-foe round. */
     e.last_enemy_hit.damage = 3;
-    CHECK_EQ(ft_encounter_impact_hold(&e), FT_IMPACT_HOLD_HIT_MS);
 
     const uint32_t start = ((uint32_t)FT_ANIM_MS * FT_ANIM_STRIKE) / 255u;
     e.phase_ms = start - 1;
     CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
 
-    int seen[5] = {0, 0, 0, 0, 0};
-    int order_ok = 1, last = -1;
-    uint8_t close_peak = 0, open_low = 255;
-
-    for(uint32_t t = start; t < FT_IMPACT_HOLD_HIT_MS; t += 5) {
-        e.phase_ms = t;
-        const FtHitFx fx = ft_encounter_hit_fx(&e);
-
-        /* The stage index only ever climbs, then falls back to NONE once. */
-        const int idx = (fx.stage == FT_HIT_FX_NONE) ? 5 : (int)fx.stage;
-        if(idx < last) order_ok = 0;
-        last = idx;
-
-        if(fx.stage != FT_HIT_FX_NONE) seen[fx.stage] = 1;
-        if(fx.stage == FT_HIT_FX_CLOSING && fx.amount > close_peak) close_peak = fx.amount;
-        if(fx.stage == FT_HIT_FX_OPENING && fx.amount < open_low) open_low = fx.amount;
-        if(fx.stage == FT_HIT_FX_BLACK) CHECK_EQ(fx.amount, 255);
-    }
-
-    CHECK(order_ok, "the iris runs its stages in order");
-    CHECK(seen[FT_HIT_FX_FLICKER], "the hit flickers first");
-    CHECK(seen[FT_HIT_FX_CLOSING], "then the iris closes");
-    CHECK(seen[FT_HIT_FX_BLACK], "then it holds black");
-    CHECK(seen[FT_HIT_FX_OPENING], "then it opens again");
-    CHECK(close_peak > 200, "the close reaches nearly shut (%u)", close_peak);
-    CHECK(open_low < 40, "the open reaches nearly clear (%u)", open_low);
-
-    /* The whole effect must finish inside the hold, or the fight resumes
-     * behind a black screen. */
-    e.phase_ms = FT_IMPACT_HOLD_HIT_MS - 1;
-    CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
-
-    /* The flicker strobes rather than sitting inverted for its whole length. */
     int on = 0, off = 0;
     for(uint32_t t = start; t < start + FT_FLICKER_MS; t += 5) {
         e.phase_ms = t;
-        if(ft_encounter_hit_fx(&e).strobe) on++;
+        const FtHitFx fx = ft_encounter_hit_fx(&e);
+
+        CHECK_EQ(fx.stage, FT_HIT_FX_FLICKER);
+        if(fx.strobe) on++;
         else off++;
     }
-    CHECK(on > 0 && off > 0, "the flicker alternates (%d on, %d off)", on, off);
+    CHECK(on > 0 && off > 0, "the flinch alternates (%d on, %d off)", on, off);
+
+    /* And it is over well before the impact hold is, so the fight is visible
+     * again long before the turn moves on. */
+    e.phase_ms = start + FT_FLICKER_MS;
+    CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
+    CHECK(start + FT_FLICKER_MS < ft_encounter_impact_hold(&e),
+          "the flinch fits inside the hold");
+
+    /* A landed hit no longer buys extra hold time, because there is no
+     * transition left to cover. */
+    CHECK_EQ(ft_encounter_impact_hold(&e), FT_IMPACT_HOLD_MS);
+    e.last_enemy_hit.damage = 0;
+    CHECK_EQ(ft_encounter_impact_hold(&e), FT_IMPACT_HOLD_MS);
+}
+
+static void test_reach(void) {
+    section("reach and retargeting");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* Nothing an enemy *is* can take a module off the list. Every attack is
+     * selectable against every board; attributes only move the caret. */
+    const FtEnemyId air[FT_MAX_ENEMIES] = {
+        FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON};
+    FtEncounter flyers;
+    ft_encounter_init(&flyers, air, 3, &lo, 3);
+
+    CHECK(ft_encounter_action_available(&flyers, FT_ACTION_CONTACT),
+          "contact stays selectable against a sky full of flyers");
+    CHECK(ft_encounter_action_available(&flyers, FT_ACTION_BROADCAST),
+          "so does broadcast");
+
+    FtEncounter locks;
+    ft_encounter_init_single(&locks, FT_ENEMY_SEALED_LOCK, &lo, 3);
+    CHECK(ft_encounter_action_available(&locks, FT_ACTION_BROADCAST),
+          "broadcast stays selectable against encrypted");
+
+    /* Reach is still real: it decides who gets hit. */
+    CHECK(!ft_encounter_can_reach(&flyers, FT_ACTION_CONTACT, 0), "contact misses air");
+    CHECK(ft_encounter_can_reach(&flyers, FT_ACTION_BROADCAST, 0), "broadcast reaches air");
+    CHECK(!ft_encounter_can_reach(&locks, FT_ACTION_BROADCAST, 0), "broadcast bounces off ENC");
+    CHECK(ft_encounter_can_reach(&locks, FT_ACTION_CONTACT, 0), "contact opens ENC");
+
+    /* The headline fix: aim at a flyer with a grounded attack and the swing
+     * goes to the next one that is standing there, rather than refusing. */
+    const FtEnemyId mixed[FT_MAX_ENEMIES] = {
+        FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
+    FtEncounter e;
+    ft_encounter_init(&e, mixed, 3, &lo, 3);
+
+    e.target = 0;
+    CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_CONTACT), 2);
+    e.target = 1;
+    CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_CONTACT), 2);
+    e.target = 2;
+    CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_CONTACT), 2);
+
+    /* It wraps, so a reachable foe before the cursor is still found. */
+    const FtEnemyId wrap[FT_MAX_ENEMIES] = {
+        FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON};
+    FtEncounter wr;
+    ft_encounter_init(&wr, wrap, 3, &lo, 3);
+    wr.target = 1;
+    CHECK_EQ(ft_encounter_effective_target(&wr, FT_ACTION_CONTACT), 0);
+
+    /* A chosen target that *is* reachable is never overruled. */
+    wr.target = 0;
+    CHECK_EQ(ft_encounter_effective_target(&wr, FT_ACTION_CONTACT), 0);
+
+    /* Dead foes are skipped: the retarget finds a living one. */
+    wr.foes[0].charge = 0;
+    wr.target = 0;
+    CHECK(!ft_encounter_can_reach(&wr, FT_ACTION_CONTACT, 0), "a corpse is not a target");
+
+    /* Nothing reachable at all: the swing whiffs on the chosen foe rather
+     * than crashing or silently doing nothing. */
+    flyers.target = 1;
+    CHECK_EQ(ft_encounter_effective_target(&flyers, FT_ACTION_CONTACT), 1);
+
+    /* And it resolves that way end to end: aiming at a flyer with contact
+     * damages the grounded one instead. */
+    FtEncounter fight;
+    ft_encounter_init(&fight, mixed, 3, &lo, 3);
+    fight.target = 0;
+    fight.menu_index = FT_ACTION_CONTACT;
+
+    const int16_t before = fight.foes[2].charge;
+    ft_encounter_press_ok(&fight);
+    ft_encounter_tick(&fight, FT_READY_MS + FT_ACTION_WINDOW_MS / 2);
+    ft_encounter_press_ok(&fight);
+    ft_encounter_tick(&fight, FT_ACTION_WINDOW_MS);
+
+    CHECK_EQ(fight.phase, FT_PHASE_RESULT);
+    CHECK(fight.foes[2].charge < before, "the grounded foe took the hit");
+    CHECK_EQ(fight.foes[0].charge, FT_ENEMIES[FT_ENEMY_DRIFT_BEACON].charge);
+}
+
+static void test_practice(void) {
+    section("practice arena");
+
+    FtPractice p;
+    ft_practice_init(&p, 12345u);
+
+    CHECK_EQ(p.row, FT_PRACTICE_FOES);
+    CHECK_EQ(p.group, FT_FOES_RANDOM);
+    CHECK_EQ(p.level, 1);
+    CHECK_EQ(p.kit, FT_KIT_BASIC);
+
+    /* The cursor wraps both ways and never leaves the list. */
+    ft_practice_move(&p, -1);
+    CHECK_EQ(p.row, FT_PRACTICE_ROWS - 1);
+    ft_practice_move(&p, 1);
+    CHECK_EQ(p.row, FT_PRACTICE_FOES);
+
+    for(int i = 0; i < 40; i++) {
+        ft_practice_move(&p, (i % 3) ? 1 : -1);
+        CHECK(p.row < FT_PRACTICE_ROWS, "the cursor stays on a row");
+    }
+
+    /* Every row's label and value fit the panel and are never empty where a
+     * value is meant to be. */
+    p.row = FT_PRACTICE_FOES;
+    for(uint8_t r = 0; r < FT_PRACTICE_ROWS; r++) {
+        CHECK(strlen(ft_practice_row_name(r)) <= FT_TUTORIAL_MAX_CHARS,
+              "row %u has a short name", r);
+
+        for(int i = 0; i < FT_PRACTICE_GROUPS + FT_KIT_COUNT + 12; i++) {
+            p.row = r;
+            ft_practice_adjust(&p, 1);
+
+            const char* v = ft_practice_value(&p, r);
+            CHECK(v != NULL, "row %u always has a value", r);
+            CHECK(strlen(v) <= FT_TUTORIAL_MAX_CHARS, "row %u value fits: \"%s\"", r, v);
+
+            const char* h = ft_practice_help(&p);
+            CHECK(h && strlen(h) <= FT_TUTORIAL_MAX_CHARS, "row %u help fits", r);
+        }
+    }
+
+    /* Settings wrap rather than sticking at the end. */
+    p.row = FT_PRACTICE_LEVEL;
+    p.level = 1;
+    ft_practice_adjust(&p, -1);
+    CHECK_EQ(p.level, FT_PRACTICE_MAX_LEVEL);
+    ft_practice_adjust(&p, 1);
+    CHECK_EQ(p.level, 1);
+
+    p.row = FT_PRACTICE_KIT;
+    p.kit = 0;
+    ft_practice_adjust(&p, -1);
+    CHECK_EQ(p.kit, FT_KIT_COUNT - 1);
+
+    p.row = FT_PRACTICE_GROUPS ? FT_PRACTICE_FOES : FT_PRACTICE_FOES;
+    p.group = 0;
+    ft_practice_adjust(&p, -1);
+    CHECK_EQ(p.group, FT_PRACTICE_GROUPS - 1);
+
+    /* FIGHT is a button: it has no value to cycle and adjusting it is inert. */
+    p.row = FT_PRACTICE_FIGHT;
+    const FtPractice before = p;
+    ft_practice_adjust(&p, 1);
+    CHECK_EQ(p.group, before.group);
+    CHECK_EQ(p.level, before.level);
+    CHECK_EQ(p.kit, before.kit);
+
+    /* Every fixed line-up builds a legal encounter. */
+    for(uint8_t g = 1; g < FT_PRACTICE_GROUPS; g++) {
+        FtPractice s2;
+        ft_practice_init(&s2, 99u);
+        s2.group = g;
+
+        FtEncounter e;
+        ft_practice_start(&s2, &e);
+
+        CHECK(e.foe_count >= 1 && e.foe_count <= FT_MAX_ENEMIES,
+              "group %u fields 1..3 foes (got %u)", g, e.foe_count);
+        CHECK_EQ(ft_encounter_living(&e), e.foe_count);
+        CHECK_EQ(e.phase, FT_PHASE_MENU);
+        CHECK(!e.coach, "the arena does not nag");
+        CHECK(e.roll.current == e.stats.charge_max, "you start full");
+    }
+
+    /* Random gives different fights on repeated presses rather than the same
+     * one over and over — that is the whole point of the Random setting. */
+    FtPractice r;
+    ft_practice_init(&r, 7u);
+    r.group = FT_FOES_RANDOM;
+
+    uint32_t shapes = 0;
+    uint8_t first_count = 0;
+    bool varied = false;
+
+    for(int i = 0; i < 24; i++) {
+        FtEncounter e;
+        ft_practice_start(&r, &e);
+
+        CHECK(e.foe_count >= 1 && e.foe_count <= FT_MAX_ENEMIES,
+              "a rolled group fields 1..3 foes");
+        for(uint8_t k = 0; k < e.foe_count; k++) {
+            CHECK(e.foes[k].id < FT_ENEMY_COUNT, "a rolled foe is a real enemy");
+            CHECK(e.foes[k].charge > 0, "a rolled foe starts alive");
+        }
+
+        if(i == 0) first_count = e.foe_count;
+        else if(e.foe_count != first_count) varied = true;
+
+        shapes |= 1u << e.foe_count;
+    }
+    CHECK(varied, "Random does not serve the same size every time");
+    CHECK(shapes != 0, "Random produced something");
+
+    /* Levels raise the ceiling, and the kits actually hand you more. */
+    FtPractice lo1;
+    ft_practice_init(&lo1, 4u);
+    lo1.group = 1;
+    lo1.level = 1;
+
+    FtEncounter low;
+    ft_practice_start(&lo1, &low);
+
+    FtPractice hi;
+    ft_practice_init(&hi, 4u);
+    hi.group = 1;
+    hi.level = FT_PRACTICE_MAX_LEVEL;
+
+    FtEncounter high;
+    ft_practice_start(&hi, &high);
+
+    CHECK(high.stats.charge_max > low.stats.charge_max,
+          "level 10 has more Charge than level 1 (%d vs %d)",
+          (int)high.stats.charge_max, (int)low.stats.charge_max);
+    CHECK(high.stats.ram_max >= low.stats.ram_max, "and no less RAM");
+
+    /* A kit you cannot use is not a kit: the loaded sets can replay at once. */
+    for(uint8_t k = 0; k < FT_KIT_COUNT; k++) {
+        FtPractice kp;
+        ft_practice_init(&kp, 4u);
+        kp.group = 1;
+        kp.kit = k;
+
+        FtEncounter ke;
+        ft_practice_start(&kp, &ke);
+
+        if(k == FT_KIT_BASIC) {
+            CHECK(!ft_encounter_action_available(&ke, FT_ACTION_SIGNAL),
+                  "the basic kit starts with nothing captured");
+        } else {
+            CHECK(ft_encounter_action_available(&ke, FT_ACTION_SIGNAL),
+                  "kit %u can replay from the first turn", k);
+        }
+
+        /* Hard Mode is never switched on behind your back. */
+        CHECK(!ke.fx.hard_mode, "kit %u leaves Hard Mode alone", k);
+
+        /* And the installed kit is legal: never over the Flash budget. */
+        CHECK(ke.stats.flash_used <= ke.stats.flash_max ||
+                  k != FT_KIT_BASIC,
+              "kit %u fits the budget", k);
+    }
+
+    FtLoadout basic, loaded, maxed;
+    ft_practice_loadout(FT_KIT_BASIC, &basic);
+    ft_practice_loadout(FT_KIT_LOADED, &loaded);
+    ft_practice_loadout(FT_KIT_MAX, &maxed);
+
+    int nb = 0, nl = 0, nm = 0;
+    for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) {
+        nb += basic.stacks[i];
+        nl += loaded.stacks[i];
+        nm += maxed.stacks[i];
+    }
+    CHECK(nl > nb, "Loaded installs more than Basic (%d vs %d)", nl, nb);
+    CHECK(nm >= nl, "Max installs at least as much as Loaded (%d vs %d)", nm, nl);
+
+    /* A practice match is playable end to end and terminates. */
+    FtPractice play;
+    ft_practice_init(&play, 21u);
+    play.group = FT_PRACTICE_GROUPS - 1; /* the trio */
+    play.level = 6;
+    play.kit = FT_KIT_LOADED;
+
+    FtEncounter run;
+    ft_practice_start(&play, &run);
+
+    for(int i = 0; i < 40000 && !ft_encounter_over(&run); i++) {
+        if(run.phase == FT_PHASE_MENU) {
+            run.menu_index = FT_ACTION_CONTACT;
+            ft_encounter_press_ok(&run);
+        }
+        ft_encounter_tick(&run, 10);
+    }
+    CHECK(ft_encounter_over(&run), "an arena match terminates");
 }
 
 static void test_scene_wipe(void) {
@@ -1820,6 +2081,8 @@ int main(void) {
     test_world();
     test_foe_ai();
     test_hit_fx();
+    test_reach();
+    test_practice();
     test_scene_wipe();
     test_broadcast_sweep();
     test_world_links();

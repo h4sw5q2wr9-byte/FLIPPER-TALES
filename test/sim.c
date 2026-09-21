@@ -21,6 +21,15 @@ typedef struct {
 
 /* Skill is the chance of hitting a window; the rest of the time the press
  * lands somewhere random in the sweep, which is what a real miss looks like. */
+/* How many living foes this action can actually touch. */
+static uint8_t reachable(const FtEncounter* e, FtAction2 a) {
+    uint8_t n = 0;
+    for(uint8_t i = 0; i < e->foe_count; i++) {
+        if(ft_encounter_can_reach(e, a, i)) n++;
+    }
+    return n;
+}
+
 static uint32_t press_offset(FtRng* rng, uint32_t window, uint32_t skill_pct, bool tight) {
     if(ft_rng_chance(rng, skill_pct)) {
         /* Aim: land inside the tight band near the ideal moment. */
@@ -48,14 +57,31 @@ static void play(const FtRoster* roster, uint32_t skill, uint32_t seed, SimResul
     for(uint32_t t = 0; t < SIM_MAX_MS && !ft_encounter_over(&e); t += SIM_TICK_MS) {
         switch(e.phase) {
         case FT_PHASE_MENU: {
-            /* Pick whatever is usable, preferring the stronger single hit when
-             * there is only one foe left. */
+            /* A baseline player reads the screen: they pick something that
+             * can actually land, preferring the wide hit while there is a
+             * crowd and the strong one once there is not. Choosing on
+             * availability alone would model someone swinging at a flyer for
+             * the rest of the fight, which is not a balance number — every
+             * module is selectable now, so reach is the question. */
+            const uint8_t bcast = reachable(&e, FT_ACTION_BROADCAST);
+            const uint8_t contact = reachable(&e, FT_ACTION_CONTACT);
+
+            /* The baseline is unchanged from when these numbers were first
+             * measured: wide while there is a crowd, strong once there is
+             * one foe left. Only the test changed — every module is
+             * selectable now, so the question is what it can reach, not
+             * whether it is offered. */
             FtAction2 want =
                 (ft_encounter_living(&e) > 1u) ? FT_ACTION_BROADCAST : FT_ACTION_CONTACT;
-            if(!ft_encounter_action_available(&e, want)) {
-                want = (want == FT_ACTION_CONTACT) ? FT_ACTION_BROADCAST : FT_ACTION_CONTACT;
+
+            const uint8_t first = (want == FT_ACTION_BROADCAST) ? bcast : contact;
+            const uint8_t other = (want == FT_ACTION_BROADCAST) ? contact : bcast;
+
+            if(first == 0u) {
+                want = (want == FT_ACTION_BROADCAST) ? FT_ACTION_CONTACT :
+                                                       FT_ACTION_BROADCAST;
+                if(other == 0u) want = FT_ACTION_DEFEND;
             }
-            if(!ft_encounter_action_available(&e, want)) want = FT_ACTION_DEFEND;
 
             e.menu_index = (uint8_t)want;
             ft_encounter_press_ok(&e);

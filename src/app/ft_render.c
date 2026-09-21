@@ -167,12 +167,26 @@ static int32_t foe_x(uint8_t i, uint8_t count) {
     return LAYOUT[count - 1u][i];
 }
 
-/* A small marker over whoever a single-target action would hit. */
+/* Brackets flanking whoever a single-target action would hit.
+ *
+ * This used to be a wedge above the sprite's head, in the two spare pixels
+ * between the title rule and the arena — where the tallest enemy's antenna
+ * already lives, so on a real board it simply vanished. The sides are the
+ * only space in the arena that is reliably empty: foes sit 20px apart and
+ * are 16px wide. */
 static void draw_target_caret(Canvas* c, int32_t x, int32_t y) {
-    canvas_draw_line(c, x + 5, y, x + 10, y);
-    canvas_draw_line(c, x + 6, y + 1, x + 9, y + 1);
-    canvas_draw_dot(c, x + 7, y + 2);
-    canvas_draw_dot(c, x + 8, y + 2);
+    const int32_t top = y + 4, h = 8;
+
+    for(int32_t i = 0; i < h; i++) {
+        canvas_draw_dot(c, x - 2, top + i);
+        canvas_draw_dot(c, x + FT_SPRITE_W + 1, top + i);
+    }
+
+    /* Serifs, so a bare column does not read as part of the scenery. */
+    canvas_draw_dot(c, x - 1, top);
+    canvas_draw_dot(c, x - 1, top + h - 1);
+    canvas_draw_dot(c, x + FT_SPRITE_W, top);
+    canvas_draw_dot(c, x + FT_SPRITE_W, top + h - 1);
 }
 
 /* A radio chevron, the visual vocabulary for anything broadcast. */
@@ -288,7 +302,10 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
     int32_t px = 4;
     int32_t py = floor_y - 16;
-    const uint8_t tgt = ft_encounter_target(e);
+    /* The caret sits on whoever the highlighted action would really hit, not
+     * on the cursor — that is how the retarget past a flyer is visible before
+     * you commit to it. */
+    const uint8_t tgt = ft_encounter_effective_target(e, (FtAction2)e->menu_index);
 
     /* --- the player's action --- */
     if(e->phase == FT_PHASE_RESULT) {
@@ -375,8 +392,15 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
             ft_bar_fill(ft_encounter_foe_shown_charge(e, i), e->foes[i].charge_max, bw);
         if(fill > 0) canvas_draw_box(canvas, x + 1, floor_y + 3, (size_t)fill, 2);
 
-        if(e->phase == FT_PHASE_MENU && count > 1u && i == tgt) {
-            draw_target_caret(canvas, x, FT_ARENA_Y);
+        /* Only where aiming means something: a broadcast hits the row, and
+         * Defend and Focus hit nobody, so a caret on either is decoration. */
+        const FtAction2 sel = (FtAction2)e->menu_index;
+        const bool aims = (sel == FT_ACTION_CONTACT) ||
+                          (sel == FT_ACTION_SIGNAL &&
+                           !ft_encounter_action_is_broadcast(e, sel));
+
+        if(e->phase == FT_PHASE_MENU && count > 1u && aims && i == tgt) {
+            draw_target_caret(canvas, x, y);
         }
     }
 }
@@ -609,45 +633,49 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
 
     canvas_draw_line(canvas, 0, FT_STATUS_Y - 1, FT_SCREEN_W - 1, FT_STATUS_Y - 1);
 
+    /* Everything here stops at FT_STATUS_Y+6, one row short of the menu band.
+     * Filled to the edge, a full Charge bar and the menu's highlight ran
+     * together into a single black slab. */
+
     /* No "CHG" label. A quarter-ticked bar with a number beside it is already
      * unambiguous, and the three characters were the difference between a row
      * that reads and a row that is merely full. */
     const int32_t bx = 2, bw = 46;
-    canvas_draw_frame(canvas, bx, FT_STATUS_Y + 1, (size_t)bw, 7);
+    canvas_draw_frame(canvas, bx, FT_STATUS_Y + 1, (size_t)bw, 6);
     {
         const int32_t fill = ft_bar_fill(e->roll.current, e->stats.charge_max, bw);
-        if(fill > 0) canvas_draw_box(canvas, bx + 1, FT_STATUS_Y + 2, (size_t)fill, 5);
+        if(fill > 0) canvas_draw_box(canvas, bx + 1, FT_STATUS_Y + 2, (size_t)fill, 4);
 
         /* Quarter ticks turn the bar into a gauge you can read at a glance
          * instead of a featureless slab. */
         for(int32_t q = 1; q < 4; q++) {
             const int32_t tx = bx + (bw * q) / 4;
             canvas_set_color(canvas, (tx - bx - 1 < fill) ? ColorWhite : ColorBlack);
-            canvas_draw_dot(canvas, tx, FT_STATUS_Y + 4);
+            canvas_draw_dot(canvas, tx, FT_STATUS_Y + 3);
             canvas_set_color(canvas, ColorBlack);
         }
     }
 
     snprintf(buf, sizeof(buf), "%d", (int)e->roll.current);
-    canvas_draw_str(canvas, bx + bw + 3, FT_STATUS_Y + 7, buf);
+    canvas_draw_str(canvas, bx + bw + 3, FT_STATUS_Y + 6, buf);
 
     snprintf(buf, sizeof(buf), "R%d", (int)e->stats.ram);
-    canvas_draw_str(canvas, 70, FT_STATUS_Y + 7, buf);
+    canvas_draw_str(canvas, 70, FT_STATUS_Y + 6, buf);
 
     /* One letter, not three: the pips beside it are self-explanatory once
      * they start filling, and the width is needed for four of them. */
-    canvas_draw_str(canvas, 88, FT_STATUS_Y + 7, "S");
+    canvas_draw_str(canvas, 88, FT_STATUS_Y + 6, "S");
 
     const uint8_t bars = ft_signal_bars(&e->signal);
     for(uint8_t i = 0; i < e->signal.max_bars && i < 4u; i++) {
         const int32_t sx = 96 + i * 7;
         if(e->signal.locked) {
-            hatch(canvas, sx, FT_STATUS_Y + 1, 5, 7);
-            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 5, 7);
+            hatch(canvas, sx, FT_STATUS_Y + 1, 5, 6);
+            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 5, 6);
         } else if(i < bars) {
-            canvas_draw_box(canvas, sx, FT_STATUS_Y + 1, 5, 7);
+            canvas_draw_box(canvas, sx, FT_STATUS_Y + 1, 5, 6);
         } else {
-            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 5, 7);
+            canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 5, 6);
         }
     }
 }
@@ -658,9 +686,23 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
  * unreadable on their own — this row is why Defend and Focus stop looking
  * like filler. */
 static const char* action_desc(const FtEncounter* e, FtAction2 a) {
-    /* A refusal is more useful than a description. */
+    /* Something you do not *have* is worth saying. An enemy's attributes are
+     * not: they move the caret, they do not refuse the module. */
     const char* blocked = ft_encounter_action_block(e, a);
     if(blocked) return blocked;
+
+    /* When a swing has nothing it can reach, say so — the one case the caret
+     * cannot explain by itself. */
+    if(a == FT_ACTION_BROADCAST || a == FT_ACTION_CONTACT || a == FT_ACTION_SIGNAL) {
+        bool any = false;
+        for(uint8_t i = 0; i < e->foe_count; i++) {
+            if(ft_encounter_can_reach(e, a, i)) any = true;
+        }
+        if(!any) {
+            return (a == FT_ACTION_CONTACT) ? "None on the floor" :
+                                              "All of them shut";
+        }
+    }
 
     switch(a) {
     case FT_ACTION_BROADCAST: return "All foes, weaker.";
@@ -672,10 +714,68 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
     }
 }
 
-/* The root bar: three items, small. Everything else moved into the panel, so
- * the battle screen is not five abbreviations wide. */
+/* One line about whatever is highlighted, or what the coach wants to say. It
+ * stays in this one place at both menu levels, so going down into the modules
+ * moves the cursor without moving the explanation — and the coach no longer
+ * needs a framed box floating over the arena to be heard. */
+static void draw_menu_line(Canvas* canvas, const FtEncounter* e) {
+    const char* hint = ft_tutorial_hint(e);
+
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 17,
+                 hint ? hint : action_desc(e, (FtAction2)e->menu_index));
+}
+
+/* The modules, *replacing* the root row rather than floating over the arena.
+ * The floating panel covered the fighters you were aiming at and cut the
+ * Charge bar in half, which reads as a glitch rather than as a menu. Same
+ * band, same shape, one level down. */
+static void draw_attack_row(Canvas* canvas, const FtEncounter* e) {
+    canvas_set_font(canvas, FontSecondary);
+
+    /* A left marker is the whole "you are one level down" cue; a breadcrumb
+     * would cost a row this screen does not have. */
+    canvas_draw_str(canvas, 1, FT_ACTION_Y + 7, "<");
+
+    int32_t x = 8;
+    for(uint8_t i = 0; i < FT_ATTACK_COUNT; i++) {
+        const FtAction2 act = FT_ATTACK_ITEMS[i];
+        const char* name = ft_action_name(act);
+
+        const int32_t tw = (int32_t)canvas_string_width(canvas, name);
+        const int32_t bw = tw + 6;
+        if(x + bw > FT_SCREEN_W) break;
+
+        const bool on = (i == e->attack_index);
+        if(on) {
+            canvas_draw_box(canvas, x, FT_ACTION_Y, (size_t)bw, 10);
+            canvas_set_color(canvas, ColorWhite);
+        }
+
+        canvas_draw_str(canvas, x + 3, FT_ACTION_Y + 7, name);
+
+        /* A strike-through now means only "you cannot afford this": no
+         * capture yet, no bar, jammed. Nothing an enemy *is* can take a
+         * module off the list. */
+        if(!ft_encounter_action_available(e, act)) {
+            canvas_draw_line(canvas, x + 3, FT_ACTION_Y + 4, x + 3 + tw, FT_ACTION_Y + 4);
+        }
+
+        if(on) canvas_set_color(canvas, ColorBlack);
+        x += bw + 2;
+    }
+}
+
+/* The root bar: three items, small. The modules live one level down, so the
+ * battle screen is never five abbreviations wide. */
 static void draw_menu(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
+
+    /* One band, two levels. */
+    if(e->menu_level == FT_MENU_ATTACK) {
+        draw_attack_row(canvas, e);
+        draw_menu_line(canvas, e);
+        return;
+    }
 
     static const char* const ROOT[FT_ROOT_COUNT] = {"ATTACK", "PROTECT", "FOCUS"};
     static const int32_t X[FT_ROOT_COUNT] = {2, 46, 92};
@@ -698,58 +798,9 @@ static void draw_menu(Canvas* canvas, const FtEncounter* e) {
         if(on) canvas_set_color(canvas, ColorBlack);
     }
 
-    /* One line about whatever is highlighted, or what the coach wants to say.
-     * It stays in this one place at both menu levels, so opening the Attack
-     * panel moves the cursor without moving the explanation — and the coach
-     * no longer needs a framed box floating over the arena to be heard. */
-    const char* hint = ft_tutorial_hint(e);
-
-    draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 17,
-                 hint ? hint : action_desc(e, (FtAction2)e->menu_index));
+    draw_menu_line(canvas, e);
 }
 
-/* The attack panel, over the player's half. The player does not need to be
- * visible while choosing, but the foes do — that is the whole point of the
- * panel sitting on the left rather than filling the screen. */
-static void draw_attack_panel(Canvas* canvas, const FtEncounter* e) {
-    /* Stops short of the leftmost foe (x=66 in a three-wide row) so the crowd
-     * you are aiming at is never hidden behind the list. */
-    const int32_t w = 62;
-    const int32_t x = 1;
-    const int32_t y = FT_ARENA_Y - 2;
-    const int32_t h = FT_ACTION_Y - y - 2;
-
-    canvas_set_color(canvas, ColorWhite);
-    canvas_draw_box(canvas, x, y, (size_t)w, (size_t)h);
-    canvas_set_color(canvas, ColorBlack);
-    canvas_draw_frame(canvas, x, y, (size_t)w, (size_t)h);
-    canvas_draw_line(canvas, x + 2, y + h, x + w, y + h);
-    canvas_draw_line(canvas, x + w, y + 2, x + w, y + h);
-
-    canvas_set_font(canvas, FontSecondary);
-
-    for(uint8_t i = 0; i < FT_ATTACK_COUNT; i++) {
-        const FtAction2 act = FT_ATTACK_ITEMS[i];
-        const int32_t ry = y + 2 + (int32_t)i * 10;
-        const bool on = (i == e->attack_index);
-
-        if(on) {
-            canvas_draw_box(canvas, x + 2, ry, (size_t)(w - 4), 9);
-            canvas_set_color(canvas, ColorWhite);
-        }
-
-        draw_clipped(canvas, x + 5, ry + 7, ft_action_name(act), w - 10);
-
-        /* Unusable entries stay listed and struck through, so the reason can
-         * be read rather than the option quietly vanishing. */
-        if(!ft_encounter_action_available(e, act)) {
-            const int32_t lw = (int32_t)canvas_string_width(canvas, ft_action_name(act));
-            canvas_draw_line(canvas, x + 5, ry + 4, x + 5 + lw, ry + 4);
-        }
-
-        if(on) canvas_set_color(canvas, ColorBlack);
-    }
-}
 
 static void draw_prompt(Canvas* canvas, const char* s) {
     canvas_set_font(canvas, FontSecondary);
@@ -822,17 +873,20 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
 
     static const char* const ITEMS[FT_PAUSE_COUNT] = {
         "Resume",
+        "Practice arena",
         "How to play",
         "Tips",
         "Quit",
     };
 
+    /* Five rows in the 51px below the rule: 10 each, the tightest that still
+     * leaves a pixel of air around the highlight. */
     for(uint8_t i = 0; i < FT_PAUSE_COUNT; i++) {
-        const int32_t y = 15 + (int32_t)i * 12;
+        const int32_t y = 13 + (int32_t)i * 10;
         const bool on = (i == selected);
 
         if(on) {
-            canvas_draw_box(canvas, 4, y, 120, 11);
+            canvas_draw_box(canvas, 4, y, 120, 10);
             canvas_set_color(canvas, ColorWhite);
         }
 
@@ -847,6 +901,56 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
 
         if(on) canvas_set_color(canvas, ColorBlack);
     }
+}
+
+/* The practice arena's setup. Three settings and a button: a list, not a
+ * form. Each row carries its value on the right, so the whole configuration
+ * is readable without moving the cursor. */
+void ft_render_practice(Canvas* canvas, const FtPractice* p) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 8, "PRACTICE");
+    canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
+
+    /* Four rows of 10 from y=13 leaves the bottom line clear for the help
+     * text; at 11 the FIGHT row and the help ran into each other. */
+    for(uint8_t i = 0; i < FT_PRACTICE_ROWS; i++) {
+        const int32_t y = 13 + (int32_t)i * 10;
+        const bool on = (i == p->row);
+
+        if(on) {
+            canvas_draw_box(canvas, 4, y, 120, 10);
+            canvas_set_color(canvas, ColorWhite);
+        }
+
+        const char* name = ft_practice_row_name(i);
+
+        if(i == FT_PRACTICE_FIGHT) {
+            /* The button reads as a button: centred, no value column. */
+            const int32_t w = (int32_t)canvas_string_width(canvas, name);
+            canvas_draw_str(canvas, (FT_SCREEN_W - w) / 2, y + 8, name);
+        } else {
+            const char* value = ft_practice_value(p, i);
+            canvas_draw_str(canvas, 9, y + 8, name);
+
+            const int32_t vw = (int32_t)canvas_string_width(canvas, value);
+            const int32_t vx = 115 - vw;
+            canvas_draw_str(canvas, vx, y + 8, value);
+
+            /* Arrows only on the row you are on: three sets at once is
+             * decoration, one set is an instruction. */
+            if(on) {
+                canvas_draw_str(canvas, vx - 6, y + 8, "<");
+                canvas_draw_str(canvas, 116, y + 8, ">");
+            }
+        }
+
+        if(on) canvas_set_color(canvas, ColorBlack);
+    }
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 62, ft_practice_help(p));
 }
 
 /* ---- Entry ----------------------------------------------------------- */
@@ -923,17 +1027,9 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
         break;
     }
 
-    const FtHitFx fx = ft_encounter_hit_fx(e);
-
-    /* Fully black: nothing else is worth drawing under it. */
-    if(fx.stage == FT_HIT_FX_BLACK) {
-        ft_render_iris(canvas, 255);
-        return;
-    }
-
     /* The popup waits for the animation, or it would cover the arena for the
      * whole hold and the sprites would never be seen to act. */
-    if(!ft_encounter_in_anim(e) && fx.stage == FT_HIT_FX_NONE) {
+    if(!ft_encounter_in_anim(e)) {
         if(e->phase == FT_PHASE_RESULT) draw_player_result(canvas, e);
         if(e->phase == FT_PHASE_IMPACT) draw_enemy_result(canvas, e);
     }
@@ -943,8 +1039,7 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
     const char* hint = ft_tutorial_hint(e);
 
     if(e->phase == FT_PHASE_MENU) {
-        if(e->menu_level == FT_MENU_ATTACK) draw_attack_panel(canvas, e);
-        draw_menu(canvas, e); /* which says its own line, coach included */
+        draw_menu(canvas, e); /* both levels, and its own line */
     } else if(hint) {
         /* Everywhere else the action row is free, so the coach speaks there. */
         draw_prompt(canvas, hint);
@@ -954,10 +1049,4 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
         draw_prompt(canvas, "OK to guard");
     }
 
-    /* The closing and opening ring goes over the finished frame, status row
-     * and all: an iris that only covered the arena would read as a window
-     * shutting rather than the screen doing it. */
-    if(fx.stage == FT_HIT_FX_CLOSING || fx.stage == FT_HIT_FX_OPENING) {
-        ft_render_iris(canvas, fx.amount);
-    }
 }

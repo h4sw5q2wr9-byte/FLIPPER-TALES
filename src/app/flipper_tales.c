@@ -11,6 +11,7 @@
 #include "../core/ft_encounter.h"
 #include "../core/ft_world.h"
 #include "ft_overworld.h"
+#include "../core/ft_practice.h"
 #include "ft_render.h"
 
 #define FT_TAG        "FlipperTales"
@@ -40,14 +41,17 @@ typedef struct {
 typedef enum {
     FT_MODE_OVERWORLD = 0,
     FT_MODE_BATTLE,
-    FT_MODE_PAUSE
+    FT_MODE_PAUSE,
+    FT_MODE_PRACTICE /* the arena's setup screen */
 } FtMode;
 
 /* What the wipe is hiding. */
 typedef enum {
     FT_PEND_NONE = 0,
     FT_PEND_BEGIN,
-    FT_PEND_END
+    FT_PEND_END,
+    FT_PEND_PRACTICE_FIGHT, /* setup screen -> arena match */
+    FT_PEND_PRACTICE_SETUP  /* arena match -> setup screen */
 } FtPend;
 
 typedef struct {
@@ -59,6 +63,11 @@ typedef struct {
     FtMode      mode;
     FtWorld     world;
     FtEncounter encounter;
+
+    /* The practice arena. A match here touches nothing in the world: the
+     * point is to try things, not to gain or lose anything. */
+    FtPractice practice;
+    bool       in_practice;
 
     /* Which entity started the current battle, so it can be removed on a win. */
     int  battle_entity;
@@ -111,6 +120,8 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
         ft_render_help(canvas, app->help_page);
     } else if(app->mode == FT_MODE_PAUSE) {
         ft_render_pause(canvas, app->pause_item, app->coach);
+    } else if(app->mode == FT_MODE_PRACTICE) {
+        ft_render_practice(canvas, &app->practice);
     } else if(app->mode == FT_MODE_BATTLE) {
         ft_render_battle(canvas, &app->encounter);
     } else {
@@ -226,6 +237,13 @@ static void ft_begin_battle(FlipperTales* app, int entity, bool first_strike) {
 static void ft_end_battle(FlipperTales* app, bool won) {
     if(ft_wiping(app)) return;
 
+    /* An arena match is not part of the run: it cannot clear an entity, cost
+     * you Charge or send you back to a terminal. It just ends. */
+    if(app->in_practice) {
+        ft_start_wipe(app, FT_PEND_PRACTICE_SETUP);
+        return;
+    }
+
     app->pend_won = won;
     ft_start_wipe(app, FT_PEND_END);
 }
@@ -237,10 +255,26 @@ static void ft_wipe_update(FlipperTales* app, uint32_t dt_ms) {
     if(!app->wipe_swapped && app->wipe_ms >= FT_WIPE_SWAP) {
         app->wipe_swapped = true;
 
-        if(app->pend == FT_PEND_BEGIN) {
+        switch(app->pend) {
+        case FT_PEND_BEGIN:
             ft_enter_battle_now(app, app->pend_entity, app->pend_first_strike);
-        } else if(app->pend == FT_PEND_END) {
+            break;
+        case FT_PEND_END:
             ft_leave_battle_now(app, app->pend_won);
+            break;
+        case FT_PEND_PRACTICE_FIGHT:
+            ft_practice_start(&app->practice, &app->encounter);
+            app->battle_entity = -1;
+            app->in_practice = true;
+            app->mode = FT_MODE_BATTLE;
+            break;
+        case FT_PEND_PRACTICE_SETUP:
+            app->in_practice = false;
+            app->mode = FT_MODE_PRACTICE;
+            break;
+        case FT_PEND_NONE:
+        default:
+            break;
         }
         app->pend = FT_PEND_NONE;
     }
@@ -340,6 +374,13 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 app->show_help = true;
                 app->help_page = 0;
                 break;
+            case FT_PAUSE_PRACTICE:
+                /* The arena replaces whatever is on screen, so it never
+                 * resumes into a half-finished fight. */
+                app->paused_from = FT_MODE_PRACTICE;
+                app->in_practice = false;
+                app->mode = FT_MODE_PRACTICE;
+                break;
             case FT_PAUSE_TIPS:
                 app->coach = !app->coach;
                 app->encounter.coach = app->coach;
@@ -351,6 +392,31 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
             }
             break;
         default:
+            break;
+        }
+        return;
+    }
+
+    if(app->mode == FT_MODE_PRACTICE) {
+        switch(event->key) {
+        case InputKeyUp:    ft_practice_move(&app->practice, -1); break;
+        case InputKeyDown:  ft_practice_move(&app->practice, 1); break;
+        case InputKeyLeft:  ft_practice_adjust(&app->practice, -1); break;
+        case InputKeyRight: ft_practice_adjust(&app->practice, 1); break;
+        case InputKeyOk:
+            if(app->practice.row == FT_PRACTICE_FIGHT) {
+                ft_start_wipe(app, FT_PEND_PRACTICE_FIGHT);
+            } else {
+                /* OK on a setting cycles it, so the arena can be driven with
+                 * one thumb without hunting for LEFT and RIGHT. */
+                ft_practice_adjust(&app->practice, 1);
+            }
+            break;
+        case InputKeyBack:
+        default:
+            /* Out of the arena and back to where you were standing. */
+            app->paused_from = FT_MODE_OVERWORLD;
+            app->mode = FT_MODE_OVERWORLD;
             break;
         }
         return;
@@ -429,7 +495,8 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
         return;
     }
 
-    if(app->show_help || app->mode == FT_MODE_PAUSE) return;
+    if(app->show_help) return;
+    if(app->mode == FT_MODE_PAUSE || app->mode == FT_MODE_PRACTICE) return;
 
     if(app->mode == FT_MODE_BATTLE) {
         ft_encounter_tick(&app->encounter, dt_ms);
@@ -487,6 +554,8 @@ static FlipperTales* ft_alloc(void) {
     app->pend_entity = -1;
     app->pend_first_strike = false;
     app->pend_won = false;
+    app->in_practice = false;
+    ft_practice_init(&app->practice, furi_get_tick());
     app->held = 0;
     app->toast = NULL;
     app->toast_ms = 0;

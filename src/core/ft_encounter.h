@@ -212,25 +212,33 @@ bool ft_encounter_action_is_broadcast(const FtEncounter* e, FtAction2 action);
 
 typedef enum {
     FT_HIT_FX_NONE = 0,
-    FT_HIT_FX_FLICKER, /* both fighters strobe */
-    FT_HIT_FX_CLOSING, /* iris shrinking toward the fighters */
-    FT_HIT_FX_BLACK,   /* held */
-    FT_HIT_FX_OPENING  /* iris widening again */
+    FT_HIT_FX_FLICKER /* both fighters strobe */
 } FtHitFxStage;
 
 typedef struct {
     FtHitFxStage stage;
-    uint8_t      amount; /* 0 fully open, 255 fully closed */
+    uint8_t      amount; /* unused; kept so callers need not special-case */
     bool         strobe; /* invert the fighters this frame */
 } FtHitFx;
 
-/* The hit transition's state right now. Only a hit that actually landed gets
- * one — a jam or a capture returns FT_HIT_FX_NONE. */
+/* The flinch on a hit that landed. A jam or a capture returns
+ * FT_HIT_FX_NONE. There is deliberately no screen transition here: the iris
+ * belongs to changing scene, not to taking damage. */
 FtHitFx ft_encounter_hit_fx(const FtEncounter* e);
 
 /* How long the current impact holds. A landed hit runs the iris, so it needs
  * longer than a jam. */
 uint32_t ft_encounter_impact_hold(const FtEncounter* e);
+
+/* ---- Reach and targeting ----------------------------------------------- */
+
+/* Can this action actually land on foe i? Attributes answer this; they never
+ * answer whether the action may be chosen. */
+bool ft_encounter_can_reach(const FtEncounter* e, FtAction2 action, uint8_t i);
+
+/* The foe a single-target action will really hit: the chosen one, or the next
+ * one along the row that the action can reach. */
+uint8_t ft_encounter_effective_target(const FtEncounter* e, FtAction2 action);
 
 /* ---- The scene wipe ---------------------------------------------------- */
 

@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "ft_encounter.h"
+#include "ft_practice.h"
 #include "ft_render.h"
 #include "ft_tutorial.h"
 
@@ -169,6 +170,55 @@ int main(void) {
 
     Canvas* canvas = ft_stub_canvas_alloc();
     int total_clipped = 0;
+
+    /* The menus are screens too, and they were the two nobody was looking at
+     * until a row was added to one of them. */
+    for(uint8_t i = 0; i < FT_PAUSE_COUNT; i++) {
+        ft_render_pause(canvas, i, (i % 2) != 0);
+
+        char pp[64];
+        snprintf(pp, sizeof(pp), "preview/80_pause%u.pbm", i);
+        ft_stub_canvas_write_pbm(canvas, pp);
+
+        const int c = ft_stub_canvas_clipped(canvas);
+        total_clipped += c;
+        printf("  pause row %u         %s\n", i, c ? "CLIPPED" : "ok");
+    }
+
+    {
+        /* Every row of the arena, and the widest value each one can show. */
+        FtPractice pr;
+        ft_practice_init(&pr, 1u);
+
+        for(uint8_t r = 0; r < FT_PRACTICE_ROWS; r++) {
+            pr.row = r;
+            pr.group = (uint8_t)(FT_PRACTICE_GROUPS - 1u);
+            pr.level = FT_PRACTICE_MAX_LEVEL;
+            pr.kit = FT_KIT_LOADED;
+
+            ft_render_practice(canvas, &pr);
+
+            char pp[64];
+            snprintf(pp, sizeof(pp), "preview/85_arena%u.pbm", r);
+            ft_stub_canvas_write_pbm(canvas, pp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  arena row %u         %s\n", r, c ? "CLIPPED" : "ok");
+        }
+
+        /* And every value of every setting, checked for overflow rather than
+         * eyeballed: the value column is right-aligned and a long label there
+         * runs into the row name. */
+        for(uint8_t r = 0; r < FT_PRACTICE_ROWS; r++) {
+            for(int i = 0; i < 24; i++) {
+                pr.row = r;
+                ft_practice_adjust(&pr, 1);
+                ft_render_practice(canvas, &pr);
+                total_clipped += ft_stub_canvas_clipped(canvas);
+            }
+        }
+    }
 
     for(uint8_t page = 0; page < FT_HELP_PAGES; page++) {
         ft_render_help(canvas, page);

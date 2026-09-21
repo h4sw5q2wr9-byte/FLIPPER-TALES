@@ -235,9 +235,25 @@ without reducing damage. Both are now real choices:
 point. A replayed broadcast still hits everything; a replayed contact attack
 still needs a target.
 
-Unusable actions are shown struck through, never hidden, and the row beneath
-the menu says **why** — naming the remedy ("Flying: use NFC."), not just the
-problem.
+#### Attributes retarget; they never lock a module
+
+An enemy's attributes decide **who an attack lands on**, never whether you may
+choose it. Aim NFC at a flyer with a grounded foe behind it and the swing goes
+to the grounded one — `ft_encounter_effective_target()` walks the row from your
+cursor and takes the first foe `ft_encounter_can_reach()` says the attack can
+touch, wrapping. The caret in the arena sits on that foe, not on the cursor, so
+the retarget is visible before you commit.
+
+This replaced attribute-based lockouts, which were wrong on two counts. They
+are not how the reference works — there, a grounded attack on a flyer is a
+targeting problem, not a greyed-out button. And they made the player's own
+toolset feel confiscated: the screen kept taking options away rather than
+showing what they would do.
+
+A strike-through now means exactly one thing: **you cannot afford this**. No
+capture yet, no bar, meter jammed. The only case reach cannot explain by
+itself is a swing with nothing at all to hit, and the description line says so
+("None on the floor").
 
 #### The menu is two levels deep
 
@@ -337,7 +353,7 @@ invert-on-frame pulse. Arguably clearer than colour.
 The attack-telegraph banner overlays the battle scene, centred. So does the
 module panel, on the left half only.
 
-**Three rules keep that from being cluttered**, all learned by looking at it:
+**Four rules keep that from being cluttered**, all learned by looking at it:
 
 - **Only the cursor is boxed.** Three framed buttons over a framed bar over a
   framed popup is four competing rectangles; the highlight alone already says
@@ -349,23 +365,38 @@ module panel, on the left half only.
 - **No "CHG" label.** A quarter-ticked bar with a number beside it is already
   unambiguous, and those three characters were the difference between a row
   that reads and a row that is merely full.
+- **The modules take the row over; they do not float above it.** Choosing
+  Attack swaps the three root words for the three module names in the same
+  band, with a `<` marking the level. The first version was a panel floating
+  over the arena: it hid the foes you were aiming at, and it overlapped the
+  status strip so a full Charge bar appeared sliced off mid-fill. It read as a
+  rendering fault rather than as a menu.
 
-#### The hit transition
+Two more glitches came out of looking at the panel at 6x rather than at 1x:
 
-A foe attack that actually takes Charge off you does not just print a number.
-`ft_encounter_hit_fx()` runs a four-stage timeline from the strike frame:
+- The **target caret** was a wedge in the two spare pixels between the title
+  rule and the arena — which is exactly where the tallest enemy's antenna
+  lives, so on a real board it simply disappeared. It is now a pair of
+  brackets flanking the foe, in the 4px gaps that the 20px spacing guarantees
+  are empty, and it is drawn only where aiming means something: never for a
+  broadcast, never for Defend or Focus.
+- Everything in the status strip now stops at `FT_STATUS_Y + 6`, one row short
+  of the menu band. Drawn to the full height, a full Charge bar and the menu's
+  highlight ran together into one black slab.
 
-| Stage | Length | What is on screen |
-|---|---|---|
-| `FLICKER` | `FT_FLICKER_MS` | both fighters XOR-inverted, strobing at 45ms |
-| `CLOSING` | `FT_IRIS_CLOSE_MS` | a bevelled ring closing over the whole panel |
-| `BLACK` | `FT_IRIS_HOLD_MS` | nothing |
-| `OPENING` | `FT_IRIS_OPEN_MS` | the ring opening again |
+#### The hit flinch
 
-The whole timeline is asserted to finish inside `FT_IMPACT_HOLD_HIT_MS`, or
-the fight would resume behind a black screen. A jam or a capture is its own
-reward and gets the shorter `FT_IMPACT_HOLD_MS` with no iris at all — the
-interruption is the punishment, so it is spent only on being hit.
+A foe attack that actually takes Charge off you strobes both fighters for
+`FT_FLICKER_MS`, inverting them every 45ms, and that is all.
+
+It was briefly a full four-stage iris: flicker, close, hold black, open. That
+was a mistake and it was removed. An interruption that good has to be rare,
+and being hit is not rare — in a three-foe round it fired three times in one
+turn, each time taking the fight off the screen for most of a second. A jam or
+a capture never had one and still does not.
+
+The iris itself was not the problem; **where** it was spent was. It now
+belongs to the scene wipe below, which happens once per fight.
 
 The XOR goes **over** the drawn sprite. Inverting the empty space first and
 then drawing the sprite black-on-black just yields a solid brick, which is
@@ -427,6 +458,34 @@ Each enemy's silhouette encodes its attribute class, so `AIRBORNE` and
 **Width budget: 20 characters per line** at the standard font. Anything
 data-driven (enemy names, attack titles) is measured with `canvas_string_width`
 and truncated rather than trusted to fit.
+
+### 5.2 The practice arena
+
+A second way in, for trying things rather than progressing: **Pause → Practice
+arena**. Three settings and a button.
+
+| Row | Values | What it is for |
+|---|---|---|
+| Foes | Random, or seven fixed line-ups | Random rolls 1–3 foes freely; the fixed sets cover each attribute, a crowd, and the boards where one module cannot do the job |
+| Level | 1–10 | Applies real level-ups, cycling Charge / RAM / Flash, so the stats are ones the game can actually produce |
+| Kit | Basic, Loaded, Max | Basic is what you start with; Loaded installs every card once; Max stacks each as far as it goes |
+
+Two rules make it a place to experiment rather than a second campaign:
+
+- **A match touches nothing.** Winning clears no entity, losing costs no
+  Charge and sends you to no terminal. It ends and drops you back on the setup
+  screen, ready to go again.
+- **A kit you cannot use is not a kit.** The loaded sets start with a captured
+  attack and a full meter, or Signal is a button that does nothing for the
+  first four turns and the whole point of picking the kit is lost. Hard Mode is
+  the one card never installed for you — "more abilities" should not silently
+  mean "twice the damage taken".
+
+`ft_practice.c` is pure core, so `make -C test test` checks that every setting
+combination builds a legal encounter, that Random actually varies, that levels
+raise the ceiling and that a match terminates. The preview renders every row
+and every value and fails on overflow, which is how the FIGHT row was caught
+colliding with the help line.
 
 ## 6. Architecture
 

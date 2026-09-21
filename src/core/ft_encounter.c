@@ -243,30 +243,62 @@ bool ft_encounter_action_is_broadcast(const FtEncounter* e, FtAction2 action) {
     return false;
 }
 
-const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
+/* Which attack an action actually throws. Needed by reach and by targeting,
+ * both of which have to answer questions about a replay's delivery. */
+static const FtAttack* action_attack(const FtEncounter* e, FtAction2 action) {
     switch(action) {
-    case FT_ACTION_BROADCAST:
-        /* Broadcast reaches everything unless every living foe ignores it. */
-        for(uint8_t i = 0; i < e->foe_count; i++) {
-            if(e->foes[i].charge > 0 &&
-               !(FT_ENEMIES[e->foes[i].id].attrs & FT_ATTR_ENCRYPTED)) {
-                return NULL;
-            }
-        }
-        return "Encrypted: use NFC";
+    case FT_ACTION_BROADCAST: return &FT_MODULES[FT_MOD_SUBGHZ].attack;
+    case FT_ACTION_CONTACT:   return &FT_MODULES[FT_MOD_NFC].attack;
+    case FT_ACTION_SIGNAL:    return ft_encounter_replay_attack(e);
+    default:                  return NULL;
+    }
+}
 
-    case FT_ACTION_CONTACT:
-        if(ft_encounter_foe(e, ft_encounter_target(e))->attrs & FT_ATTR_AIRBORNE) {
-            return "Flying: use SUB.";
-        }
-        return NULL;
+bool ft_encounter_can_reach(const FtEncounter* e, FtAction2 action, uint8_t i) {
+    if(!ft_encounter_foe_alive(e, i)) return false;
 
+    const FtAttack* atk = action_attack(e, action);
+    if(atk == NULL) return false;
+
+    const uint32_t attrs = FT_ENEMIES[e->foes[i].id].attrs;
+
+    /* Attributes decide who an attack can touch, never whether you may choose
+     * it. A grounded strike cannot reach something in the air, and a
+     * broadcast cannot get into something encrypted — that is a targeting
+     * fact, not a locked button. */
+    if(atk->delivery == FT_DELIVERY_BROADCAST) return !(attrs & FT_ATTR_ENCRYPTED);
+    return !(attrs & FT_ATTR_AIRBORNE);
+}
+
+uint8_t ft_encounter_effective_target(const FtEncounter* e, FtAction2 action) {
+    const uint8_t chosen = ft_encounter_target(e);
+    if(e->foe_count == 0u) return 0u;
+
+    /* Your pick first, then along the row: if the one you aimed at is flying
+     * and your fist is not, the swing goes to the next one that is standing
+     * there instead of refusing to happen. */
+    for(uint8_t n = 0; n < e->foe_count; n++) {
+        const uint8_t i = (uint8_t)((chosen + n) % e->foe_count);
+        if(ft_encounter_can_reach(e, action, i)) return i;
+    }
+
+    return chosen; /* nothing reachable: the swing whiffs, visibly */
+}
+
+const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
+    /* Only what you do not *have* can stop you: a capture you never made, a
+     * meter that is empty or jammed. An enemy's attributes never take a
+     * module away from you — they decide who it lands on, which the caret
+     * over the row already shows. */
+    switch(action) {
     case FT_ACTION_SIGNAL:
         if(ft_encounter_replay_attack(e) == NULL) return "Capture one first.";
         if(e->signal.locked) return "Signal jammed.";
         if(ft_signal_bars(&e->signal) < FT_SIGNAL_COST_BARS) return "Need a full bar.";
         return NULL;
 
+    case FT_ACTION_BROADCAST:
+    case FT_ACTION_CONTACT:
     case FT_ACTION_DEFEND:
     case FT_ACTION_FOCUS:
     default:
@@ -414,8 +446,8 @@ static uint32_t iris_start_ms(void) {
 }
 
 uint32_t ft_encounter_impact_hold(const FtEncounter* e) {
-    const bool landed = (e->phase == FT_PHASE_IMPACT) && (e->last_enemy_hit.damage > 0);
-    return landed ? FT_IMPACT_HOLD_HIT_MS : FT_IMPACT_HOLD_MS;
+    (void)e;
+    return FT_IMPACT_HOLD_MS;
 }
 
 FtWipe ft_wipe_at(uint32_t ms) {
@@ -440,43 +472,23 @@ FtWipe ft_wipe_at(uint32_t ms) {
 FtHitFx ft_encounter_hit_fx(const FtEncounter* e) {
     FtHitFx fx = {FT_HIT_FX_NONE, 0, false};
 
-    /* Only a hit that landed. Jamming or capturing is its own reward and does
-     * not deserve a two-second interruption. */
+    /* Only a hit that landed. Jamming or capturing is its own reward. */
     if(e->phase != FT_PHASE_IMPACT || e->last_enemy_hit.damage <= 0) return fx;
 
     const uint32_t start = iris_start_ms();
     if(e->phase_ms < start) return fx;
 
-    uint32_t t = e->phase_ms - start;
+    /* A flinch, and nothing more. This used to close a full-screen iris,
+     * hold black for half a second and open it again, every single time a
+     * foe connected — which in a three-foe round is three interruptions in
+     * one turn. The strobe says "that hurt" in a fifth of the time and never
+     * takes the fight off the screen. */
+    const uint32_t t = e->phase_ms - start;
+    if(t >= FT_FLICKER_MS) return fx;
 
-    if(t < FT_FLICKER_MS) {
-        fx.stage = FT_HIT_FX_FLICKER;
-        fx.strobe = ((t / 45u) % 2u) != 0u;
-        return fx;
-    }
-    t -= FT_FLICKER_MS;
-
-    if(t < FT_IRIS_CLOSE_MS) {
-        fx.stage = FT_HIT_FX_CLOSING;
-        fx.amount = (uint8_t)((t * 255u) / FT_IRIS_CLOSE_MS);
-        return fx;
-    }
-    t -= FT_IRIS_CLOSE_MS;
-
-    if(t < FT_IRIS_HOLD_MS) {
-        fx.stage = FT_HIT_FX_BLACK;
-        fx.amount = 255u;
-        return fx;
-    }
-    t -= FT_IRIS_HOLD_MS;
-
-    if(t < FT_IRIS_OPEN_MS) {
-        fx.stage = FT_HIT_FX_OPENING;
-        fx.amount = (uint8_t)(255u - (t * 255u) / FT_IRIS_OPEN_MS);
-        return fx;
-    }
-
-    return fx; /* NONE: back to the fight */
+    fx.stage = FT_HIT_FX_FLICKER;
+    fx.strobe = ((t / 45u) % 2u) != 0u;
+    return fx;
 }
 
 static void strike_foe(FtEncounter* e, uint8_t i, const FtAttack* atk, FtRating rating) {
@@ -562,7 +574,7 @@ static void resolve_player_action(FtEncounter* e) {
             }
         }
     } else {
-        const uint8_t t = ft_encounter_target(e);
+        const uint8_t t = ft_encounter_effective_target(e, action);
         strike_foe(e, t, atk, rating);
         e->last_player_hit = e->foe_hits[t];
     }

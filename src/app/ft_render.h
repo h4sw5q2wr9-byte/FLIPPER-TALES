@@ -10,6 +10,7 @@
 #include <gui/gui.h>
 
 #include "../core/ft_encounter.h"
+#include "../core/ft_practice.h"
 
 #define FT_SCREEN_W 128
 #define FT_SCREEN_H 64
@@ -28,6 +29,7 @@
 /* The pause menu, opened with Back. */
 typedef enum {
     FT_PAUSE_RESUME = 0,
+    FT_PAUSE_PRACTICE,
     FT_PAUSE_HELP,
     FT_PAUSE_TIPS,
     FT_PAUSE_QUIT,
@@ -35,6 +37,9 @@ typedef enum {
 } FtPauseItem;
 
 void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on);
+
+/* The practice arena's setup screen. */
+void ft_render_practice(Canvas* canvas, const FtPractice* p);
 
 void ft_render_battle(Canvas* canvas, const FtEncounter* e);
 
