@@ -103,13 +103,17 @@ bool ft_map_walkable(const FtMap* m, int32_t px, int32_t py) {
 }
 
 bool ft_map_blocked(const FtMap* m, FtPos p) {
-    /* Only the lower third of the avatar collides. This is the standard
-     * top-down trick: it lets the character's head pass in front of walls, so
-     * rooms feel deeper than a flat grid. */
-    const int32_t top = p.y + FT_AVATAR_H - 4;
-    const int32_t bottom = p.y + FT_AVATAR_H - 1;
+    /* Only the actor's feet collide. This is the standard top-down trick: it
+     * lets a character's head pass in front of walls, so rooms feel deeper
+     * than a flat grid.
+     *
+     * Kept in tile units rather than sprite units — how tall the art is is
+     * the renderer's business, and core knowing about it is what let a stale
+     * avatar height survive two redraws of the character. */
+    const int32_t top = p.y + FT_TILE_PX - 4;
+    const int32_t bottom = p.y + FT_TILE_PX - 1;
     const int32_t left = p.x;
-    const int32_t right = p.x + FT_AVATAR_W - 1;
+    const int32_t right = p.x + FT_TILE_PX - 1;
 
     return !ft_map_walkable(m, left, top) || !ft_map_walkable(m, right, top) ||
            !ft_map_walkable(m, left, bottom) || !ft_map_walkable(m, right, bottom);
@@ -136,8 +140,8 @@ FtPos ft_map_camera(const FtMap* m, FtPos focus) {
     const int32_t view_w = FT_VIEW_W * FT_TILE_PX;
     const int32_t view_h = FT_VIEW_H * FT_TILE_PX;
 
-    FtPos c = {focus.x + FT_AVATAR_W / 2 - view_w / 2,
-               focus.y + FT_AVATAR_H / 2 - view_h / 2};
+    FtPos c = {focus.x + FT_TILE_PX / 2 - view_w / 2,
+               focus.y + FT_TILE_PX / 2 - view_h / 2};
 
     const int32_t max_x = (int32_t)m->w * FT_TILE_PX - view_w;
     const int32_t max_y = (int32_t)m->h * FT_TILE_PX - view_h;

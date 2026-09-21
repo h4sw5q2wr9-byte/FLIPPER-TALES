@@ -7,6 +7,7 @@
 
 #include "ft_encounter.h"
 #include "ft_practice.h"
+#include "ft_world.h"
 #include "ft_render.h"
 #include "ft_tutorial.h"
 
@@ -204,6 +205,28 @@ int main(void) {
         const int c = ft_stub_canvas_clipped(canvas);
         total_clipped += c;
         printf("  pause row %u         %s\n", i, c ? "CLIPPED" : "ok");
+    }
+
+    {
+        /* The debug menu, every row, with the widest room name it can show. */
+        const char* widest = ft_room(0)->map->name;
+        for(uint8_t r = 0; r < ft_room_count(); r++) {
+            if(strlen(ft_room(r)->map->name) > strlen(widest)) {
+                widest = ft_room(r)->map->name;
+            }
+        }
+
+        for(uint8_t i = 0; i < FT_DEBUG_COUNT; i++) {
+            ft_render_debug(canvas, i, widest);
+
+            char dp[64];
+            snprintf(dp, sizeof(dp), "preview/84_debug%u.pbm", i);
+            ft_stub_canvas_write_pbm(canvas, dp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  debug row %u         %s\n", i, c ? "CLIPPED" : "ok");
+        }
     }
 
     {

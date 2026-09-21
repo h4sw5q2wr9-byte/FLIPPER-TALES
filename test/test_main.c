@@ -1345,17 +1345,38 @@ static void test_map(void) {
     CHECK_EQ(c2.x, 0);
     CHECK_EQ(c2.y, 0);
 
-    /* Mid-map, the focus is centred. */
+    /* Mid-map, the focus tile is centred. The camera works in tiles, not in
+     * whatever the character happens to be drawn at. */
     const FtPos mid = {160, 80};
     const FtPos c3 = ft_map_camera(&big, mid);
-    CHECK_EQ(c3.x, 160 + FT_AVATAR_W / 2 - (FT_VIEW_W * FT_TILE_PX) / 2);
-    CHECK_EQ(c3.y, 80 + FT_AVATAR_H / 2 - (FT_VIEW_H * FT_TILE_PX) / 2);
+    CHECK_EQ(c3.x, 160 + FT_TILE_PX / 2 - (FT_VIEW_W * FT_TILE_PX) / 2);
+    CHECK_EQ(c3.y, 80 + FT_TILE_PX / 2 - (FT_VIEW_H * FT_TILE_PX) / 2);
 
     /* A map smaller than the viewport pins to the origin instead of going
      * negative and revealing a band of off-map wall. */
     const FtPos c4 = ft_map_camera(&m, mid);
     CHECK_EQ(c4.x, 0);
     CHECK_EQ(c4.y, 0);
+
+    /* A stepper reports its tile's pixel origin and nothing else. It used to
+     * subtract a sprite height, which the renderers then subtracted again —
+     * every actor floated half a tile above the ground. */
+    FtStepper st = {3, 5, 0, 0, 0};
+    const FtPos rest = ft_stepper_pos(&st, FT_STEP_MS);
+    CHECK_EQ(rest.x, 3 * FT_TILE_PX);
+    CHECK_EQ(rest.y, 5 * FT_TILE_PX);
+
+    /* Mid-step it interpolates, and lands exactly on the next tile. */
+    st.dx = 1;
+    st.step_ms = FT_STEP_MS / 2;
+    const FtPos half = ft_stepper_pos(&st, FT_STEP_MS);
+    CHECK_EQ(half.y, 5 * FT_TILE_PX);
+    CHECK(half.x > 3 * FT_TILE_PX && half.x < 4 * FT_TILE_PX,
+          "half a step is between the tiles (%d)", (int)half.x);
+
+    st.step_ms = FT_STEP_MS;
+    const FtPos done = ft_stepper_pos(&st, FT_STEP_MS);
+    CHECK_EQ(done.x, 4 * FT_TILE_PX);
 }
 
 static void test_tile_orientation(void) {

@@ -134,14 +134,36 @@ static void draw_sprite(Canvas* c, const uint16_t* rows, int32_t x, int32_t y) {
     }
 }
 
-static void draw_player(Canvas* c, int32_t x, int32_t y, bool hurt) {
-    draw_sprite(c, FT_SPRITE_PLAYER, x, y);
+/* The hero, the same 16x18 art the overworld draws. y is the *floor* line, so
+ * he stands on it rather than being top-aligned like the 16x16 foes. */
+static void draw_player(Canvas* c, int32_t x, int32_t floor_y, bool hurt) {
+    const int32_t y = floor_y - FT_HERO_H;
+
+    for(int32_t sy = 0; sy < FT_HERO_H; sy++) {
+        uint16_t bits = FT_SPRITE_HERO[sy];
+        if(!bits) continue;
+
+        int32_t sx = 0;
+        while(sx < FT_HERO_W) {
+            if(!(bits & (1u << sx))) {
+                sx++;
+                continue;
+            }
+            int32_t run = 0;
+            while(sx + run < FT_HERO_W && (bits & (1u << (sx + run)))) run++;
+
+            canvas_draw_box(c, x + sx, y + sy, (size_t)run, 1);
+            sx += run;
+        }
+    }
 
     /* While Charge is still draining, the screen goes dark: the sprite reads
      * its own state rather than relying on the bar alone. */
     if(hurt) {
         canvas_set_color(c, ColorXOR);
-        canvas_draw_box(c, x + 4, y + 4, 8, 6);
+        canvas_draw_box(
+            c, x + FT_HERO_SCREEN_X, y + FT_HERO_SCREEN_Y,
+            FT_HERO_SCREEN_W, FT_HERO_SCREEN_H);
         canvas_set_color(c, ColorBlack);
     }
 }
@@ -369,7 +391,11 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
     for(int32_t x = 2; x < FT_SCREEN_W - 2; x += 3) canvas_draw_dot(canvas, x, floor_y);
 
     int32_t px = 4;
+
+    /* Foes are top-aligned 16px tall; the hero is 18 and stands on the floor
+     * line, so his top edge is two rows higher. */
     int32_t py = floor_y - 16;
+    int32_t hero_floor = floor_y;
     /* Whoever the highlighted action would land on. Nothing points at them:
      * targeting is automatic, so there is no choice to show. */
     const uint8_t tgt = ft_encounter_effective_target(e, (FtAction2)e->menu_index);
@@ -413,18 +439,19 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         if(e->last_enemy_hit.captured) draw_broadcast(canvas, 20, 44, floor_y - 9, 1, t);
     }
 
-    if(e->phase == FT_PHASE_MENU && ((e->phase_ms / 600u) % 2u)) py -= 1;
+    if(e->phase == FT_PHASE_MENU && ((e->phase_ms / 600u) % 2u)) hero_floor -= 1;
 
     /* Both fighters strobe on the frame the hit lands, before the iris. The
      * XOR goes over the drawn sprite: inverting the empty space first and
      * then drawing black on black just gives a solid brick. */
     const FtHitFx arena_fx = ft_encounter_hit_fx(e);
 
-    draw_player(canvas, px, py, ft_roll_active(&e->roll));
+    draw_player(canvas, px, hero_floor, ft_roll_active(&e->roll));
 
     if(arena_fx.strobe) {
         canvas_set_color(canvas, ColorXOR);
-        canvas_draw_box(canvas, px, py, FT_SPRITE_W, FT_SPRITE_H);
+        canvas_draw_box(
+            canvas, px, hero_floor - FT_HERO_H, FT_HERO_W, FT_HERO_H);
         canvas_set_color(canvas, ColorBlack);
     }
 
@@ -933,43 +960,39 @@ void ft_render_help(Canvas* canvas, uint8_t page) {
                                               "LEFT: back   OK: go");
 }
 
-void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
+/* A scrolling menu: a title, a list, an optional value on each row, and a
+ * scrollbar when there is more than fits.
+ *
+ * One renderer for every list in the game. The pause menu grew from four rows
+ * to seven and each addition re-derived the spacing by hand, which is how one
+ * of them ended up with its highlight touching the rules above and below. */
+void ft_render_menu_list(
+    Canvas*            canvas,
+    const char*        title,
+    const char* const* items,
+    const char* const* values,
+    uint8_t            count,
+    uint8_t            selected) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
     canvas_set_font(canvas, FontSecondary);
 
-    draw_centred(canvas, FT_SCREEN_W / 2, 8, "PAUSED");
+    draw_centred(canvas, FT_SCREEN_W / 2, 8, title);
     canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
 
-    static const char* const ITEMS[FT_PAUSE_COUNT] = {
-        "Resume",
-        "Save",
-        "Practice arena",
-        "How to play",
-        "Tips",
-        "New game",
-        "Quit",
-    };
-
-    /* The list scrolls rather than squeezing. Seven rows crammed into the
-     * 52px below the rule gave 7px each: legible, but the highlight touched
-     * the rows either side and descenders ran into the next line. Five rows
-     * of ten and a window that follows the cursor costs one scrollbar and
-     * stops the menu from getting worse every time an item is added. */
-#define PAUSE_VISIBLE 5
-    const int32_t top = 13;
-    const int32_t step = 10;
+    const uint8_t visible = (count < FT_MENU_VISIBLE) ? count : FT_MENU_VISIBLE;
+    const int32_t top = 13, step = 10;
 
     uint8_t first = 0;
-    if(selected >= PAUSE_VISIBLE) first = (uint8_t)(selected - (PAUSE_VISIBLE - 1));
-    if(first > FT_PAUSE_COUNT - PAUSE_VISIBLE) first = FT_PAUSE_COUNT - PAUSE_VISIBLE;
+    if(selected >= visible) first = (uint8_t)(selected - (visible - 1u));
+    if(count > visible && first > count - visible) first = (uint8_t)(count - visible);
 
     /* Room for the scrollbar, which only appears when there is more to see. */
-    const int32_t right = (FT_PAUSE_COUNT > PAUSE_VISIBLE) ? 118 : 124;
+    const int32_t right = (count > visible) ? 118 : 124;
 
-    for(uint8_t row = 0; row < PAUSE_VISIBLE; row++) {
+    for(uint8_t row = 0; row < visible; row++) {
         const uint8_t i = (uint8_t)(first + row);
-        if(i >= FT_PAUSE_COUNT) break;
+        if(i >= count) break;
 
         const int32_t y = top + (int32_t)row * step;
         const bool on = (i == selected);
@@ -979,29 +1002,72 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
             canvas_set_color(canvas, ColorWhite);
         }
 
-        canvas_draw_str(canvas, 9, y + 7, ITEMS[i]);
+        /* The value takes its space first and the label gets what is left.
+         * Clipping the label against the row's full width instead let a long
+         * value run straight through it — "Travel" and "Boot Corridor"
+         * printed on top of each other, which the off-panel check cannot see
+         * because both were comfortably on screen. */
+        int32_t label_w = right - 14;
 
-        /* Tips carries its state on the row rather than needing a submenu. */
-        if(i == FT_PAUSE_TIPS) {
-            const char* state = tips_on ? "ON" : "OFF";
-            const int32_t w = (int32_t)canvas_string_width(canvas, state);
-            canvas_draw_str(canvas, right - 5 - w, y + 7, state);
+        if(values && values[i]) {
+            const int32_t w = (int32_t)canvas_string_width(canvas, values[i]);
+            const int32_t vx = right - 5 - w;
+
+            canvas_draw_str(canvas, vx, y + 7, values[i]);
+            label_w = vx - 9 - 4;
         }
+
+        if(label_w > 0) draw_clipped(canvas, 9, y + 7, items[i], label_w);
 
         if(on) canvas_set_color(canvas, ColorBlack);
     }
 
-    if(FT_PAUSE_COUNT > PAUSE_VISIBLE) {
-        const int32_t track_y = top, track_h = PAUSE_VISIBLE * step - 1;
-        const int32_t grip_h = (track_h * PAUSE_VISIBLE) / FT_PAUSE_COUNT;
+    if(count > visible) {
+        const int32_t track_y = top, track_h = visible * step - 1;
+        const int32_t grip_h = (track_h * visible) / count;
         const int32_t grip_y =
-            track_y + (track_h - grip_h) * (int32_t)first /
-                          (int32_t)(FT_PAUSE_COUNT - PAUSE_VISIBLE);
+            track_y + (track_h - grip_h) * (int32_t)first / (int32_t)(count - visible);
 
         canvas_draw_frame(canvas, 121, track_y, 5, (size_t)track_h);
         canvas_draw_box(canvas, 122, grip_y + 1, 3, (size_t)(grip_h - 2));
     }
-#undef PAUSE_VISIBLE
+}
+
+void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
+    static const char* const ITEMS[FT_PAUSE_COUNT] = {
+        "Resume",
+        "Save",
+        "How to play",
+        "Tips",
+        "Debug",
+        "New game",
+        "Quit",
+    };
+
+    const char* values[FT_PAUSE_COUNT] = {NULL};
+    values[FT_PAUSE_TIPS] = tips_on ? "ON" : "OFF";
+
+    ft_render_menu_list(
+        canvas, "PAUSED", ITEMS, values, FT_PAUSE_COUNT, selected);
+}
+
+void ft_render_debug(Canvas* canvas, uint8_t selected, const char* room_name) {
+    /* "Go", not "Travel": room names run to thirteen characters and the value
+     * takes its space first, so a long label is a clipped label. */
+    static const char* const ITEMS[FT_DEBUG_COUNT] = {
+        "Go",
+        "Practice arena",
+        "Heal",
+        "Add 100 XP",
+        "Clear room",
+        "Back",
+    };
+
+    const char* values[FT_DEBUG_COUNT] = {NULL};
+    values[FT_DEBUG_TRAVEL] = room_name;
+
+    ft_render_menu_list(
+        canvas, "DEBUG", ITEMS, values, FT_DEBUG_COUNT, selected);
 }
 
 /* Erasing a run is the one thing on that menu that cannot be undone, so it

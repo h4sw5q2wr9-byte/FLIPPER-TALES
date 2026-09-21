@@ -3,49 +3,8 @@
 #include "ft_sprites.h"
 #include "ft_tiles.h"
 
-#define FT_AVATAR16_W 16
-#define FT_AVATAR16_H 20
-
-/* The overworld avatar, 16x20, drawn at screen resolution over the 2x world.
- *
- * The tiles are 8px art doubled, so they are deliberately chunky; the two
- * things you actually look at — the player and the foes — are drawn at the
- * panel's real resolution instead, which is what makes the zoom read as
- * "closer" rather than "bigger pixels". It is recognisably the thing you
- * fight with: antenna, screen, stubby legs.
- *
- * Bit 0 is the leftmost pixel, as everywhere else in this file. */
-static const uint16_t FT_AVATAR16[FT_AVATAR16_H] = {
-    0x0180, /* .......##.......  antenna */
-    0x0180, /* .......##....... */
-    0x03C0, /* ......####...... */
-    0x1FF8, /* ...##########...  case top */
-    0x3FFC, /* ..############.. */
-    0x3FFC, /* ..############..  <- the screen is knocked out of these */
-    0x3FFC, /* ..############.. */
-    0x3FFC, /* ..############.. */
-    0x3FFC, /* ..############.. */
-    0x3FFC, /* ..############.. */
-    0x1FF8, /* ...##########...  case base */
-    0x07E0, /* .....######.....  neck */
-    0x0FF0, /* ....########....  shoulders */
-    0x1FF8, /* ...##########...  body */
-    0x1FF8, /* ...##########... */
-    0x1FF8, /* ...##########... */
-    0x0E70, /* ....###..###....  hips */
-    0x0630, /* .....##..##.....  legs */
-    0x0630, /* .....##..##..... */
-    0x0E70, /* ....###..###....  feet */
-};
-
-/* The screen, inset into the case. */
-#define AV_SCREEN_X 4
-#define AV_SCREEN_Y 5
-#define AV_SCREEN_W 8
-#define AV_SCREEN_H 5
-
 /* The overworld draws at 2x. At 1:1 a whole room fitted on the panel at once
- * and everything in it was 8px of a 128px screen: legible, but read as a
+ * and everything in it was 8px of a 128px screen: legible, but it read as a
  * diagram rather than a place. Doubling halves the visible area to 8x4 tiles
  * and doubles how much of the screen the player occupies.
  *
@@ -53,8 +12,8 @@ static const uint16_t FT_AVATAR16[FT_AVATAR16_H] = {
  * all still work in 8px tiles. Only this file scales, on the way out. */
 #define FT_ZOOM 2
 
-/* Panel size expressed in *world* pixels, which is what everything below is
- * clipped against before being scaled. */
+/* Panel size in *world* pixels, which is what the tilemap clips against
+ * before being scaled. */
 #define FT_SCREEN_PX_W (FT_VIEW_W * FT_TILE_PX)
 #define FT_SCREEN_PX_H (FT_VIEW_H * FT_TILE_PX)
 
@@ -156,7 +115,7 @@ static void blit_screen(
  * background and erases nothing beyond its own outline. */
 static void blit_keyed(
     Canvas* c, const uint32_t* rows, int32_t n, int32_t x, int32_t y, int32_t w) {
-    uint32_t halo[FT_SPRITE_H > FT_AVATAR16_H ? FT_SPRITE_H + 2 : FT_AVATAR16_H + 2];
+    uint32_t halo[(FT_SPRITE_H > FT_HERO_H ? FT_SPRITE_H : FT_HERO_H) + 2];
 
     for(int32_t i = 0; i < n + 2; i++) halo[i] = 0;
 
@@ -177,43 +136,66 @@ static void blit_keyed(
     blit_screen(c, rows, n, x, y, w);
 }
 
-/* x/y are the actor's tile position in world pixels. */
+/* The hero. x/y are his tile position in world pixels.
+ *
+ * This is the same FT_SPRITE_HERO the battle screen draws. There used to be a
+ * second, separate avatar here — the same character described twice, at a
+ * different size, and they did not match. Which one is "the player" is the
+ * first thing anyone reads, so there is now only one answer. */
 static void draw_avatar(Canvas* c, int32_t x, int32_t y, FtFacing facing, int32_t bob) {
-    uint32_t rows[FT_AVATAR16_H];
-    for(int32_t i = 0; i < FT_AVATAR16_H; i++) rows[i] = FT_AVATAR16[i];
+    uint32_t rows[FT_HERO_H];
+    for(int32_t i = 0; i < FT_HERO_H; i++) rows[i] = FT_SPRITE_HERO[i];
 
     /* Two-frame walk: the feet close and open. Anything more elaborate is
      * invisible even at this size. */
     if(bob) {
-        rows[FT_AVATAR16_H - 1] = 0x0630;
-        rows[FT_AVATAR16_H - 2] = 0x0660;
+        rows[FT_HERO_H - 2] = 0x0660;
+        rows[FT_HERO_H - 3] = 0x0660;
     }
 
-    /* Feet on the tile it occupies: the sprite is taller than a tile, so it
-     * is bottom-aligned rather than top-aligned. */
+    /* Feet on the tile he occupies. The sprite is taller than a tile, so he
+     * is bottom-aligned and stands two pixels proud of it. */
     const int32_t sx = x * FT_ZOOM;
-    const int32_t sy = y * FT_ZOOM + (FT_TILE_PX * FT_ZOOM - FT_AVATAR16_H);
+    const int32_t sy = y * FT_ZOOM + (FT_TILE_PX * FT_ZOOM - FT_HERO_H);
 
-    blit_keyed(c, rows, FT_AVATAR16_H, sx, sy, FT_AVATAR16_W);
+    blit_keyed(c, rows, FT_HERO_H, sx, sy, FT_HERO_W);
 
     /* Facing lives in the screen rather than in four sprite sets: a turned
      * body is unreadable at this size, shifted pupils are not. Facing away
-     * leaves the screen dark, which is the back of the head. */
-    if(facing == FT_FACE_UP) return;
+     * leaves the screen blank, which is the back of his head. */
+    const int32_t ex = sx + FT_HERO_SCREEN_X;
+    const int32_t ey = sy + FT_HERO_EYE_Y;
 
-    const int32_t ex = sx + AV_SCREEN_X, ey = sy + AV_SCREEN_Y;
-    if(ex < 0 || ex + AV_SCREEN_W > FT_PANEL_W) return;
-    if(ey < 0 || ey + AV_SCREEN_H > FT_PANEL_H) return;
+    if(ex < 0 || ex + FT_HERO_SCREEN_W > FT_PANEL_W) return;
+    if(ey < 0 || ey + FT_HERO_EYE_H > FT_PANEL_H) return;
 
+    /* Wipe the band the bitmap's own eyes sit in, then put them back where
+     * this facing wants them. */
     canvas_set_color(c, ColorWhite);
-    canvas_draw_box(c, ex, ey, AV_SCREEN_W, AV_SCREEN_H);
+    canvas_draw_box(c, ex, ey, FT_HERO_SCREEN_W, FT_HERO_EYE_H);
     canvas_set_color(c, ColorBlack);
 
-    const int32_t eye = ey + 2;
-    const int32_t left = (facing == FT_FACE_RIGHT) ? ex + 3 : ex + 1;
+    if(facing == FT_FACE_UP) return;
 
-    canvas_draw_box(c, left, eye, 2, 2);
-    canvas_draw_box(c, left + 3, eye, 2, 2);
+    int32_t left, right;
+    switch(facing) {
+    case FT_FACE_LEFT:
+        left = ex;
+        right = ex + 4;
+        break;
+    case FT_FACE_RIGHT:
+        left = ex + FT_HERO_SCREEN_W - 6;
+        right = ex + FT_HERO_SCREEN_W - 2;
+        break;
+    case FT_FACE_DOWN:
+    default:
+        left = ex + 1;
+        right = ex + FT_HERO_SCREEN_W - 3;
+        break;
+    }
+
+    canvas_draw_box(c, left, ey, 2, FT_HERO_EYE_H);
+    canvas_draw_box(c, right, ey, 2, FT_HERO_EYE_H);
 }
 
 /* Foes, at their full battle resolution. They used to be sampled down to 8x8

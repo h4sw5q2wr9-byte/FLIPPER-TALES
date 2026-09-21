@@ -45,7 +45,8 @@ typedef enum {
     FT_MODE_PAUSE,
     FT_MODE_PRACTICE, /* the arena's setup screen */
     FT_MODE_LEVELUP,  /* spending the levels a win just paid out */
-    FT_MODE_CONFIRM   /* the gate in front of erasing a run */
+    FT_MODE_CONFIRM,  /* the gate in front of erasing a run */
+    FT_MODE_DEBUG     /* the testing tools, kept out of the player's way */
 } FtMode;
 
 /* What the wipe is hiding. */
@@ -79,6 +80,10 @@ typedef struct {
 
     /* The New game confirmation. Defaults to No. */
     bool confirm_yes;
+
+    /* The debug menu, and the room its Travel row is pointing at. */
+    uint8_t debug_item;
+    uint8_t travel_room;
 
     /* Which entity started the current battle, so it can be removed on a win. */
     int  battle_entity;
@@ -137,6 +142,9 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
         ft_render_pause(canvas, app->pause_item, app->coach);
     } else if(app->mode == FT_MODE_PRACTICE) {
         ft_render_practice(canvas, &app->practice);
+    } else if(app->mode == FT_MODE_DEBUG) {
+        ft_render_debug(canvas, app->debug_item,
+                        ft_room(app->travel_room)->map->name);
     } else if(app->mode == FT_MODE_CONFIRM) {
         ft_render_confirm(canvas, "Erase this run?", app->confirm_yes);
     } else if(app->mode == FT_MODE_LEVELUP) {
@@ -320,6 +328,69 @@ static void ft_wipe_update(FlipperTales* app, uint32_t dt_ms) {
     if(app->wipe_ms >= FT_WIPE_MS) app->wipe_active = false;
 }
 
+/* ---- Debug ------------------------------------------------------------ */
+
+/* The testing tools. Everything here changes the run, so it all lives behind
+ * one door rather than being sprinkled through the player's menus. */
+static void ft_debug_pick(FlipperTales* app) {
+    switch((FtDebugItem)app->debug_item) {
+    case FT_DEBUG_TRAVEL: {
+        /* Land on the room's first exit, which is guaranteed to be a door
+         * the player can stand in — the tests check that for every room. */
+        const FtRoom* dest = ft_room(app->travel_room);
+
+        ft_world_enter(&app->world, app->travel_room, dest->exits[0].tx,
+                       dest->exits[0].ty);
+        app->mode = FT_MODE_OVERWORLD;
+        ft_toast(app, dest->map->name);
+        break;
+    }
+
+    case FT_DEBUG_PRACTICE:
+        /* The arena replaces whatever is on screen, so it never resumes into
+         * a half-finished fight. */
+        app->paused_from = FT_MODE_PRACTICE;
+        app->in_practice = false;
+        app->mode = FT_MODE_PRACTICE;
+        break;
+
+    case FT_DEBUG_HEAL:
+        app->world.stats.charge = app->world.stats.charge_max;
+        app->world.stats.ram = app->world.stats.ram_max;
+        ft_toast(app, "Topped up.");
+        break;
+
+    case FT_DEBUG_XP: {
+        const int16_t owed =
+            ft_xp_gain(&app->world.stats, 100, ft_level_cap(app->chapters_done));
+
+        app->levels_owed = (int16_t)(app->levels_owed + owed);
+        if(app->levels_owed > 0) {
+            app->levelup_item = 0;
+            app->mode = FT_MODE_LEVELUP;
+        } else {
+            ft_toast(app, "XP banked.");
+        }
+        break;
+    }
+
+    case FT_DEBUG_CLEAR: {
+        const FtRoom* room = ft_room(app->world.room);
+        for(uint8_t i = 0; i < room->ent_count; i++) {
+            ft_world_clear_entity(&app->world, i);
+        }
+        app->mode = FT_MODE_OVERWORLD;
+        ft_toast(app, "Room cleared.");
+        break;
+    }
+
+    case FT_DEBUG_BACK:
+    default:
+        app->mode = FT_MODE_PAUSE;
+        break;
+    }
+}
+
 /* ---- Input ----------------------------------------------------------- */
 
 /* ---- Saving ----------------------------------------------------------- */
@@ -447,15 +518,14 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 }
                 app->mode = app->paused_from;
                 break;
-            case FT_PAUSE_PRACTICE:
-                /* The arena replaces whatever is on screen, so it never
-                 * resumes into a half-finished fight. */
-                app->paused_from = FT_MODE_PRACTICE;
-                app->in_practice = false;
-                app->mode = FT_MODE_PRACTICE;
+            case FT_PAUSE_DEBUG:
+                app->debug_item = 0;
+                app->mode = FT_MODE_DEBUG;
                 break;
             case FT_PAUSE_NEWGAME:
                 app->confirm_yes = false;
+    app->debug_item = 0;
+    app->travel_room = 0;
                 app->mode = FT_MODE_CONFIRM;
                 break;
             case FT_PAUSE_TIPS:
@@ -469,6 +539,34 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
             }
             break;
         default:
+            break;
+        }
+        return;
+    }
+
+    if(app->mode == FT_MODE_DEBUG) {
+        switch(event->key) {
+        case InputKeyUp:
+            app->debug_item =
+                (uint8_t)((app->debug_item + FT_DEBUG_COUNT - 1u) % FT_DEBUG_COUNT);
+            break;
+        case InputKeyDown:
+            app->debug_item = (uint8_t)((app->debug_item + 1u) % FT_DEBUG_COUNT);
+            break;
+        case InputKeyLeft:
+        case InputKeyRight:
+            if(app->debug_item == FT_DEBUG_TRAVEL) {
+                const uint8_t n = ft_room_count();
+                const int16_t d = (event->key == InputKeyLeft) ? -1 : 1;
+                app->travel_room = (uint8_t)((app->travel_room + n + d) % n);
+            }
+            break;
+        case InputKeyOk:
+            ft_debug_pick(app);
+            break;
+        case InputKeyBack:
+        default:
+            app->mode = FT_MODE_PAUSE;
             break;
         }
         return;
@@ -626,6 +724,7 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
     if(app->show_help) return;
     if(app->mode == FT_MODE_PAUSE || app->mode == FT_MODE_PRACTICE) return;
     if(app->mode == FT_MODE_LEVELUP || app->mode == FT_MODE_CONFIRM) return;
+    if(app->mode == FT_MODE_DEBUG) return;
 
     if(app->mode == FT_MODE_BATTLE) {
         ft_encounter_tick(&app->encounter, dt_ms);

@@ -17,11 +17,6 @@
 #define FT_VIEW_W   8
 #define FT_VIEW_H   4
 
-/* The overworld avatar is deliberately smaller than the battle sprite: a
- * 16x16 character would fill a quarter of the viewport's height. */
-#define FT_AVATAR_W 8
-#define FT_AVATAR_H 12
-
 /* Movement is grid-based but animated: a step slides smoothly from one tile to
  * the next and cannot be interrupted part-way. That keeps the player aligned
  * to tiles — so doorways and foes line up without fighting the controls —

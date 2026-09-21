@@ -30,15 +30,42 @@
 typedef enum {
     FT_PAUSE_RESUME = 0,
     FT_PAUSE_SAVE,
-    FT_PAUSE_PRACTICE,
     FT_PAUSE_HELP,
     FT_PAUSE_TIPS,
+    FT_PAUSE_DEBUG,
     FT_PAUSE_NEWGAME,
     FT_PAUSE_QUIT,
     FT_PAUSE_COUNT
 } FtPauseItem;
 
+/* How many rows of a list fit under the title. */
+#define FT_MENU_VISIBLE 5
+
+/* Every menu in the game is this one list: a title, rows, an optional value
+ * on each row, and a scrollbar when there is more than fits. */
+void ft_render_menu_list(
+    Canvas*            canvas,
+    const char*        title,
+    const char* const* items,
+    const char* const* values,
+    uint8_t            count,
+    uint8_t            selected);
+
 void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on);
+
+/* Everything that exists to test the game rather than to play it. Kept
+ * together behind one door so the pause menu stays the player's. */
+typedef enum {
+    FT_DEBUG_TRAVEL = 0, /* walk into any room without walking there */
+    FT_DEBUG_PRACTICE,
+    FT_DEBUG_HEAL,
+    FT_DEBUG_XP,
+    FT_DEBUG_CLEAR,
+    FT_DEBUG_BACK,
+    FT_DEBUG_COUNT
+} FtDebugItem;
+
+void ft_render_debug(Canvas* canvas, uint8_t selected, const char* room_name);
 
 /* The practice arena's setup screen. */
 void ft_render_practice(Canvas* canvas, const FtPractice* p);

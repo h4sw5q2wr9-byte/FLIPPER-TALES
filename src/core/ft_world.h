@@ -129,7 +129,13 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms);
 
 const FtMap* ft_world_map(const FtWorld* w);
 
-/* Pixel position of an actor, interpolated through its current step. */
+/* Pixel position of an actor's *tile*, interpolated through its current step.
+ *
+ * This used to subtract the difference between the old avatar's height and a
+ * tile, so the caller could draw top-aligned. The renderers bottom-align
+ * their own sprites now, so that offset was being applied twice and every
+ * actor floated half a tile above the ground it was standing on. Core does
+ * not know how tall anything is drawn. */
 FtPos ft_stepper_pos(const FtStepper* s, uint32_t step_ms_total);
 
 bool ft_world_moving(const FtWorld* w);

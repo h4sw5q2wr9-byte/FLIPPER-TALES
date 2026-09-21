@@ -165,9 +165,6 @@ FtPos ft_stepper_pos(const FtStepper* s, uint32_t step_ms_total) {
         p.y += s->dy * travelled;
     }
 
-    /* The avatar is taller than a tile, so it sits back to stand on one. */
-    p.y -= (FT_AVATAR_H - FT_TILE_PX);
-
     return p;
 }
 

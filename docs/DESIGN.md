@@ -582,6 +582,36 @@ escape from is a stat you can lose.
 the level never moved, the chapter cap never bit, and every enemy was worth
 full XP forever. The anti-farming taper only started working once this did.
 
+### 5.5 The debug menu
+
+Everything that exists to test the game rather than to play it lives behind
+one door, **Pause → Debug**, so the pause menu stays the player's.
+
+| Row | What it does |
+|---|---|
+| Go | LEFT/RIGHT picks any room by name, OK walks you into it |
+| Practice arena | The setup screen from 5.2 |
+| Heal | Charge and RAM to full |
+| Add 100 XP | Banks a battle's worth, and opens the level-up screen if it owes one |
+| Clear room | Marks every encounter in the current room beaten |
+
+Travel lands on the room's **first exit**, which is guaranteed to be a door
+the player can stand in — the tests check that for every room, so the warp
+cannot drop you inside a wall.
+
+Every menu in the game now goes through one renderer, `ft_render_menu_list`:
+a title, rows, an optional value per row, five visible at a time, and a
+scrollbar when there is more. The pause menu had grown from four rows to seven
+with the spacing re-derived by hand each time, which is how one version ended
+up with its highlight touching the rules above and below.
+
+One bug worth recording, because the preview harness could not see it: the
+value is drawn right-aligned and the label was clipped against the row's full
+width, so a long value printed straight through the label — "Travel" and
+"Boot Corridor" on top of each other. Both were comfortably on screen, so the
+off-panel check passed. The value takes its space first now and the label gets
+what is left, and the row is labelled "Go" so there is space to give.
+
 ## 6. Architecture
 
 Two layers. Because §2.1 keeps all hardware out of scope, **the entire game is pure logic** and the
@@ -697,6 +727,33 @@ authored as editable ASCII under `tools/`.
 
 Ten tiles: floor, wall, void, grass, cable, door, terminal, locked port, crate,
 ladder.
+
+#### One hero, both scenes
+
+There is exactly one piece of player art, `FT_SPRITE_HERO`, 16x18, drawn by
+the battle screen and the overworld alike.
+
+There used to be two: a 16x16 battle sprite and a separate overworld avatar,
+8x12 and then redrawn at 16x20 when the map zoomed. They were the same
+character described twice and they did not match — which is the first thing
+anyone reads, and reading it wrong makes the two halves of the game feel like
+two games.
+
+18 rows because that is exactly the battle arena's band: bottom-aligned on the
+floor line it fills 11..29, two rows taller than a 16x16 foe, which is what a
+protagonist standing next to one should look like. In the overworld the same
+bottom alignment leaves him standing two pixels proud of his 16px tile.
+
+The face is in the bitmap. Each scene overlays what it needs on the screen
+area — the overworld knocks out the eye band and redraws the pupils to show
+facing, the battle darkens the whole screen while Charge is draining.
+
+Removing the second avatar also took `FT_AVATAR_W/H` out of `src/core`, which
+turned out to matter: `ft_stepper_pos()` was still subtracting the difference
+between the *old* avatar's height and a tile so its caller could draw
+top-aligned. The renderers bottom-align themselves now, so that offset was
+being applied twice and every actor in the overworld floated half a tile above
+the ground it was standing on. Core does not know how tall anything is drawn.
 
 #### Drawing the player and the foes
 
