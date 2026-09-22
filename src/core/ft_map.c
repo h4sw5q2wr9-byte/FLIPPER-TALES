@@ -1,5 +1,9 @@
 #include "ft_map.h"
 
+bool ft_tile_foreground(FtTile t) {
+    return t == FT_TILE_LEAF || t == FT_TILE_ROOF;
+}
+
 bool ft_tile_solid(FtTile t) {
     switch(t) {
     case FT_TILE_WALL:
@@ -8,6 +12,9 @@ bool ft_tile_solid(FtTile t) {
     case FT_TILE_LOCK: /* until the iButton module opens it */
     case FT_TILE_SCRAP:
     case FT_TILE_PYLON:
+    case FT_TILE_TRUNK:
+    case FT_TILE_HUT:
+    case FT_TILE_HUT_DOOR:
         return true;
     default:
         return false;
@@ -31,6 +38,29 @@ bool ft_map_side_passage(const FtMap* m, int32_t tx, int32_t ty) {
     /* Ambiguous (a doorway in a corner, or standing alone) falls back to
      * front-facing, which is the one that reads as a door at all. */
     return false;
+}
+
+/* Trunk counts as canopy for shaping purposes: it is the middle of the same
+ * 3x3 block, so the leaf above it must not think it is on an edge. */
+static bool canopy(const FtMap* m, int32_t tx, int32_t ty) {
+    const FtTile t = ft_map_tile(m, tx, ty);
+    return t == FT_TILE_LEAF || t == FT_TILE_TRUNK;
+}
+
+/* Which corner of a canopy this leaf is, if any. A leaf with no canopy above
+ * and none to its left is the top-left of the block, and so on; a leaf with
+ * canopy on both of a pair of axes is interior and keeps the plain art. */
+static uint8_t leaf_art(const FtMap* m, int32_t tx, int32_t ty) {
+    const bool up = canopy(m, tx, ty - 1);
+    const bool down = canopy(m, tx, ty + 1);
+    const bool left = canopy(m, tx - 1, ty);
+    const bool right = canopy(m, tx + 1, ty);
+
+    if(!up && !left) return FT_TILE_ART_LEAF_TL;
+    if(!up && !right) return FT_TILE_ART_LEAF_TR;
+    if(!down && !left) return FT_TILE_ART_LEAF_BL;
+    if(!down && !right) return FT_TILE_ART_LEAF_BR;
+    return (uint8_t)FT_TILE_LEAF;
 }
 
 static bool cable_is_vertical(const FtMap* m, int32_t tx, int32_t ty) {
@@ -86,6 +116,8 @@ uint8_t ft_map_art_index(const FtMap* m, int32_t tx, int32_t ty) {
         return ft_map_side_passage(m, tx, ty) ? FT_TILE_ART_GATE_SIDE : (uint8_t)t;
     case FT_TILE_CABLE:
         return cable_is_vertical(m, tx, ty) ? FT_TILE_ART_CABLE_V : (uint8_t)t;
+    case FT_TILE_LEAF:
+        return leaf_art(m, tx, ty);
     default:
         return (uint8_t)t;
     }

@@ -73,14 +73,14 @@ TILES["void"] = """
 
 # Tall grass. Walkable, hides things, rustles.
 TILES["grass"] = """
+...#....
+..#.#...
 ........
-..#..#..
-.#.##.#.
-.#.##.#.
-#.####.#
 ........
-...##...
-..####..
+.#....#.
+#.#..#.#
+........
+........
 """
 
 # Cable conduit: decorative floor that reads as "this place is machinery".
@@ -145,6 +145,91 @@ TILES["gate_side"] = """
 ..#..#..
 ..#..#..
 #.####.#
+########
+"""
+
+# ---- Things with a top and a bottom ------------------------------------
+#
+# A trunk you bump into, a canopy you walk behind. The canopy is deliberately
+# gappy: the blit only sets black pixels, so whoever is under it shows
+# through the leaves instead of vanishing behind them.
+#
+# The trunk is the BOTTOM middle of the 3x3 block, not its centre. A trunk in
+# the centre is a black slab with the crown cut off round it — it was tried,
+# and it read as a barrel. Down here the bark meets the ground on one side and
+# the leaves on the other, which is what a tree looks like.
+
+TILES["trunk"] = """
+.######.
+.#.##.#.
+.######.
+.#.##.#.
+.######.
+.#.##.#.
+.######.
+.######.
+"""
+
+# An even checkerboard: on a one-bit panel that is mid grey, which is the only
+# fill that is both solid enough to read as a mass of leaves from across the
+# room and open enough that whoever walks under it shows through as a ghost
+# rather than vanishing. Two denser patterns were tried first — a random
+# scatter, which read as noise over the floor stipple, and a three-quarter
+# grid, which swallowed the player. The canopy's SHAPE does the work instead:
+# see the rounded corners further down.
+TILES["leaf"] = """
+#.#.#.#.
+.#.#.#.#
+#.#.#.#.
+.#.#.#.#
+#.#.#.#.
+.#.#.#.#
+#.#.#.#.
+.#.#.#.#
+"""
+
+# A wall of a building, and the roof over it.
+#
+# Three textures meet at a house — wall, roof and the canopy of whatever grows
+# beside it — and at 8x8 there is no room for detail to tell them apart. So
+# they are told apart by DIRECTION instead: the wall is vertical boards, the
+# roof is horizontal courses, and the canopy is an even checker. That reads at
+# a glance and survives being one bit deep.
+TILES["hut"] = """
+.##..##.
+.##..##.
+.##..##.
+.##..##.
+.##..##.
+.##..##.
+.##..##.
+########
+"""
+
+# Shingles: unbroken horizontal courses, with one joint punched through each
+# gap so the roof reads as laid tiles rather than as corrugation.
+TILES["roof"] = """
+########
+...#....
+########
+.......#
+########
+...#....
+########
+.......#
+"""
+
+# A door in a hut wall: a dark slab, with a handle, set into the light boards.
+# Solid, because it is scenery and not an exit — but a village whose houses
+# have no doors in them reads as a stack of crates with roofs on.
+TILES["hut_door"] = """
+.#..#..#
+.######.
+.######.
+.######.
+.####.#.
+.######.
+.######.
 ########
 """
 
@@ -315,6 +400,37 @@ def parse(art):
 
 data = {k: parse(v) for k, v in TILES.items()}
 
+
+# ---- Canopy corners ----------------------------------------------------
+#
+# A tree is stamped as a 3x3 block (trunk in the middle, leaves all round),
+# and a 3x3 block of one leaf tile is a square. Real canopies are not square,
+# and on a 128x64 panel a dark rectangle in a field reads as a building.
+#
+# So the four outer corners get rounded copies of the leaf, cut with a
+# quarter circle. The renderer picks them from the neighbours the same way it
+# picks a wall cap or a side-on door — see ft_map_art_index — so maps stay one
+# byte per tile and authors keep stamping plain leaves.
+def _round_corner(rows, cx, cy, r=8.0):
+    out = []
+    for y, bits in enumerate(rows):
+        keep = 0
+        for x in range(8):
+            if not (bits & (1 << x)):
+                continue
+            dx, dy = (x + 0.5) - cx, (y + 0.5) - cy
+            if dx * dx + dy * dy <= r * r:
+                keep |= 1 << x
+        out.append(keep)
+    return out
+
+
+# The centre of the quarter circle sits at the INNER corner of the tile, so
+# what survives is the side that faces the rest of the canopy.
+for _suffix, _cx, _cy in (("tl", 8.0, 8.0), ("tr", 0.0, 8.0),
+                          ("bl", 8.0, 0.0), ("br", 0.0, 0.0)):
+    data["leaf_" + _suffix] = _round_corner(data["leaf"], _cx, _cy)
+
 scale, pad = 8, 6
 sheet = Image.new("L", (len(data) * (8 * scale + pad) + pad, 8 * scale + 2 * pad + 10), 200)
 draw = ImageDraw.Draw(sheet)
@@ -351,8 +467,9 @@ static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
     # Must match FtTile exactly, then the orientation variants (FT_TILE_ART_*).
     order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock",
              "crate", "ladder", "scrap", "frost", "pylon", "static", "gate",
+             "trunk", "leaf", "hut", "roof", "hut_door",
              "door_side", "lock_side", "cable_v", "wall_top", "shadow", "tuft",
-             "gate_side"]
+             "gate_side", "leaf_tl", "leaf_tr", "leaf_bl", "leaf_br"]
     for name in order:
         fh.write("    /* %-6s */ {%s},\n" % (name, ", ".join("0x%02X" % b for b in data[name])))
     fh.write("};\n\n#endif /* FT_TILES_H */\n")

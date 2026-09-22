@@ -511,8 +511,16 @@ static void test_world_tour(void) {
 
         for(uint8_t i = 0; i < room->ent_count; i++) {
             const FtEntity* ent = &room->ents[i];
-            CHECK(!ft_tile_solid(ft_map_tile(room->map, ent->tx, ent->ty)),
-                  "room %u entity %u stands on open ground", r, i);
+            const bool on_trunk = (ent->kind == FT_ENT_TREE);
+
+            /* Fruit hangs on a trunk, which is solid. Everything else has to
+             * stand on ground. */
+            if(on_trunk) {
+                CHECK_EQ(ft_map_tile(room->map, ent->tx, ent->ty), FT_TILE_TRUNK);
+            } else {
+                CHECK(!ft_tile_solid(ft_map_tile(room->map, ent->tx, ent->ty)),
+                      "room %u entity %u stands on open ground", r, i);
+            }
 
             /* Flood from the room's first door and require the entity to be
              * in the same region. */
@@ -549,8 +557,24 @@ static void test_world_tour(void) {
                 }
             }
 
-            CHECK(reach[(uint32_t)ent->ty * m->w + ent->tx],
-                  "room %u entity %u can be walked to", r, i);
+            if(on_trunk) {
+                /* A trunk cannot be stood on, so the test is that you can
+                 * stand somewhere that faces it. */
+                bool beside = false;
+                static const int8_t NEAR[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+                for(uint8_t d = 0; d < 4u; d++) {
+                    const int32_t nx = (int32_t)ent->tx + NEAR[d][0];
+                    const int32_t ny = (int32_t)ent->ty + NEAR[d][1];
+                    if(nx < 0 || ny < 0 || nx >= (int32_t)m->w || ny >= (int32_t)m->h) {
+                        continue;
+                    }
+                    if(reach[(uint32_t)ny * m->w + (uint32_t)nx]) beside = true;
+                }
+                CHECK(beside, "room %u entity %u can be reached", r, i);
+            } else {
+                CHECK(reach[(uint32_t)ent->ty * m->w + ent->tx],
+                      "room %u entity %u can be walked to", r, i);
+            }
 
             /* And so can every exit, or the chain is broken inside a room. */
             for(uint8_t x = 0; x < room->exit_count; x++) {
@@ -3336,14 +3360,27 @@ static void test_world_links(void) {
             CHECK(!ft_tile_solid(landing), "room %u exit %u lands on open ground", r, e);
         }
 
-        /* Foes must stand on walkable ground, or they can never be reached. */
         for(uint8_t i = 0; i < room->ent_count; i++) {
             const FtEntity* ent = &room->ents[i];
             const FtTile t = ft_map_tile(room->map, ent->tx, ent->ty);
+
+            if(ent->kind == FT_ENT_TREE) {
+                /* Fruit hangs ON the trunk, which is solid. The tree is map
+                 * tiles now — a trunk you bump into and a canopy you walk
+                 * behind — and this entity is only what is growing on it, so
+                 * you face it and press OK exactly as you would a person. */
+                CHECK_EQ(t, FT_TILE_TRUNK);
+                continue;
+            }
+
+            /* Everything else has to stand on walkable ground, or it can
+             * never be reached. */
             CHECK(!ft_tile_solid(t), "room %u entity %u stands on open ground", r, i);
 
-            CHECK(ft_roster(ent->roster)->count > 0, "room %u entity %u has a group",
-                  r, i);
+            if(ent->kind == FT_ENT_FOE) {
+                CHECK(ft_roster(ent->roster)->count > 0,
+                      "room %u entity %u has a group", r, i);
+            }
         }
     }
 
@@ -4051,6 +4088,56 @@ static void test_deflect(void) {
     CHECK_EQ(hard.last_enemy_hit.damage, 0);
     CHECK(hard.last_deflect_fired, "and it went back");
 
+    /* ---- a bounce that kills ----
+     *
+     * WIN used to be reachable only from the player's own RESULT phase, so
+     * bouncing the last foe's attack back into it left the player sitting in
+     * a menu with nothing to fight, forever. And a foe killed on their turn
+     * blinked out of existence rather than falling over, because only the
+     * player's swing had a death animation. */
+    FtEncounter kill;
+    ft_encounter_init_single(&kill, FT_ENEMY_STRAY_PACKET, 5);
+    kill.deflect_armed = true;
+    kill.foes[0].charge = 1; /* anything coming back finishes it */
+    kill.phase = FT_PHASE_TELEGRAPH;
+    kill.phase_ms = 0;
+
+    CHECK(telegraph_and_guard(&kill, 20), "the wind-up resolved");
+    CHECK(kill.last_deflect_fired, "and bounced");
+    CHECK_EQ(ft_encounter_living(&kill), 0);
+    CHECK_EQ(kill.phase, FT_PHASE_IMPACT);
+
+    /* It is still on screen, and it is seen to fall. */
+    CHECK(kill.foe_charge_before[0] > 0, "what it had is remembered");
+
+    bool fell = false, vanished_early = false;
+    for(int t = 0; t < 400 && kill.phase == FT_PHASE_IMPACT; t++) {
+        const uint8_t at = ft_encounter_foe_defeat(&kill, 0);
+        if(at > 0u && at < 255u) fell = true;
+        if(at == 0u && !ft_encounter_foe_visible(&kill, 0)) vanished_early = true;
+        ft_encounter_tick(&kill, 10);
+    }
+    CHECK(fell, "it folds up instead of blinking out");
+    CHECK(!vanished_early, "and is never simply gone mid-fall");
+
+    /* And the fight actually ends. */
+    bool won = false;
+    for(int t = 0; t < 2000 && !ft_encounter_over(&kill); t++) {
+        ft_encounter_tick(&kill, 10);
+    }
+    won = (kill.phase == FT_PHASE_WIN);
+    CHECK(won, "a bounce that clears the board wins the fight");
+
+    /* Belt and braces: a menu with nothing alive in it is never a place the
+     * player can be left standing. */
+    FtEncounter stuck;
+    ft_encounter_init_single(&stuck, FT_ENEMY_STRAY_PACKET, 5);
+    stuck.foes[0].charge = 0;
+    stuck.phase = FT_PHASE_MENU;
+    stuck.phase_ms = 0;
+    ft_encounter_tick(&stuck, 10);
+    CHECK_EQ(stuck.phase, FT_PHASE_WIN);
+
     /* Every reason it can refuse fits one line. */
     FtEncounter say;
     ft_encounter_init_single(&say, FT_ENEMY_STRAY_PACKET, 5);
@@ -4583,7 +4670,7 @@ static void test_items(void) {
     CHECK(ft_world_bearing(&packed, (uint8_t)at),
           "a tree you cannot carry from keeps its fruit");
 
-    /* A tree is something you walk around, and a picked one is not. */
+    /* A trunk is something you walk around, picked or not: it is a tree. */
     FtWorld bump;
     ft_world_init(&bump);
     ft_world_enter(&bump, 0, (uint8_t)(first->ents[at].tx - 1u), first->ents[at].ty);
@@ -4596,8 +4683,9 @@ static void test_items(void) {
 
     ft_world_clear_entity(&bump, (uint8_t)at);
     for(int t = 0; t < 120; t++) ft_world_update(&bump, 1, 0, 20);
-    CHECK(bump.mv.tx > (uint8_t)(first->ents[at].tx - 1u),
-          "once it is picked you can walk through where it was");
+    CHECK_EQ(bump.mv.tx, (uint8_t)(first->ents[at].tx - 1u));
+    CHECK_EQ(ft_map_tile(ft_world_map(&bump), first->ents[at].tx, first->ents[at].ty),
+             FT_TILE_TRUNK);
 
     /* And they ride the save, like everything else the run earned. */
     FtWorld carry;

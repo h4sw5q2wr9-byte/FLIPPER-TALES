@@ -24,6 +24,11 @@ LEGEND = {
     "Y": 12, # pylon    (Signal Hill)
     "s": 13, # static   (The Deadzone)
     "G": 14, # gate     (a way somebody is holding shut)
+    "t": 15, # trunk    (lowercase: "T" is already the terminal)
+    "l": 16, # leaf     (canopy, walkable, drawn in front)
+    "h": 17, # hut      (a building's wall)
+    "r": 18, # roof     (walkable, drawn in front)
+    "d": 19, # hut door (scenery, solid: nothing here goes indoors)
 }
 
 MAPS = {}
@@ -35,52 +40,70 @@ MAPS = {}
 # 2.5-screen open fields the first sketch used.
 
 # [1] Wake. No foe, no obstacle: a terminal to teach saving and one exit.
-MAPS["cb1"] = ("Cold Boot", 10, """
-################
-#..............#
-#...T..........#
-#..............D
-#..............#
-#.........C....#
-#..............#
-################
+#
+# The Carrier has been dead long enough that things grow in it, which is the
+# one piece of the premise that has to land before anything else: the tree and
+# the grass bed are in the first room you ever see, lit by the hole they came
+# in through. Everything mechanical is on the left, everything alive on the
+# right, and the door is past both.
+MAPS["cb1"] = ("Cold Boot", 0, """
+##################
+#................#
+#..T.............#
+#.......C........#
+#................D
+#....***lll***...#
+#....***lll***...#
+#....***ltl***...#
+#................#
+##################
 """)
 
 # [2] First encounter. Wider than a screen so the foe is seen before it is
 # reached, which is the whole point of visible encounters.
-MAPS["cb2"] = ("Boot Corridor", 18, """
+#
+# The conduit run is the room's spine: it comes down the left wall and turns
+# along the top, so the corridor has a direction even where the floor is
+# empty. The one thing standing in the middle of it is the thing you fight.
+MAPS["cb2"] = ("Boot Corridor", 8, """
 ####################
-#..................#
-D.........*........#
-#....C.......*.....#
-#..................D
-#........*.........#
+#....==============#
+D....=.............#
+#..C.=....***......#
+#....=....***......D
+#....=....***......#
 #..................#
 ####################
 """)
 
 # [3] Vertical section. A terrace splits the room and the ladder is the only
-# way down; the item on the upper shelf is passed before it can be taken.
-MAPS["cb3"] = ("The Drop", 22, """
+# way down; the foe on the upper shelf is passed before it can be avoided.
+#
+# The terminal is on the LOWER floor, past the drop. Save points sit after the
+# commitment, never before it.
+MAPS["cb3"] = ("The Drop", 8, """
 ##################
 #................#
-D....*...........#
+D....C...........#
 #................#
-#......C.........#
+#.......***......#
 #####H############
 #................#
-#................#
-#.........T......#
-#................#
-#................D
-#....*...........#
+#......lll....T..#
+#......lll.......#
+#......ltl.......#
+#...***..........D
+#...***..........#
 #................#
 ##################
 """)
 
 # [4] The gate. A sealed side room behind a locked port, which cannot be opened
 # until the iButton several chapters later — the reason to come back.
-MAPS["cb4"] = ("Cold Gate", 14, """
+#
+# The chamber is drawn as a room with a barred way in rather than as a blank
+# patch of wall, so what you are being refused is legible from outside it.
+MAPS["cb4"] = ("Cold Gate", 6, """
 ##################
 #................#
 D................#
@@ -89,7 +112,7 @@ D................#
 #.....L.....C....#
 #.....#..........#
 #.....############
-#......*.........D
+#................D
 ##################
 """)
 
@@ -101,46 +124,79 @@ D................#
 # The shape is the point: a fork you walk past, a gate that will not open,
 # and the fork again — now with a reason. Nothing here is locked with a key.
 
-# [10] The Approach. Three ways out: back to the prologue, east to the gate,
-# and a dark drop south that the Courier refuses until somebody gives them a
-# reason to go down there.
-MAPS["ap1"] = ("The Approach", 16, """
-####################
-#..................#
-D.......C..........#
-#...*..........*...#
-#........#H#.......#
-#........#H#.......D
-#........#H#.......#
-#........#H#.......#
-##########D#########
+# ---- Chapter 1: Weldhome -----------------------------------------------
+#
+# The first place in this game with people in it. See STORY.md 6.
+#
+# The shape is the point: a fork you walk past, a gate that will not open,
+# and the fork again — now with a reason. Nothing here is locked with a key.
+
+# [10] The Approach. Outside, and drawn the way outside is drawn: a field of
+# grass with one worn path cut through it. The path is the room's instruction
+# — it runs west to east, door to door, and everything you might stop for is
+# a step off it.
+#
+# The middle tree stands ON the path with its canopy across it, so the first
+# thing you do out here is walk under leaves and watch yourself show through
+# them. The drop south is a framed shaft off the same path: visibly a way, and
+# visibly not one you have a reason to take yet.
+MAPS["ap1"] = ("The Approach", 0, """
+########################
+#**********************#
+#*lll*************lll**#
+#*lll**lll********lll**#
+#*ltl**lll********ltl**#
+D......ltl.............D
+#*********#H#**********#
+#*lll*****#H#*****lll**#
+#*lll*****#H#*****lll**#
+#*ltl*****#H#*****ltl**#
+###########D############
 """)
 
-# [11] Weldhome Gate. A junction village built into the Carrier, with the way
-# through held shut. Warden Coll stands in front of it.
-MAPS["wh1"] = ("Weldhome Gate", 12, """
-####################
-#....##......##..###
-#....##..T...##....#
-D..............##..#
-#..................G
-#....##......##..###
-#..*.##..**..##....#
-####################
+# [11] Weldhome Gate. A junction village, laid out the way a village is: the
+# road comes in the west gate and goes out the east one, the houses face the
+# road across a strip of swept ground, and the square with the well of this
+# world — a terminal — is off to the side of it.
+#
+# Two houses, each with its door onto the road, because a building with no
+# door in it reads as a crate with a roof on. The way through is a GATE rather
+# than a doorway, so a route held shut against you never looks like one you
+# simply have not tried.
+MAPS["wh1"] = ("Weldhome Gate", 0, """
+########################
+#**rrrr******rrrr******#
+#**rrrr******rrrr******#
+#**hhdh******hhdh******#
+#**....******....******#
+D......................G
+#**lll****......***lll*#
+#**lll****..T...***lll*#
+#**ltl****......***ltl*#
+#**********************#
+########################
 """)
 
 # [12] East Junction. Down, dark, and full of the things that took Wren.
-# The wreckage funnels you into one approach, which is what makes the group
-# at the far end a wall rather than a crowd.
-MAPS["ej1"] = ("East Junction", 20, """
-##########DD########
-#........DD........#
-#...SS.........SS..#
-#..SSSS...S...SSS..#
-#.........S........#
-#...SS....S....S...#
-#..................#
-####################
+#
+# Below ground, so no grass and no sky: bare deck, heaped wreckage and a
+# bulkhead straight down the middle with a single gap punched in the bottom of
+# it. That gap is why the thing at the far end is a wall and not a crowd —
+# there is no route round it, so the fight IS the room. Everything on the way
+# to the gap (the heaps, the cache, the one tree still alive down here) is
+# passed on a route you have no choice about.
+MAPS["ej1"] = ("East Junction", 10, """
+#####D##################
+#............#.........#
+#..lll.......#....SS...#
+#..lll.......#...SSSS..#
+#..ltl....SS.#....SS...#
+#.........SS.#.........#
+#..SS........#...lll...#
+#.SSSS.......#...lll...#
+#..SS............ltl...#
+#............#.........#
+########################
 """)
 
 
@@ -236,7 +292,7 @@ Dss~~ssssCsss~~~sssss#
 """)
 
 
-SOLID = {1, 2, 8, 10, 12}  # wall, void, crate, scrap, pylon
+SOLID = {1, 2, 8, 10, 12, 15, 17, 19}  # wall, void, crate, scrap, pylon, trunk, hut, hut door
 DOOR = 5
 GATE = 14  # a way out, like a door, and allowed on a border
 

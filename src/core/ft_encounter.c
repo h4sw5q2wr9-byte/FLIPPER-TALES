@@ -470,6 +470,10 @@ static void gain_ram(FtEncounter* e, int16_t amount) {
 
 /* Apply one attack to one foe, recording the per-foe result. */
 uint8_t ft_encounter_foe_hit_at(const FtEncounter* e, uint8_t i) {
+    /* Their turn: whatever came back lands on the strike frame, because the
+     * arena is showing their attack and not your menu choice. */
+    if(e->phase == FT_PHASE_IMPACT) return FT_ANIM_STRIKE;
+
     /* A single-target attack lands on the strike frame. A broadcast is a
      * signal crossing the arena, so each foe is struck as it is reached:
      * leftmost first, rightmost last, spread across the strike window. */
@@ -492,7 +496,7 @@ static bool pre_strike_for(const FtEncounter* e, uint8_t i) {
 
 int16_t ft_encounter_foe_shown_charge(const FtEncounter* e, uint8_t i) {
     if(i >= FT_MAX_ENEMIES) return 0;
-    if(e->phase == FT_PHASE_RESULT && pre_strike_for(e, i)) return e->foe_charge_before[i];
+    if(pre_strike_for(e, i)) return e->foe_charge_before[i];
     return e->foes[i].charge;
 }
 
@@ -512,7 +516,11 @@ int16_t ft_encounter_xp(const FtEncounter* e) {
 uint8_t ft_encounter_foe_defeat(const FtEncounter* e, uint8_t i) {
     if(i >= e->foe_count) return 0u;
     if(e->foes[i].charge > 0) return 0u;
-    if(e->phase != FT_PHASE_RESULT) return 0u;
+
+    /* IMPACT as well as RESULT: a deflection kills on *their* turn, and a foe
+     * that dies then used to blink out of existence on the frame its bar
+     * emptied, because only the player's own swing had a death animation. */
+    if(e->phase != FT_PHASE_RESULT && e->phase != FT_PHASE_IMPACT) return 0u;
 
     /* Only the foe this attack just killed: one that was already down when
      * the turn started has finished falling. */
@@ -537,9 +545,12 @@ bool ft_encounter_foe_visible(const FtEncounter* e, uint8_t i) {
     if(i >= e->foe_count) return false;
     if(e->foes[i].charge > 0) return true;
 
-    /* Killed by the attack currently in flight: keep it up until the signal
-     * actually reaches it, and then for as long as it takes to fall over. */
-    return e->phase == FT_PHASE_RESULT && e->foe_charge_before[i] > 0 &&
+    /* Killed by the attack currently in flight — yours or the one you sent
+     * back — so keep it up until the signal actually reaches it, and then
+     * for as long as it takes to fall over. */
+    if(e->phase != FT_PHASE_RESULT && e->phase != FT_PHASE_IMPACT) return false;
+
+    return e->foe_charge_before[i] > 0 &&
            (pre_strike_for(e, i) || ft_encounter_foe_defeat(e, i) < 255u);
 }
 
@@ -768,6 +779,13 @@ static void deflect_back(FtEncounter* e, const FtAttack* atk) {
     /* It is a bounce, not a swing: no action command, so no rating bonus. */
     const int16_t before = e->last_total_damage;
     e->last_total_damage = 0;
+
+    /* What each foe had before the bounce, so one the bounce kills is seen
+     * to fall instead of blinking out. resolve_player_action does this for
+     * the player's own swing; nothing did it for a deflection. */
+    for(uint8_t i = 0; i < FT_MAX_ENEMIES; i++) {
+        e->foe_charge_before[i] = e->foes[i].charge;
+    }
 
     if(back.delivery == FT_DELIVERY_BROADCAST) {
         for(uint8_t i = 0; i < e->foe_count; i++) {
@@ -1005,8 +1023,12 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
 
     switch(e->phase) {
     case FT_PHASE_MENU:
-        /* The roll is deliberately paused while the player deliberates, so
-         * thinking never costs Charge. */
+        /* A last line of defence: whatever route emptied the board, a menu
+         * with nothing to fight is a soft lock. */
+        if(ft_encounter_living(e) == 0u) enter_phase(e, FT_PHASE_WIN);
+
+        /* Otherwise the roll is deliberately paused while the player
+         * deliberates, so thinking never costs Charge. */
         break;
 
     case FT_PHASE_PLAYER_ACT:
@@ -1063,8 +1085,16 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         if(ft_roll_down(&e->roll)) {
             enter_phase(e, FT_PHASE_LOSE);
         } else if(!ft_roll_active(&e->roll)) {
-            /* Each foe acts in turn before the player moves again. */
-            advance_foe_turn(e, (uint8_t)(e->acting_foe + 1u));
+            /* A deflection can empty the board on *their* turn. WIN used to
+             * be reachable only from the player's own RESULT phase, so
+             * bouncing the last foe's attack back into it left the player
+             * sitting in a menu with nothing to fight, forever. */
+            if(ft_encounter_living(e) == 0u) {
+                enter_phase(e, FT_PHASE_WIN);
+            } else {
+                /* Each foe acts in turn before the player moves again. */
+                advance_foe_turn(e, (uint8_t)(e->acting_foe + 1u));
+            }
         }
         break;
     }

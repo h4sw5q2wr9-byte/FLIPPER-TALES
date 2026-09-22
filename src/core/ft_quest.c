@@ -96,10 +96,23 @@ int ft_quest_for_room(uint8_t room) {
  * Every line is at most 20 characters — the panel's width budget — and a
  * test walks every branch of every conversation and measures them.
  *
- * Beats alternate on purpose. The old version was three lines in a box with
+ * Beats alternate on purpose. The first version was three lines in a box with
  * the quest's name over them, so only one person ever spoke and the player
- * never answered; these read as two people talking, and the one that
- * matters ends on a question. */
+ * never answered.
+ *
+ * The second version alternated but still read like a machine: every line was
+ * a clipped three-word fragment, nobody used a contraction, and all three
+ * characters had the same flat voice. Twenty characters a line is a tight
+ * budget, and the trap it sets is writing stubs. A beat has TWO lines, which
+ * is forty characters — enough for a whole sentence, spoken the way a person
+ * would speak it — and the lines below use both wherever the sentence wants
+ * the room.
+ *
+ * Each of the three has a voice of their own, because that is most of what
+ * makes written dialogue read as people: the Keeper is dry and old and has
+ * decided to look after you; Coll is frightened and busy and says so by
+ * being short with you; Wren is a kid, so she says too much and then says
+ * something true by accident. */
 
 #define TALK(spk, arr) {spk, arr, (uint8_t)(sizeof(arr) / sizeof((arr)[0])), \
                         false, NULL, NULL}
@@ -111,34 +124,40 @@ int ft_quest_for_room(uint8_t room) {
 static const char* KEEPER = "The Keeper";
 
 static const FtBeat KEEPER_OFFER[] = {
-    {FT_SAY_THEM, "You're awake.", NULL},
-    {FT_SAY_THEM, "Took its time.", NULL},
+    {FT_SAY_THEM, "Well. Look at that.", "You're up."},
+    {FT_SAY_YOU,  "How long was I out?", NULL},
+    {FT_SAY_THEM, "Long enough that I", "stopped checking."},
     {FT_SAY_YOU,  "Where is this?", NULL},
-    {FT_SAY_THEM, "Cold Boot. The end", "of a dead line."},
-    {FT_SAY_THEM, "Do one thing for me.", NULL},
-    {FT_SAY_THEM, "Touch the Cold Gate,", "come back. No fights"},
+    {FT_SAY_THEM, "Cold Boot. Last stop", "on a line that died."},
+    {FT_SAY_THEM, "Do me a favour and", "I'll see you paid."},
+    {FT_SAY_YOU,  "What sort of favour?", NULL},
+    {FT_SAY_THEM, "Go east to the Gate", "and back. No fights."},
 };
 
 static const FtBeat KEEPER_ON[] = {
     {FT_SAY_THEM, "Still no fights?", NULL},
-    {FT_SAY_YOU,  "Still walking.", NULL},
-    {FT_SAY_THEM, "Gate's four rooms", "east. Go on."},
+    {FT_SAY_YOU,  "None yet.", NULL},
+    {FT_SAY_THEM, "Four rooms east.", "Four rooms back."},
+    {FT_SAY_THEM, "The walking out is", "the easy half."},
 };
 
 static const FtBeat KEEPER_FAILED[] = {
-    {FT_SAY_THEM, "You fought one.", NULL},
-    {FT_SAY_YOU,  "It found me.", NULL},
-    {FT_SAY_THEM, "Then start again.", NULL},
+    {FT_SAY_THEM, "You've been in a", "fight. I can tell."},
+    {FT_SAY_YOU,  "It found me first.", NULL},
+    {FT_SAY_THEM, "They do that.", NULL},
+    {FT_SAY_THEM, "Start again when", "you're ready to."},
 };
 
 static const FtBeat KEEPER_PAID[] = {
-    {FT_SAY_THEM, "Clean the whole way.", NULL},
-    {FT_SAY_YOU,  "Nothing touched me.", NULL},
-    {FT_SAY_THEM, "Two orbs. Take them.", NULL},
+    {FT_SAY_THEM, "All the way out and", "back, untouched."},
+    {FT_SAY_YOU,  "Nothing laid a hand", "on me."},
+    {FT_SAY_THEM, "Then I owe you.", NULL},
+    {FT_SAY_THEM, "Two orbs. Don't", "spend them all here."},
 };
 
 static const FtBeat KEEPER_DONE[] = {
-    {FT_SAY_THEM, "Nothing else today.", NULL},
+    {FT_SAY_THEM, "That's all I have", "to give you."},
+    {FT_SAY_THEM, "Go carefully.", NULL},
 };
 
 /* ---- Warden Coll, at Weldhome's gate ---- */
@@ -146,35 +165,42 @@ static const FtBeat KEEPER_DONE[] = {
 static const char* COLL = "Warden Coll";
 
 static const FtBeat COLL_OFFER[] = {
-    {FT_SAY_THEM, "Gate's shut.", NULL},
-    {FT_SAY_YOU,  "I'm passing through.", NULL},
-    {FT_SAY_THEM, "You move like them.", "Like what takes us."},
+    {FT_SAY_THEM, "Gate's shut. Week", "now, going on two."},
+    {FT_SAY_YOU,  "I just want through.", NULL},
+    {FT_SAY_THEM, "So does everybody.", NULL},
+    {FT_SAY_THEM, "You move like the", "things that take us."},
     {FT_SAY_YOU,  "I'm not one of them.", NULL},
-    {FT_SAY_THEM, "Prove it. A kid went", "east two days back."},
-    {FT_SAY_THEM, "Bring Wren home and", "the gate opens."},
+    {FT_SAY_THEM, "Then prove it to me.", NULL},
+    {FT_SAY_YOU,  "How?", NULL},
+    {FT_SAY_THEM, "A girl went east.", "Bring Wren home."},
 };
 
 static const FtBeat COLL_ON[] = {
-    {FT_SAY_THEM, "Down the shaft, then", "east. She knew."},
-    {FT_SAY_YOU,  "I'll find her.", NULL},
+    {FT_SAY_THEM, "Down the shaft, then", "east. She knew it."},
+    {FT_SAY_YOU,  "Why would she go", "down there?"},
+    {FT_SAY_THEM, "Because I told her", "not to."},
 };
 
 static const FtBeat COLL_FAILED[] = {
-    {FT_SAY_THEM, "Still a kid out", "there, unit."},
+    {FT_SAY_THEM, "She's still out", "there, isn't she."},
     {FT_SAY_YOU,  "I know.", NULL},
+    {FT_SAY_THEM, "Then don't stand", "here telling me."},
 };
 
 static const FtBeat COLL_PAID[] = {
-    {FT_SAY_THEM, "Wren. Get inside.", NULL},
+    {FT_SAY_THEM, "Wren. Inside. Now.", NULL},
     {FT_SAY_YOU,  "She isn't hurt.", NULL},
-    {FT_SAY_THEM, "Gate's open, unit.", NULL},
+    {FT_SAY_THEM, "I can see that.", NULL},
+    {FT_SAY_THEM, "Gate's open to you.", NULL},
+    {FT_SAY_YOU,  "Just like that?", NULL},
     {FT_SAY_THEM, "You're not the first", "one through here."},
-    {FT_SAY_YOU,  "...Who was?", NULL},
-    {FT_SAY_THEM, "Ask me when you've", "seen the spans.", },
+    {FT_SAY_YOU,  "Who was?", NULL},
+    {FT_SAY_THEM, "Ask me again when", "you've seen a span."},
 };
 
 static const FtBeat COLL_DONE[] = {
-    {FT_SAY_THEM, "Gate's open.", NULL},
+    {FT_SAY_THEM, "Gate's open. Go on.", NULL},
+    {FT_SAY_YOU,  "Thanks.", NULL},
     {FT_SAY_THEM, "Mind the spans.", NULL},
 };
 
@@ -183,21 +209,25 @@ static const FtBeat COLL_DONE[] = {
 static const char* WREN = "Wren";
 
 static const FtBeat WREN_FOUND[] = {
-    {FT_SAY_THEM, "You're one of them.", NULL},
-    {FT_SAY_YOU,  "No.", NULL},
-    {FT_SAY_THEM, "...No. You're not.", NULL},
-    {FT_SAY_THEM, "Take me home?", NULL},
+    {FT_SAY_THEM, "Stay back. I mean", "it. Stay back."},
+    {FT_SAY_YOU,  "Coll sent me.", NULL},
+    {FT_SAY_THEM, "...Coll sent you.", NULL},
+    {FT_SAY_YOU,  "She's angry.", NULL},
+    {FT_SAY_THEM, "She's always angry.", NULL},
+    {FT_SAY_THEM, "That's how I know", "you're not lying."},
+    {FT_SAY_YOU,  "Can you walk?", NULL},
+    {FT_SAY_THEM, "I can run.", NULL},
 };
 
 static const FtBeat WREN_WAIT[] = {
-    {FT_SAY_THEM, "Don't.", NULL},
+    {FT_SAY_THEM, "Whoever you are,", "go away."},
 };
 
 /* ---- Dispatch ---------------------------------------------------------- */
 
 static FtTalk keeper_talk(FtQuestState at) {
     switch(at) {
-    case FT_QUEST_UNKNOWN: return (FtTalk)ASK(KEEPER, KEEPER_OFFER, "Fine", "Not now");
+    case FT_QUEST_UNKNOWN: return (FtTalk)ASK(KEEPER, KEEPER_OFFER, "All right", "Later");
     case FT_QUEST_ACTIVE:  return (FtTalk)TALK(KEEPER, KEEPER_ON);
     case FT_QUEST_FAILED:  return (FtTalk)TALK(KEEPER, KEEPER_FAILED);
     case FT_QUEST_READY:   return (FtTalk)TALK(KEEPER, KEEPER_PAID);
@@ -208,7 +238,7 @@ static FtTalk keeper_talk(FtQuestState at) {
 
 static FtTalk coll_talk(FtQuestState at) {
     switch(at) {
-    case FT_QUEST_UNKNOWN: return (FtTalk)ASK(COLL, COLL_OFFER, "I'll go", "No");
+    case FT_QUEST_UNKNOWN: return (FtTalk)ASK(COLL, COLL_OFFER, "I'll go", "I can't");
     case FT_QUEST_ACTIVE:  return (FtTalk)TALK(COLL, COLL_ON);
     case FT_QUEST_FAILED:  return (FtTalk)TALK(COLL, COLL_FAILED);
     case FT_QUEST_READY:   return (FtTalk)TALK(COLL, COLL_PAID);

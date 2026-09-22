@@ -143,42 +143,23 @@ static const uint16_t FT_SPRITE_WARDEN[FT_SPRITE_H] = {
     0x0C30,
 };
 
-static const uint16_t FT_SPRITE_TREE[FT_SPRITE_H] = {
-    0x07E0,
-    0x1FF8,
-    0x3FFC,
-    0x77EE,
-    0x6DB6,
-    0x77EE,
-    0x7FFE,
-    0x3FFC,
-    0x1FF8,
-    0x07E0,
-    0x0180,
-    0x0180,
+static const uint16_t FT_SPRITE_FRUIT[FT_SPRITE_H] = {
+    0x0000,
+    0x0000,
     0x0180,
     0x03C0,
     0x07E0,
-    0x0FF0,
-};
-
-static const uint16_t FT_SPRITE_TREE_BARE[FT_SPRITE_H] = {
+    0x0C30,
+    0x0810,
+    0x0810,
+    0x0C30,
     0x07E0,
-    0x1FF8,
-    0x3FFC,
-    0x7FFE,
-    0x7FFE,
-    0x7FFE,
-    0x7FFE,
-    0x3FFC,
-    0x1FF8,
-    0x07E0,
-    0x0180,
-    0x0180,
-    0x0180,
     0x03C0,
-    0x07E0,
-    0x0FF0,
+    0x0180,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
 };
 
 static const uint16_t FT_SPRITE_CACHE[FT_SPRITE_H] = {

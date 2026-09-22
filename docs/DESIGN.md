@@ -841,6 +841,20 @@ turn it is before you read the name. Pips along the bottom show how far
 through you are, because a conversation you cannot see the end of is one you
 start mashing through.
 
+The structure being right did not make the writing right. The first alternating
+draft still read as a machine: every beat was a clipped three-word fragment,
+nobody used a contraction, and all three characters had the same flat voice.
+Twenty characters a line is a tight budget and the trap it sets is writing
+stubs — but a beat has **two** lines, which is forty characters, enough for a
+whole sentence said the way a person says it. The lines use both wherever the
+sentence wants the room.
+
+The rest is voice, which is most of what makes written dialogue read as
+people. The Keeper is dry and old and has decided to look after you. Coll is
+frightened and busy and shows it by being short with you. Wren is a kid, so
+she says too much and then says something true by accident. Three characters
+who would not swap lines is worth more than any amount of lore.
+
 **Talking changes nothing.** `ft_quest_talk` is pure; `ft_quest_answer`
 applies. That is what lets a player back out of a question they did not mean
 to open, and it is why Back at any point is simply leaving.
@@ -1189,8 +1203,82 @@ row-major — the format production maps will stream from the SD card, so nothin
 about the renderer changes when they do. Maps, tiles and sprites are all
 authored as editable ASCII under `tools/`.
 
-Ten tiles: floor, wall, void, grass, cable, door, terminal, locked port, crate,
-ladder.
+Twenty tiles: floor, wall, void, grass, cable, door, terminal, locked port,
+crate, ladder; one ground or obstacle per chapter (scrap, frost, pylon,
+static); a gate; and the pieces things are built out of — trunk, leaf, hut,
+roof, hut door.
+
+#### Things with a top and a bottom
+
+A tree used to be one 16x16 sprite standing on one tile, which is exactly why
+it read as a lollipop. Anything taller than a person is built out of tiles
+instead, in two layers:
+
+- a **solid** bottom you bump into — trunk, hut wall, hut door;
+- a **walkable foreground** above it — leaf, roof — drawn in a second pass
+  *after* the actors, so you pass behind it.
+
+`ft_tile_foreground()` is the whole rule, and the ground pass draws floor
+under a foreground tile so nothing is left as a hole. The blit only sets
+black pixels, so whoever is under a canopy shows through it rather than
+vanishing: the canopy art is an even checkerboard, which on a one-bit panel
+is mid grey — the only fill that is both solid enough to read as leaves from
+across the room and open enough to see a person through.
+
+**A tree is a 3x3 stamp**: a crown of leaves with the trunk at its bottom
+middle. Two other shapes were tried and are worth recording, because both
+looked wrong for reasons that are not obvious on paper — a 3-wide, 2-tall
+slab above a stem read as a table, and putting the trunk in the *centre* of
+the 3x3 (which is the shape that makes the tile-solidity rule cleanest) read
+as a barrel, because a dark column with the crown cut off around it is not a
+silhouette anything in nature has.
+
+Since a tree is always the same stamp, the four outer corners of the crown
+take **rounded copies** of the leaf tile, cut with a quarter circle and
+picked from the neighbours in `ft_map_art_index` — the same trick that gives
+a wall its cap and a door its side-on face. Maps stay one byte per tile and
+authors keep stamping plain leaves. Without it a tree is a 24x24 rectangle,
+and a dark rectangle in a field reads as a building.
+
+At 8x8 there is no room for detail to tell a wall, a roof and a canopy apart,
+so they are told apart by **direction** instead: the hut is vertical boards,
+the roof is horizontal courses, the canopy is an even checker. That survives
+being one bit deep and reads at a glance.
+
+#### Laying out a room
+
+The first pass at these rooms was a rectangle of floor with single tiles of
+grass sprinkled through it and a tree parked wherever there was space. It
+rendered as noise: nothing in it said where to walk, so every room read as
+the same empty box with different litter in it.
+
+Four rules, none of them new — they are what the genre has always done:
+
+- **Ground says where you are; a path says where to go.** Outdoors is a field
+  of grass with one worn strip of floor cut through it, door to door. Indoors
+  is bare deck. You can walk on the grass, and that is the point: the path is
+  a suggestion, so stepping off it is a decision.
+- **Vegetation comes in patches, never in single tiles.** One grass tile in a
+  floor reads as a stain. A block of them reads as a place things grow. The
+  procedural weed scatter (`ft_map_scatter`) is for *floor*, and outdoor rooms
+  turn it off — a swept path with weeds all over it is not a path.
+- **Buildings have doors in them.** A roof over a wall with no opening is a
+  crate with a hat on. Weldhome's two houses face the road across a strip of
+  swept ground, which is what makes the road a road.
+- **Nothing stands against the map border.** A canopy that touches the top
+  wall merges into it and stops being a tree.
+
+Room shapes carry the same load they always did. The Approach forks — west,
+east, and a framed shaft south you have no reason to take yet — and the fork
+is legible because the path branches, not because a wall is missing. East
+Junction is a bulkhead straight down the middle with one gap punched in the
+bottom of it, which is what makes the thing at the far end a wall rather than
+a crowd: there is no route round it, so the fight *is* the room.
+
+One tree in The Approach stands in the middle of the path with its crown
+across it. That is deliberate and it is the first thing you meet outdoors:
+you walk round the trunk, through the leaves, and watch yourself show through
+the canopy. It teaches the foreground layer without a line of text.
 
 #### One hero, both scenes
 

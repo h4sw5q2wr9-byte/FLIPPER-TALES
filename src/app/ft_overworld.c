@@ -279,6 +279,16 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
             /* Art index, not the raw tile: walls, doors, locked ports and
              * conduit all pick their art from their neighbours (see
              * ft_map_art_index). */
+            const FtTile here = ft_map_tile(map, mx, my);
+
+            if(ft_tile_foreground(here)) {
+                /* A canopy or a roof is drawn last, over the actors. What
+                 * goes down here is the ground it is hanging over. */
+                blit_rows(canvas, FT_TILE_ART[FT_TILE_FLOOR], FT_TILE_PX, sx, sy,
+                          FT_TILE_PX);
+                continue;
+            }
+
             blit_rows(
                 canvas, FT_TILE_ART[ft_map_art_index(map, mx, my)], FT_TILE_PX, sx, sy,
                 FT_TILE_PX);
@@ -315,10 +325,13 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
 
             if(room->ents[i].kind == FT_ENT_CACHE && !bearing) continue;
 
+            /* Nothing on the tree means nothing to draw: the tree itself
+             * is map tiles, and this is only what is growing in it. */
+            if(!bearing) continue;
+
             draw_foe(canvas,
-                     (room->ents[i].kind == FT_ENT_CACHE) ? FT_SPRITE_CACHE :
-                     bearing                              ? FT_SPRITE_TREE :
-                                                            FT_SPRITE_TREE_BARE,
+                     (room->ents[i].kind == FT_ENT_CACHE) ? FT_SPRITE_CACHE
+                                                          : FT_SPRITE_FRUIT,
                      (int32_t)room->ents[i].tx * FT_TILE_PX - cam.x,
                      (int32_t)room->ents[i].ty * FT_TILE_PX - cam.y);
             continue;
@@ -378,6 +391,25 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
     const int32_t ay = player.y - cam.y;
 
     draw_avatar(canvas, ax, ay, w->facing, bob);
+
+    /* --- the foreground ---
+     *
+     * Canopies and roofs, drawn last so everything walks *behind* them. The
+     * art is gappy and the blit only sets black pixels, so whoever is under
+     * a tree shows through the leaves instead of being swallowed by them.
+     * This is the only thing in the game that gives the overworld depth. */
+    for(int32_t ty = 0; ty <= FT_VIEW_H; ty++) {
+        for(int32_t tx = 0; tx <= FT_VIEW_W; tx++) {
+            const int32_t mx = first_tx + tx;
+            const int32_t my = first_ty + ty;
+
+            const FtTile t = ft_map_tile(map, mx, my);
+            if(!ft_tile_foreground(t)) continue;
+
+            blit_rows(canvas, FT_TILE_ART[t], FT_TILE_PX, tx * FT_TILE_PX - off_x,
+                      ty * FT_TILE_PX - off_y, FT_TILE_PX);
+        }
+    }
 
     /* Area name, in a cleared strip so it stays legible over any tile. It
      * retires after a couple of seconds rather than occupying the corner for

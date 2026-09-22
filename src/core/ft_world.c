@@ -56,26 +56,33 @@ typedef char ft_roster_count_matches[(ROSTER_COUNT == FT_ROSTER_COUNT) ? 1 : -1]
  * anything. No foe — the first room teaches walking, saving and talking,
  * nothing else. */
 static const FtExit CB1_EXITS[] = {
-    {15, 3, 1, 1, 2, 0, 0},
+    {17, 4, 1, 1, 2, 0, 0},
 };
 static const FtEntity CB1_ENTS[] = {
     /* Two tiles from where you wake up, off the line to the door, so you
      * meet them by choice rather than by walking into them. */
-    {FT_ENT_NPC, 7, 2, FT_QUEST_CLEAN_RUN},
+    {FT_ENT_NPC, 6, 2, FT_QUEST_CLEAN_RUN},
 
-    /* The first tree, in the first room, right next to the terminal that
-     * teaches saving. Picking it is how you learn picking exists. */
-    {FT_ENT_TREE, 11, 5, FT_ITEM_APPLE},
+    /* The first tree, in the first room, in sight of the terminal that
+     * teaches saving. Picking it is how you learn picking exists.
+     *
+     * The entity sits ON the trunk tile, which is solid — so you face it and
+     * press OK, exactly like talking to somebody. The tree itself is map
+     * tiles now (a trunk you bump into, a canopy you walk behind); this is
+     * only the fruit hanging in it. */
+    {FT_ENT_TREE, 9, 7, FT_ITEM_APPLE},
 };
 
 /* [2] Boot Corridor: the first encounter, placed far enough right that it is
  * seen well before it is reached. */
 static const FtExit CB2_EXITS[] = {
-    {0, 2, 0, 14, 3, 0, 0},
+    {0, 2, 0, 16, 4, 0, 0},
     {19, 4, 2, 1, 2, 0, 0},
 };
 static const FtEntity CB2_ENTS[] = {
-    {FT_ENT_FOE, 13, 3, 0},
+    /* Standing in the grass across the middle of the corridor: seen from the
+     * far end, met at your own pace, and impossible to walk past. */
+    {FT_ENT_FOE, 11, 4, 0},
 };
 
 /* [3] The Drop: upper shelf, ladder down, terminal on the lower floor. */
@@ -86,13 +93,13 @@ static const FtExit CB3_EXITS[] = {
 static const FtEntity CB3_ENTS[] = {
     {FT_ENT_FOE, 9, 2, 1},
     {FT_ENT_FOE, 6, 11, 2},
-    {FT_ENT_TREE, 14, 11, FT_ITEM_APPLE},
+    {FT_ENT_TREE, 8, 9, FT_ITEM_APPLE},
 };
 
 /* [4] Cold Gate: a group standing in the exit, the way an area ends. */
 static const FtExit CB4_EXITS[] = {
     {0, 2, 2, 16, 10, 0, 0},
-    {17, 8, 9, 1, 2, 0, 0}, /* out of the prologue, into Chapter 1 */
+    {17, 8, 9, 1, 5, 0, 0}, /* out of the prologue, into Chapter 1 */
 };
 static const FtEntity CB4_ENTS[] = {
     {FT_ENT_FOE, 13, 8, 3},
@@ -117,18 +124,24 @@ static const FtEntity CB4_ENTS[] = {
  * notch in the bottom wall: a route you have no reason to take should look
  * like a route, not like a hole somebody forgot to fill in. */
 static const FtExit AP1_EXITS[] = {
-    {0, 2, 3, 16, 8, 0, 0},
-    {19, 5, 10, 1, 3, 0, 0},
+    {0, 5, 3, 16, 8, 0, 0},
+    {23, 5, 10, 1, 5, 0, 0},
 
     /* The drop. Open from the moment Coll asks, and not before. */
-    {10, 8, 11, 10, 1, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_ACTIVE},
+    {11, 10, 11, 5, 1, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_ACTIVE},
+};
+static const FtEntity AP1_ENTS[] = {
+    /* Both a step off the path, at either end of it. Fruit is worth leaving
+     * the road for and never worth a detour you cannot see the end of. */
+    {FT_ENT_TREE, 3, 4, FT_ITEM_APPLE},
+    {FT_ENT_TREE, 19, 9, FT_ITEM_APPLE},
 };
 
 /* [11] Weldhome Gate. A real gate tile, so a way that is shut against you
  * does not look like an ordinary doorway you have not tried yet. */
 static const FtExit WH1_EXITS[] = {
-    {0, 3, 9, 18, 5, 0, 0},
-    {19, 4, 4, 1, 2, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_DONE},
+    {0, 5, 9, 22, 5, 0, 0},
+    {23, 5, 4, 1, 2, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_DONE},
 };
 static const FtEntity WH1_ENTS[] = {
     /* Beside the gate, not in front of it.
@@ -137,27 +150,30 @@ static const FtEntity WH1_ENTS[] = {
      * gate — so once the quest opened it, she was still bodily in the way
      * and the reward for the whole chapter was a wall with a person on it.
      * NPCs are solid; a guard has to guard from the side. */
-    {FT_ENT_NPC, 18, 3, (uint8_t)FT_QUEST_WREN},
+    {FT_ENT_NPC, 22, 4, (uint8_t)FT_QUEST_WREN},
 
     /* A village grows things and keeps a cell spare. This is the stock-up
      * before the hardest fight in the game, two rooms away. */
-    {FT_ENT_TREE, 3, 6, FT_ITEM_APPLE},
-    {FT_ENT_TREE, 16, 6, FT_ITEM_APPLE},
-    {FT_ENT_CACHE, 9, 2, FT_ITEM_CELL},
+    {FT_ENT_TREE, 4, 8, FT_ITEM_APPLE},
+    {FT_ENT_TREE, 20, 8, FT_ITEM_APPLE},
+    {FT_ENT_CACHE, 13, 8, FT_ITEM_CELL},
 };
 
 /* [12] East Junction. Wren at the far end, behind a wall and two live ones —
  * guarded the way things guard, so the fight cannot be skipped to the end. */
 static const FtExit EJ1_EXITS[] = {
-    {10, 0, 9, 10, 7, 0, 0},
+    {5, 0, 9, 11, 9, 0, 0},
 };
 static const FtEntity EJ1_ENTS[] = {
-    {FT_ENT_FOE, 14, 4, 12},
-    {FT_ENT_WREN, 18, 2, 0},
+    /* In the gap in the ridge, on Wren's side of it. There is no route round
+     * the wreckage, so this is the fight or nothing. */
+    {FT_ENT_FOE, 15, 8, 12},
+    {FT_ENT_WREN, 21, 7, 0},
 
     /* On the way in, before the wall. Whether you spend it now or save it
      * for the fight is the first real pocket decision the game asks. */
-    {FT_ENT_CACHE, 2, 5, FT_ITEM_RATION},
+    {FT_ENT_CACHE, 8, 2, FT_ITEM_RATION},
+    {FT_ENT_TREE, 4, 4, FT_ITEM_APPLE},
 };
 
 
@@ -243,9 +259,9 @@ static const FtRoom FT_ROOMS[] = {
     {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2},
     {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2},
     {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2},
-    {&FT_MAP_AP1, AP1_EXITS, 3, NULL, 0},
+    {&FT_MAP_AP1, AP1_EXITS, 3, AP1_ENTS, 2},
     {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 4},
-    {&FT_MAP_EJ1, EJ1_EXITS, 1, EJ1_ENTS, 3},
+    {&FT_MAP_EJ1, EJ1_EXITS, 1, EJ1_ENTS, 4},
 };
 #define ROOM_COUNT (sizeof(FT_ROOMS) / sizeof(FT_ROOMS[0]))
 
@@ -480,7 +496,7 @@ void ft_world_init(FtWorld* w) {
     /* The first room's terminal is where a new run starts and, until you save
      * somewhere else, where being downed puts you back. */
     w->save_room = 0;
-    w->save_tx = 5;
+    w->save_tx = 3;
     w->save_ty = 3;
 
     ft_world_enter(w, 0, 3, 4);
@@ -848,12 +864,9 @@ static int npc_at_tile(const FtWorld* w, int32_t tx, int32_t ty) {
     for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
         const FtEntKind k = r->ents[i].kind;
 
-        /* Everything you bump into rather than walk through. A tree stops
-         * being solid once it has been picked, so a cleared room does not
-         * keep a stump in the way. */
-        const bool solid = (k == FT_ENT_NPC) ||
-                           (k == FT_ENT_WREN && !w->escort) ||
-                           (k == FT_ENT_TREE && !ft_world_entity_gone(w, i));
+        /* People. A tree is not one of them any more: the trunk is a map
+         * tile and blocks whether or not anything is growing on it. */
+        const bool solid = (k == FT_ENT_NPC) || (k == FT_ENT_WREN && !w->escort);
         if(!solid) continue;
         if((int32_t)r->ents[i].tx == tx && (int32_t)r->ents[i].ty == ty) return (int)i;
     }

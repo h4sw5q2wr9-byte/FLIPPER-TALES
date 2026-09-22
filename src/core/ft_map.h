@@ -78,6 +78,30 @@ typedef enum {
      * closed to you. */
     FT_TILE_GATE,
 
+    /* ---- Things with a top and a bottom -------------------------------
+     *
+     * A tree used to be one 16x16 sprite standing on one tile, which is why
+     * it looked like a lollipop: real trees in this genre are built out of
+     * tiles, with a trunk you bump into and a canopy you walk *behind*.
+     *
+     * The canopy is walkable and drawn in a second pass over the actors, so
+     * the player passes under it. The art has gaps, and blit only sets black
+     * pixels, so whoever is behind it shows through the leaves rather than
+     * disappearing. */
+    FT_TILE_TRUNK, /* solid; the bit you bump into */
+    FT_TILE_LEAF,  /* walkable, drawn in front */
+
+    /* The same trick for buildings: a wall you bump into and a roof you walk
+     * behind, which is what gives a village any depth at all. */
+    FT_TILE_HUT,   /* solid wall */
+    FT_TILE_ROOF,  /* walkable, drawn in front */
+
+    /* A doorway in a hut wall. Solid, because it is scenery: nothing in this
+     * game goes indoors. It exists because a row of houses with no doors in
+     * them reads as crates with roofs on, and a village has to read as a
+     * place people live before anyone will believe the people. */
+    FT_TILE_HUT_DOOR,
+
     FT_TILE_COUNT
 } FtTile;
 
@@ -106,7 +130,16 @@ typedef enum {
 /* A gate in a vertical wall, same idea as the side door. */
 #define FT_TILE_ART_GATE_SIDE (FT_TILE_COUNT + 6)
 
-#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 7)
+/* The four outer corners of a canopy, rounded off. A tree is stamped as a 3x3
+ * block of one leaf tile, and a 3x3 block of anything is a square; a dark
+ * square standing in a field reads as a building, not as a tree. Picked from
+ * the neighbours here rather than authored, so maps stay one byte per tile. */
+#define FT_TILE_ART_LEAF_TL   (FT_TILE_COUNT + 7)
+#define FT_TILE_ART_LEAF_TR   (FT_TILE_COUNT + 8)
+#define FT_TILE_ART_LEAF_BL   (FT_TILE_COUNT + 9)
+#define FT_TILE_ART_LEAF_BR   (FT_TILE_COUNT + 10)
+
+#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 11)
 
 /* Maps are stored as one byte per tile, streamed from the SD card. Kept as a
  * borrowed pointer so a map is never copied into RAM wholesale. */
@@ -165,6 +198,11 @@ bool ft_map_side_passage(const FtMap* m, int32_t tx, int32_t ty);
 
 /* Does this tile stop movement? */
 bool ft_tile_solid(FtTile t);
+
+/* Drawn over the actors rather than under them, so you can walk behind it.
+ * The art has gaps and the blit only sets black pixels, so you are seen
+ * through the leaves rather than swallowed by them. */
+bool ft_tile_foreground(FtTile t);
 
 /* Does stepping onto this tile trigger something (door, terminal)? */
 bool ft_tile_interactive(FtTile t);
