@@ -95,19 +95,39 @@ static void build(FtEncounter* e, const Shot* s) {
 
     if(s->phase == FT_PHASE_IMPACT) {
         e->last_guard = (s->variant == 0) ? FT_GUARD_CAPTURE : FT_GUARD_JAM;
-        e->last_enemy_hit.captured = (s->variant == 0);
+        e->last_enemy_hit.perfect = (s->variant == 0);
         e->last_enemy_hit.damage = (s->variant == 0) ? 0 : 3;
-        e->last_capture_was_new = true;
+
+        /* menu_index 8 and 9: the bounce landed, whole or halved. */
+        if(s->menu_index >= 8u) {
+            e->deflect_armed = true;
+            e->last_deflect_fired = true;
+            e->last_deflect_damage = (s->menu_index == 8u) ? 6 : 3;
+            e->last_guard = (s->menu_index == 8u) ? FT_GUARD_CAPTURE : FT_GUARD_JAM;
+            e->guard_pressed = true;
+            e->guard_press_ms = FT_TELEGRAPH_MS - 30u;
+            e->last_guard_offset = 30;
+            e->last_enemy_hit.perfect = (s->menu_index == 8u);
+            e->last_enemy_hit.damage = (s->menu_index == 8u) ? 0 : 3;
+        }
 
         /* A guard that lapsed, or was never raised, lands as a plain hit. */
-        if(s->menu_index >= 6u) {
+        if(s->menu_index == 6u || s->menu_index == 7u) {
             e->last_guard = FT_GUARD_NONE;
-            e->last_enemy_hit.captured = false;
+            e->last_enemy_hit.perfect = false;
             e->last_enemy_hit.damage = 6;
         }
     }
 
     if(s->variant == 9) e->coach = false;
+
+    /* Variant 10 arms the deflect; 11 arms it with a payload already on, so
+     * the two badges are seen stacked. */
+    if(s->variant == 10 || s->variant == 11) {
+        e->coach = false;
+        e->deflect_armed = true;
+        if(s->variant == 11) e->status[FT_PAYLOAD_STALL] = FT_STATUS_TURNS;
+    }
 
     /* Variant 8 shows what a payload looks like on the player. */
     if(s->variant == 8) {
@@ -141,9 +161,6 @@ static void build(FtEncounter* e, const Shot* s) {
         e->last_player_hit = e->foe_hits[0];
     }
 
-    /* A couple of stored signals, so the win screen has something to report. */
-    ft_siglib_capture(&e->lib, 10);
-    ft_siglib_capture(&e->lib, 11);
 }
 
 int main(void) {
@@ -214,6 +231,12 @@ int main(void) {
         {"foe-wall",        FT_ENEMY_BLANK_WALL,   FT_PHASE_MENU,      0,    0, 0, 3, false},
         {"foe-booter",      FT_ENEMY_COLD_BOOTER,  FT_PHASE_MENU,      0,    0, 0, 0, false},
         {"status-dot",      FT_ENEMY_MAST_RELAY,   FT_PHASE_MENU,      0,    0, 8, 0, false},
+        /* The deflect: the stance on its own, the stance under a payload,
+         * and the two readings the bounce can give. */
+        {"deflect-armed",   FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,      0,    0, 10, 3, false},
+        {"deflect-stacked", FT_ENEMY_MAST_RELAY,   FT_PHASE_MENU,      0,    0, 11, 0, false},
+        {"deflect-full",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,   1100,  8, 0, 3, false},
+        {"deflect-half",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,   1100,  9, 0, 3, false},
         {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0, 0, false},
         {"lose",            FT_ENEMY_SEALED_LOCK,  FT_PHASE_LOSE,       100,  0, 0, 0, false},
     };

@@ -131,7 +131,6 @@ typedef struct {
 
     /* Carried between battles, since an encounter starts from scratch. */
     FtStats         stats;
-    FtSignalLibrary lib;
 
     /* What has been met. Carried with the run, saved with it, and reset by
      * a loss like everything else. */

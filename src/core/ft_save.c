@@ -57,12 +57,6 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
 
     for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) put_u8(b, &at, d->loadout.stacks[i]);
 
-    for(uint8_t i = 0; i < FT_SIGLIB_SLOTS; i++) {
-        put_i16(b, &at, (int16_t)d->lib.ids[i]);
-    }
-    put_u8(b, &at, d->lib.count);
-    put_u8(b, &at, d->lib.next);
-
     put_i16(b, &at, (int16_t)d->guide.seen);
 
     for(uint8_t i = 0; i < FT_QUEST_BYTES; i++) put_u8(b, &at, d->quests.state[i]);
@@ -97,12 +91,6 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
 
     for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) d->loadout.stacks[i] = get_u8(b, &at);
 
-    for(uint8_t i = 0; i < FT_SIGLIB_SLOTS; i++) {
-        d->lib.ids[i] = (uint16_t)get_i16(b, &at);
-    }
-    d->lib.count = get_u8(b, &at);
-    d->lib.next = get_u8(b, &at);
-
     d->guide.seen = (uint16_t)get_i16(b, &at);
 
     for(uint8_t i = 0; i < FT_QUEST_BYTES; i++) d->quests.state[i] = get_u8(b, &at);
@@ -124,7 +112,6 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
 static uint8_t payload_bytes(void) {
     return (uint8_t)(9u * 2u + FT_UP_COUNT        /* stats, orbs, where they went */
                      + FT_MODULE_COUNT            /* loadout */
-                     + FT_SIGLIB_SLOTS * 2u + 2u  /* library */
                      + 2u                         /* field guide */
                      + FT_QUEST_BYTES             /* quests */
                      + 6u                         /* position and save point */
@@ -192,7 +179,6 @@ bool ft_save_decode(const uint8_t* in, uint8_t len, FtSaveData* out) {
 void ft_save_from_world(const FtWorld* w, bool coach, FtSaveData* d) {
     d->stats = w->stats;
     d->loadout = w->loadout;
-    d->lib = w->lib;
     d->guide = w->guide;
     d->quests = w->quests;
 
@@ -213,7 +199,6 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach) {
 
     w->stats = d->stats;
     w->loadout = d->loadout;
-    w->lib = d->lib;
     w->guide = d->guide;
     w->quests = d->quests;
 

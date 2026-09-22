@@ -68,10 +68,19 @@
 #define FT_SIGNAL_GAIN_FOCUS       35
 #define FT_SIGNAL_GAIN_DEEP_FOCUS  5
 
-/* ---- Signal Library (DESIGN.md 4.5) ---------------------------------- */
-
-#define FT_SIGLIB_SLOTS       4
-#define FT_SIGLIB_REPLAY_PCT  75
+/* ---- Deflect (DESIGN.md 4.5) -----------------------------------------
+ *
+ * SP no longer buys a replay of a captured attack. It buys a *stance*: for
+ * one block of enemy turns, anything you guard is sent back at whoever threw
+ * it. The Signal Library it replaced was three gates deep (hold a capture,
+ * hold a bar, no jammer) and paid out an attack weaker than the one you
+ * already had — so it was a downgrade with prerequisites.
+ *
+ * A perfect block returns the whole attack; a jam returns half. Partial
+ * credit matters: at a 50ms capture window, all-or-nothing would mean most
+ * players arm this, get nothing, and never touch it again. */
+#define FT_DEFLECT_CAPTURE_PCT 200
+#define FT_DEFLECT_JAM_PCT      100
 
 /* ---- Battle sizing --------------------------------------------------- */
 

@@ -432,8 +432,7 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         const FtAction2 act = (FtAction2)e->menu_index;
         const bool broadcast = ft_encounter_action_is_broadcast(e, act);
         const bool attacked =
-            (act == FT_ACTION_BROADCAST || act == FT_ACTION_CONTACT ||
-             act == FT_ACTION_SIGNAL) &&
+            (act == FT_ACTION_BROADCAST || act == FT_ACTION_CONTACT) &&
             e->last_player_hit.outcome != FT_HIT_MISSED;
 
         if(attacked && broadcast) {
@@ -463,7 +462,12 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
             draw_broadcast(canvas, ax - 4, 20, floor_y - 9, -1, t);
         }
         if(e->last_enemy_hit.damage > 0) px += shake_px(t);
-        if(e->last_enemy_hit.captured) draw_broadcast(canvas, 20, 44, floor_y - 9, 1, t);
+
+        /* A deflection is drawn travelling back the way the attack came, so
+         * the bounce is something you watch rather than read about. */
+        if(e->last_deflect_fired || e->last_enemy_hit.perfect) {
+            draw_broadcast(canvas, 20, 44, floor_y - 9, 1, t);
+        }
     }
 
     if(e->phase == FT_PHASE_MENU && ((e->phase_ms / 600u) % 2u)) hero_floor -= 1;
@@ -493,6 +497,27 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         canvas_set_color(canvas, ColorBlack);
         canvas_draw_frame(canvas, sx, sy, (size_t)w, 9);
         canvas_draw_str(canvas, sx + 2, sy + 7, status);
+    }
+
+    /* The deflect stance, under whatever is eating you.
+     *
+     * A turn spent arming something has to leave a mark, or the player has
+     * bought an invisible thing and will forget they own it before the hit
+     * lands. Inverted, because it is the one badge that is good news. */
+    if(e->deflect_armed) {
+        canvas_set_font(canvas, FontSecondary);
+
+        /* "DEF", not "DEFLECT": at seven characters the badge reached across
+         * the first foe's sprite on a full three-foe row. The other badges
+         * on this row are three and four characters for the same reason. */
+        const int32_t w = (int32_t)canvas_string_width(canvas, "DEF") + 4;
+        const int32_t sx = px + FT_HERO_W + 1;
+        const int32_t sy = FT_ARENA_Y + (status ? 11 : 1);
+
+        canvas_draw_box(canvas, sx, sy, (size_t)w, 9);
+        canvas_set_color(canvas, ColorWhite);
+        canvas_draw_str(canvas, sx + 2, sy + 7, "DEF");
+        canvas_set_color(canvas, ColorBlack);
     }
 
     if(arena_fx.strobe) {
@@ -530,19 +555,27 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
         draw_sprite(canvas, art, x, y);
 
-        /* A foe that is not taking turns says so. A bulwark that looks like
-         * every other enemy is just an enemy with confusing rules, and a
-         * sleeper you cannot tell is asleep is a nasty surprise rather than
-         * a decision you were offered. */
-        if(!ft_encounter_foe_awake(e, i)) {
+        /* A sleeper is faded rather than badged.
+         *
+         * This used to be a white box with three dots stamped across the
+         * middle of the sprite, which on the Blank Wall read as a random bar
+         * through the art — the marker was less legible than the thing it was
+         * marking. Knocking out every other pixel greys the foe out while
+         * leaving its silhouette whole, which is the 1-bit way to say "not
+         * active" without covering anything up.
+         *
+         * A BULWARK gets nothing. It is the most present thing on the board,
+         * not a dormant one: fading it would say the opposite of the truth,
+         * and the WALL tag in the title bar already names it. */
+        if(!ft_encounter_foe_awake(e, i) &&
+           !(FT_ENEMIES[e->foes[i].id].attrs & FT_ATTR_BULWARK)) {
             canvas_set_color(canvas, ColorWhite);
-            canvas_draw_box(canvas, x + 3, y + 6, 10, 5);
-            canvas_set_color(canvas, ColorBlack);
-            canvas_draw_frame(canvas, x + 3, y + 6, 10, 5);
-
-            for(int32_t d = 0; d < 3; d++) {
-                canvas_draw_dot(canvas, x + 5 + d * 3, y + 8);
+            for(int32_t dy = 0; dy < FT_SPRITE_H; dy++) {
+                for(int32_t dx = (dy & 1); dx < FT_SPRITE_W; dx += 2) {
+                    canvas_draw_dot(canvas, x + dx, y + dy);
+                }
             }
+            canvas_set_color(canvas, ColorBlack);
         }
 
         /* Only the foe that actually landed the hit flickers with you. */
@@ -684,7 +717,7 @@ static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
 
         hatch(canvas, right - jam_w, TRACK_Y + 1, jam_w, TRACK_H - 2);
 
-        /* Only NORMAL attacks can be captured, so only they get the block. */
+        /* Only NORMAL attacks allow a perfect block, so only they get it. */
         if(atk->klass == FT_CLASS_NORMAL) {
             canvas_draw_box(canvas, right - cap_w, TRACK_Y + 1, (size_t)cap_w, TRACK_H - 2);
         }
@@ -827,10 +860,18 @@ static void draw_enemy_result(Canvas* canvas, const FtEncounter* e) {
 
     guard_note(e, note, sizeof(note));
 
-    if(r->captured) {
-        snprintf(detail, sizeof(detail), "%s %s",
-                 e->last_capture_was_new ? "stored" : "held", note);
-        draw_popup(canvas, "CAPTURED!", detail);
+    /* The bounce is the headline whenever there was one: it is what the bar
+     * and the turn were spent on. */
+    if(e->last_deflect_fired) {
+        snprintf(detail, sizeof(detail), "-%d  %s", (int)e->last_deflect_damage, note);
+        draw_popup(canvas,
+                   (e->last_guard == FT_GUARD_CAPTURE) ? "SENT BACK!" : "HALF BACK",
+                   detail);
+        return;
+    }
+    if(r->perfect) {
+        snprintf(detail, sizeof(detail), "no damage  %s", note);
+        draw_popup(canvas, "PERFECT", detail);
         return;
     }
     if(e->last_guard == FT_GUARD_JAM) {
@@ -920,7 +961,7 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
 
     /* When a swing has nothing it can reach, say so — the one case the caret
      * cannot explain by itself. */
-    if(a == FT_ACTION_BROADCAST || a == FT_ACTION_CONTACT || a == FT_ACTION_SIGNAL) {
+    if(a == FT_ACTION_BROADCAST || a == FT_ACTION_CONTACT) {
         bool any = false;
         for(uint8_t i = 0; i < e->foe_count; i++) {
             if(ft_encounter_can_reach(e, a, i)) any = true;
@@ -935,8 +976,8 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
     case FT_ACTION_BROADCAST: return "All foes, weaker.";
     case FT_ACTION_CONTACT:   return "One foe, strong.";
     case FT_ACTION_DEFEND:    return "Guard, heal, +MP";
-    case FT_ACTION_FOCUS:     return "Charge up SP.";
-    case FT_ACTION_SIGNAL:    return "Replay, costs SP.";
+    case FT_ACTION_FOCUS:     return "Fill SP for DEF.";
+    case FT_ACTION_DEFLECT:   return "Free. Blocks bite.";
     default:                  return "";
     }
 }
@@ -1025,10 +1066,10 @@ void ft_render_help(Canvas* canvas, uint8_t page) {
             "Solid = capture (0).",
         },
         {
-            "HP is your health.",
-            "MP pays for NFC.",
-            "SP replays a kept",
-            "attack. Guard = +MP.",
+            "HP: health. MP: NFC.",
+            "SP arms DEFLECT free.",
+            "Then a block takes 0",
+            "and bites back.",
         },
     };
 
@@ -1454,7 +1495,7 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
         draw_centred(canvas, FT_SCREEN_W / 2, 20, won ? "VICTORY" : "DOWNED");
 
         if(won) {
-            snprintf(detail, sizeof(detail), "%d signal(s) held", (int)e->lib.count);
+            snprintf(detail, sizeof(detail), "+%d XP", (int)ft_encounter_xp(e));
         } else {
             snprintf(detail, sizeof(detail), "out of HP");
         }

@@ -32,7 +32,7 @@ typedef enum {
     FT_ACTION_CONTACT,       /* NFC: one foe, strong, halves its shield */
     FT_ACTION_DEFEND,        /* brace: shield for the turn, recover RAM */
     FT_ACTION_FOCUS,         /* charge the Signal meter */
-    FT_ACTION_SIGNAL,        /* spend a bar to replay a captured attack */
+    FT_ACTION_DEFLECT,       /* spend a bar to send their next hits back */
     FT_ACTION_COUNT
 } FtAction2;
 
@@ -50,7 +50,7 @@ typedef enum {
  * a real choice: spend it staying alive, or spend it ending the fight. */
 #define FT_DEFEND_HEAL 2
 
-/* A replayed signal costs this many whole bars. */
+/* Arming the deflect costs this many whole bars, on top of the action. */
 #define FT_SIGNAL_COST_BARS 1
 
 /* One enemy on the board. */
@@ -68,7 +68,6 @@ typedef struct {
     FtStats          stats;
     FtRoll           roll;
     FtSignal         signal;
-    FtSignalLibrary  lib;
     FtLoadout        loadout;
     FtLoadoutEffects fx;
 
@@ -127,10 +126,17 @@ typedef struct {
      * killed it has visibly reached it. */
     int16_t foe_charge_before[FT_MAX_ENEMIES];
 
+    /* The deflect stance.
+     *
+     * Armed by FT_ACTION_DEFLECT and held until the player's next turn comes
+     * round, which is one unbroken block of enemy turns however the round is
+     * ordered. While it is up, every guard sends the attack back. */
+    bool    deflect_armed;
+    bool    last_deflect_fired;  /* the hit just resolved was sent back */
+    int16_t last_deflect_damage; /* and this is what it did */
+
     FtHitResult last_player_hit; /* headline result, for the popup */
     FtHitResult last_enemy_hit;
-    bool        last_capture_was_new;
-    bool        last_was_replay;
     int16_t     last_total_damage;
 
     bool coach;
@@ -235,9 +241,6 @@ const FtEnemy* ft_encounter_enemy(const FtEncounter* e);
 
 /* The attack currently being telegraphed, or NULL outside the wind-up. */
 const FtAttack* ft_encounter_incoming(const FtEncounter* e);
-
-/* The captured attack a SIGNAL action would replay, or NULL if none. */
-const FtAttack* ft_encounter_replay_attack(const FtEncounter* e);
 
 /* Does this action strike every foe at once? */
 bool ft_encounter_action_is_broadcast(const FtEncounter* e, FtAction2 action);

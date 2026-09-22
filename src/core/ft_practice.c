@@ -157,7 +157,7 @@ void ft_practice_start(FtPractice* p, FtEncounter* e) {
     }
 
     /* Move the seed on, so pressing FIGHT again is a different fight rather
-     * than the same one replayed. */
+     * than the same one again. */
     p->seed = ft_rng_next(&rng);
 
     FtLoadout lo;
@@ -178,11 +178,10 @@ void ft_practice_start(FtPractice* p, FtEncounter* e) {
     e->stats.charge = e->stats.charge_max;
     ft_roll_init(&e->roll, e->stats.charge);
 
-    /* A kit you cannot use is not a kit. Give the loaded sets something to
-     * replay and a meter that is already worth spending, or Signal is a
-     * button that does nothing for the first four turns. */
+    /* A kit you cannot use is not a kit. Give the loaded sets a meter that is
+     * already worth spending, or Deflect is a button that does nothing for
+     * the first four turns. */
     if(p->kit != FT_KIT_BASIC) {
-        ft_siglib_capture(&e->lib, FT_ENEMIES[foes[0]].attacks[0].id);
         ft_signal_add(&e->signal, (int16_t)(FT_SIGNAL_PER_BAR * e->signal.max_bars));
     }
 

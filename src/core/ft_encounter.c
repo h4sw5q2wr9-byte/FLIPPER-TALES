@@ -151,6 +151,7 @@ uint8_t ft_encounter_turns_this_round(const FtEncounter* e) {
  * player round, not once per action: a per-action drip would charge twice
   * over for no reason the player could see. */
 static void status_round(FtEncounter* e) {
+
     if(e->status[FT_PAYLOAD_CORRUPT]) {
         ft_roll_apply_damage(&e->roll, FT_CORRUPT_DAMAGE);
     }
@@ -189,7 +190,6 @@ void ft_encounter_init(
     ft_roll_init(&e->roll, e->stats.charge);
     ft_signal_init(&e->signal, 1);
     ft_signal_battle_start(&e->signal);
-    ft_siglib_init(&e->lib);
 
     e->foe_count = count;
     bool jammer = false;
@@ -240,9 +240,11 @@ void ft_encounter_init(
     const FtHitResult blank = {FT_HIT_OK, 0, false, false, false, 0};
     e->last_player_hit = blank;
     e->last_enemy_hit = blank;
-    e->last_capture_was_new = false;
-    e->last_was_replay = false;
     e->last_total_damage = 0;
+
+    e->deflect_armed = false;
+    e->last_deflect_fired = false;
+    e->last_deflect_damage = 0;
 
     e->coach = true;
 
@@ -278,27 +280,22 @@ void ft_encounter_init_single(
 
 /* ---- Actions --------------------------------------------------------- */
 
-const FtAttack* ft_encounter_replay_attack(const FtEncounter* e) {
-    return ft_attack_by_id(ft_siglib_latest(&e->lib));
-}
-
 bool ft_encounter_action_is_broadcast(const FtEncounter* e, FtAction2 action) {
-    if(action == FT_ACTION_BROADCAST) return true;
+    (void)e;
 
-    if(action == FT_ACTION_SIGNAL) {
-        const FtAttack* atk = ft_encounter_replay_attack(e);
-        return atk && atk->delivery == FT_DELIVERY_BROADCAST;
-    }
-    return false;
+    /* A deflect is not a broadcast: what it becomes depends on what they
+     * throw at you, and the arena has nothing to draw until it does. */
+    return action == FT_ACTION_BROADCAST;
 }
 
 /* Which attack an action actually throws. Needed by reach and by targeting,
- * both of which have to answer questions about a replay's delivery. */
+ * both of which have to answer questions about an attack's delivery. */
 static const FtAttack* action_attack(const FtEncounter* e, FtAction2 action) {
+    (void)e;
     switch(action) {
     case FT_ACTION_BROADCAST: return &FT_MODULES[FT_MOD_SUBGHZ].attack;
     case FT_ACTION_CONTACT:   return &FT_MODULES[FT_MOD_NFC].attack;
-    case FT_ACTION_SIGNAL:    return ft_encounter_replay_attack(e);
+    case FT_ACTION_DEFLECT:   return NULL;
     default:                  return NULL;
     }
 }
@@ -370,10 +367,10 @@ const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
     }
 
     switch(action) {
-    case FT_ACTION_SIGNAL:
-        if(ft_encounter_replay_attack(e) == NULL) return "Capture one first.";
+    case FT_ACTION_DEFLECT:
         if(e->signal.locked) return "Signal jammed.";
         if(ft_signal_bars(&e->signal) < FT_SIGNAL_COST_BARS) return "Need a full bar.";
+        if(e->deflect_armed) return "Already up.";
         return NULL;
 
     case FT_ACTION_BROADCAST:
@@ -394,7 +391,7 @@ const char* ft_action_name(FtAction2 action) {
     switch(action) {
     case FT_ACTION_BROADCAST: return "Sub-GHz";
     case FT_ACTION_CONTACT:   return "NFC";
-    case FT_ACTION_SIGNAL:    return "Signal";
+    case FT_ACTION_DEFLECT:   return "Deflect";
     case FT_ACTION_DEFEND:    return "Protect";
     case FT_ACTION_FOCUS:     return "Focus";
     default:                  return "?";
@@ -602,7 +599,6 @@ static void resolve_player_action(FtEncounter* e) {
     const FtHitResult blank = {FT_HIT_OK, 0, false, false, false, 0};
     e->last_player_hit = blank;
     e->last_total_damage = 0;
-    e->last_was_replay = false;
     for(uint8_t i = 0; i < FT_MAX_ENEMIES; i++) {
         e->foe_hit_valid[i] = false;
         e->foe_charge_before[i] = e->foes[i].charge;
@@ -622,19 +618,8 @@ static void resolve_player_action(FtEncounter* e) {
     }
 
     const FtAttack* atk = NULL;
-    FtAttack replay;
 
-    if(action == FT_ACTION_SIGNAL) {
-        const FtAttack* src = ft_encounter_replay_attack(e);
-        if(src == NULL) return;
-        if(!ft_signal_spend_bars(&e->signal, FT_SIGNAL_COST_BARS)) return;
-
-        /* A replay is the enemy's own attack at reduced power. */
-        replay = *src;
-        replay.base_power = ft_siglib_replay_power(src->base_power);
-        atk = &replay;
-        e->last_was_replay = true;
-    } else if(action == FT_ACTION_BROADCAST) {
+    if(action == FT_ACTION_BROADCAST) {
         atk = &FT_MODULES[FT_MOD_SUBGHZ].attack;
     } else if(action == FT_ACTION_CONTACT) {
         atk = &FT_MODULES[FT_MOD_NFC].attack;
@@ -643,8 +628,6 @@ static void resolve_player_action(FtEncounter* e) {
 
     if(atk == NULL) return;
 
-    /* A replay carries the original's timing, so it takes an action command
-     * like anything else. */
     const FtRating rating =
         e->action_pressed ?
             ft_rating_from_timing((int32_t)e->action_press_ms - (FT_ACTION_WINDOW_MS / 2)) :
@@ -700,6 +683,62 @@ const FtAttack* ft_encounter_incoming(const FtEncounter* e) {
     return &ft_encounter_enemy(e)->attacks[e->foes[e->acting_foe].attack_index];
 }
 
+/* Send an attack back at whoever threw it.
+ *
+ * The bounce keeps the original's delivery, so a contact attack returns to
+ * the sender and a broadcast sprays whatever a broadcast can reach. That is
+ * not a new rule — it is the rule the player already learned from their own
+ * two modules, read backwards — and it is what stops a three-foe round from
+ * being nine hits of damage.
+ *
+ * strike_foe applies the shield, the attributes and the bulwark, so a
+ * deflection off a wall roster lands on the wall. */
+static void deflect_back(FtEncounter* e, const FtAttack* atk) {
+    e->last_deflect_fired = false;
+    e->last_deflect_damage = 0;
+
+    if(!e->deflect_armed) return;
+    if(e->last_guard == FT_GUARD_NONE) return;
+
+    const int16_t pct = (e->last_guard == FT_GUARD_CAPTURE) ? FT_DEFLECT_CAPTURE_PCT
+                                                            : FT_DEFLECT_JAM_PCT;
+
+    FtAttack back = *atk;
+    back.base_power = (int16_t)(((int32_t)atk->base_power * pct) / 100);
+    if(back.base_power < 1) back.base_power = 1;
+
+    /* Their payload is their problem now. */
+    back.payload = FT_PAYLOAD_NONE;
+
+    /* It is a bounce, not a swing: no action command, so no rating bonus. */
+    const int16_t before = e->last_total_damage;
+    e->last_total_damage = 0;
+
+    if(back.delivery == FT_DELIVERY_BROADCAST) {
+        for(uint8_t i = 0; i < e->foe_count; i++) {
+            if(e->foes[i].charge > 0) strike_foe(e, i, &back, FT_RATING_GOOD);
+        }
+    } else {
+        /* Back to the sender — or into the wall standing in front of them,
+         * which is exactly what a wall is for. */
+        const int wall = living_bulwark(e);
+        const uint8_t target = (wall >= 0) ? (uint8_t)wall : e->acting_foe;
+        if(e->foes[target].charge > 0) strike_foe(e, target, &back, FT_RATING_GOOD);
+    }
+
+    e->last_deflect_damage = e->last_total_damage;
+    e->last_total_damage = before;
+    e->last_deflect_fired = true;
+
+    /* Spent. The stance waits for its counter rather than expiring at the
+     * end of the round: a turn and a bar for a coin flip on a 150ms window
+     * measured out as strictly worse than simply attacking, at every skill
+     * level the simulator tests. Holding until it fires keeps the skill test
+     * — how hard it comes back is still your timing — and removes the
+     * outcome where the whole investment buys nothing. */
+    e->deflect_armed = false;
+}
+
 static void resolve_enemy_action(FtEncounter* e) {
     const FtAttack* atk = ft_encounter_incoming(e);
     if(atk == NULL) return;
@@ -712,9 +751,26 @@ static void resolve_enemy_action(FtEncounter* e) {
     e->last_guard = ft_guard_from_timing(before_impact, e->fx.hard_mode, atk->klass);
     e->last_guard_offset = before_impact;
 
+    /* While the stance is up, *any* successful guard stops the hit dead, not
+     * just a frame-perfect one.
+     *
+     * This is what makes the turn worth spending. Measured without it, the
+     * stance lost at every skill level the simulator tests: a bar arrives
+     * about once a fight, fires on roughly a third of arms, and returns
+     * about three damage — against an action worth six to eight. The bounce
+     * alone could never pay for the turn. Keeping the HP can.
+     *
+     * The skill gradient survives, because how much comes *back* still
+     * depends on how tight the block was. */
+    FtGuard effective = e->last_guard;
+    if(e->deflect_armed && e->last_guard == FT_GUARD_JAM &&
+       atk->klass != FT_CLASS_UNDODGEABLE) {
+        effective = FT_GUARD_CAPTURE;
+    }
+
     /* Bracing is a real shield, so it can blunt or even deflect a hit. */
     const FtDefender def = {e->defending ? FT_DEFEND_SHIELD : 0, 0};
-    const FtHitParams p = {0, 0, FT_RATING_MISS, false, e->last_guard,
+    const FtHitParams p = {0, 0, FT_RATING_MISS, false, effective,
                            e->fx.jam_reduction_pct};
 
     e->last_enemy_hit = ft_resolve_hit(atk, &def, &p);
@@ -725,16 +781,16 @@ static void resolve_enemy_action(FtEncounter* e) {
         e->status[atk->payload] = FT_STATUS_TURNS;
     }
 
-    e->last_capture_was_new = false;
-    if(e->last_enemy_hit.captured) {
-        e->last_capture_was_new = ft_siglib_capture(&e->lib, atk->id);
-    }
-
     int16_t damage = e->last_enemy_hit.damage;
     if(e->fx.hard_mode) damage = (int16_t)(damage * 2);
 
     ft_roll_apply_damage(&e->roll, damage);
     ft_signal_add(&e->signal, FT_SIGNAL_GAIN_ENEMY_TURN);
+
+    /* And send it back, if the stance is up and the block was good enough.
+     * Last, so the deflection is resolved against a board the incoming hit
+     * has already been applied to. */
+    deflect_back(e, atk);
 }
 
 /* ---- Input ----------------------------------------------------------- */
@@ -748,8 +804,27 @@ void ft_encounter_press_ok(FtEncounter* e) {
         e->action_pressed = false;
         e->action_press_ms = 0;
         e->action_locked_ms = 0;
-        e->defending = false;
 
+        /* Arming the stance does not cost a turn.
+         *
+         * It used to, and the simulator was unambiguous about it: the player
+         * who used Deflect lost about six points of win rate at every skill
+         * level. The reason is the meter, not the stance. SP fills from
+         * landing hits and from taking them, so a full bar only ever arrives
+         * in a long fight — which is to say a close one — and a turn spent
+         * not attacking in a close fight is the most expensive turn there
+         * is. Any action cost lands at exactly the wrong moment.
+         *
+         * So the bar is the whole price, and it is a real one: a bar is
+         * about a fight's worth of meter, or a turn spent on Focus. */
+        if(action == FT_ACTION_DEFLECT) {
+            if(ft_signal_spend_bars(&e->signal, FT_SIGNAL_COST_BARS)) {
+                e->deflect_armed = true;
+            }
+            break;
+        }
+
+        e->defending = false;
         e->player_turns++;
 
         /* Defend and Focus have nothing to time, so they skip the sweep. */

@@ -210,7 +210,7 @@ static void test_jam_and_capture(void) {
     r = ft_resolve_hit(&atk, &def, &p);
     CHECK_EQ(r.damage, 5);
     CHECK(!r.payload_applied, "jamming must nullify the payload");
-    CHECK(!r.captured, "jamming must not capture");
+    CHECK(!r.perfect, "jamming must not capture");
 
     /* Faraday improves the reduction. */
     p.jam_reduction_pct = 70;
@@ -222,7 +222,7 @@ static void test_jam_and_capture(void) {
     p.guard = FT_GUARD_CAPTURE;
     r = ft_resolve_hit(&atk, &def, &p);
     CHECK_EQ(r.damage, 0);
-    CHECK(r.captured, "capture should yield a signal");
+    CHECK(r.perfect, "capture should yield a signal");
     CHECK(!r.countered, "broadcast attacks are dodged, not countered");
     CHECK(!r.payload_applied, "capture must nullify the payload");
 
@@ -235,14 +235,14 @@ static void test_jam_and_capture(void) {
     FtAttack guarded = mk_attack(11, FT_DELIVERY_BROADCAST, FT_CLASS_GUARDED);
     r = ft_resolve_hit(&guarded, &def, &p);
     CHECK_EQ(r.damage, 5);
-    CHECK(!r.captured, "GUARDED attacks keep their secrets");
+    CHECK(!r.perfect, "GUARDED attacks keep their secrets");
 
     /* UNDODGEABLE: the guard is ignored outright. */
     FtAttack undodgeable = mk_attack(11, FT_DELIVERY_BROADCAST, FT_CLASS_UNDODGEABLE);
     undodgeable.payload = FT_PAYLOAD_CORRUPT;
     r = ft_resolve_hit(&undodgeable, &def, &p);
     CHECK_EQ(r.damage, 11);
-    CHECK(!r.captured, "UNDODGEABLE attacks cannot be captured");
+    CHECK(!r.perfect, "UNDODGEABLE attacks cannot be captured");
     CHECK(r.payload_applied, "UNDODGEABLE payloads always land");
 }
 
@@ -336,42 +336,6 @@ static void test_signal_meter(void) {
     ft_signal_add(&sig, 100);
     CHECK_EQ(sig.value, 100);
     CHECK(!ft_signal_spend_bars(&sig, 1), "a locked meter cannot be spent");
-}
-
-static void test_signal_library(void) {
-    section("Signal Library (DESIGN 4.5)");
-
-    FtSignalLibrary lib;
-    ft_siglib_init(&lib);
-    CHECK_EQ(lib.count, 0);
-
-    CHECK(ft_siglib_capture(&lib, 10), "first capture is new");
-    CHECK(ft_siglib_holds(&lib, 10), "library should hold it");
-
-    /* Duplicates are rejected rather than wasting a slot. */
-    CHECK(!ft_siglib_capture(&lib, 10), "duplicate capture returns false");
-    CHECK_EQ(lib.count, 1);
-
-    /* Capturing id 0 is meaningless. */
-    CHECK(!ft_siglib_capture(&lib, 0), "id 0 is not capturable");
-
-    ft_siglib_capture(&lib, 11);
-    ft_siglib_capture(&lib, 12);
-    ft_siglib_capture(&lib, 13);
-    CHECK_EQ(lib.count, FT_SIGLIB_SLOTS);
-
-    /* Full: the oldest entry is overwritten. */
-    CHECK(ft_siglib_capture(&lib, 14), "capture when full still succeeds");
-    CHECK_EQ(lib.count, FT_SIGLIB_SLOTS);
-    CHECK(!ft_siglib_holds(&lib, 10), "oldest entry should be evicted");
-    CHECK(ft_siglib_holds(&lib, 14), "newest entry should be held");
-    CHECK(ft_siglib_holds(&lib, 11), "second-oldest should survive");
-
-    /* A replayed copy is weaker than the original. */
-    CHECK_EQ(ft_siglib_replay_power(100), 75);
-    CHECK_EQ(ft_siglib_replay_power(4), 3);
-    CHECK_EQ(ft_siglib_replay_power(1), 1); /* never rounds down to harmless */
-    CHECK_EQ(ft_siglib_replay_power(0), 0);
 }
 
 static void test_priority(void) {
@@ -1025,8 +989,8 @@ static void test_encounter(void) {
      * thing left that can. */
     FtEncounter empty;
     ft_encounter_init_single(&empty, FT_ENEMY_STRAY_PACKET, &lo, 1);
-    CHECK(!ft_encounter_action_available(&empty, FT_ACTION_SIGNAL), "no capture, no replay");
-    empty.menu_index = FT_ACTION_SIGNAL;
+    CHECK(!ft_encounter_action_available(&empty, FT_ACTION_DEFLECT), "no capture, no replay");
+    empty.menu_index = FT_ACTION_DEFLECT;
     ft_encounter_press_ok(&empty);
     CHECK_EQ(empty.phase, FT_PHASE_MENU);
 
@@ -1122,11 +1086,10 @@ static void test_encounter(void) {
         }
         ft_encounter_tick(&cap, 10);
     }
-    CHECK(faced_attack, "the capture run should have faced an attack");
+    CHECK(faced_attack, "the perfect run should have faced an attack");
     CHECK_EQ(cap.last_guard, FT_GUARD_CAPTURE);
-    CHECK(cap.lib.count > 0, "a frame-perfect guard should capture the signal");
-    CHECK(ft_siglib_holds(&cap.lib, FT_ENEMIES[FT_ENEMY_STRAY_PACKET].attacks[0].id),
-          "the captured id should be the attack that was guarded");
+    CHECK(cap.last_enemy_hit.perfect, "a frame-perfect guard is a perfect block");
+    CHECK_EQ(cap.last_enemy_hit.damage, 0);
 
     /* An UNDODGEABLE attack can never be captured, however well timed. */
     FtEncounter undo;
@@ -1166,8 +1129,9 @@ static void test_tutorial(void) {
     CHECK(ft_encounter_action_block(&beacon, FT_ACTION_BROADCAST) == NULL,
           "nor is any other attribute");
 
-    const char* need = ft_encounter_action_block(&beacon, FT_ACTION_SIGNAL);
-    CHECK(need != NULL, "a replay with nothing captured still refuses");
+    beacon.signal.value = 0;
+    const char* need = ft_encounter_action_block(&beacon, FT_ACTION_DEFLECT);
+    CHECK(need != NULL, "a deflect with no bar still refuses");
     CHECK(strlen(need) <= FT_TUTORIAL_MAX_CHARS, "and says so in one line");
 
     /* The line tracks the phase, including the ready beat. */
@@ -1226,9 +1190,25 @@ static void test_tutorial(void) {
     const char* jam_line = ft_tutorial_hint(&jam);
     CHECK(jam_line && strstr(jam_line, "later"), "a jam should point at the capture zone");
 
-    jam.last_enemy_hit.captured = true;
+    jam.last_enemy_hit.perfect = true;
     const char* cap_line = ft_tutorial_hint(&jam);
-    CHECK(cap_line && strstr(cap_line, "Kept"), "a capture should be celebrated");
+    CHECK(cap_line && strstr(cap_line, "Perfect"), "a perfect block is celebrated");
+
+    /* And with the stance up, what the bounce did outranks both. */
+    jam.deflect_armed = true;
+    jam.last_deflect_fired = true;
+    jam.last_guard = FT_GUARD_CAPTURE;
+    const char* back = ft_tutorial_hint(&jam);
+    CHECK(back && strstr(back, "bounce"), "a full bounce is the headline");
+
+    jam.last_guard = FT_GUARD_JAM;
+    const char* half = ft_tutorial_hint(&jam);
+    CHECK(half && strstr(half, "Half"), "and a half one says so");
+
+    /* Armed and missed is worth saying too: a wasted bar is information. */
+    jam.last_deflect_fired = false;
+    const char* waste = ft_tutorial_hint(&jam);
+    CHECK(waste && strstr(waste, "wasted"), "a missed deflect says the bar went");
 
     /* Outcome screens stay quiet: they have their own copy. */
     FtEncounter done;
@@ -2153,10 +2133,10 @@ static void test_practice(void) {
         ft_practice_start(&kp, &ke);
 
         if(k == FT_KIT_BASIC) {
-            CHECK(!ft_encounter_action_available(&ke, FT_ACTION_SIGNAL),
+            CHECK(!ft_encounter_action_available(&ke, FT_ACTION_DEFLECT),
                   "the basic kit starts with nothing captured");
         } else {
-            CHECK(ft_encounter_action_available(&ke, FT_ACTION_SIGNAL),
+            CHECK(ft_encounter_action_available(&ke, FT_ACTION_DEFLECT),
                   "kit %u can replay from the first turn", k);
         }
 
@@ -2308,12 +2288,6 @@ static void fill_save(FtSaveData* d) {
 
     for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) d->loadout.stacks[i] = (uint8_t)(i + 1u);
 
-    for(uint8_t i = 0; i < FT_SIGLIB_SLOTS; i++) {
-        d->lib.ids[i] = (uint16_t)(1000u + i);
-    }
-    d->lib.count = 3;
-    d->lib.next = 2;
-
     d->room = 2;
     d->tx = 13;
     d->ty = 7;
@@ -2338,11 +2312,6 @@ static bool save_eq(const FtSaveData* a, const FtSaveData* b) {
     for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) {
         if(a->loadout.stacks[i] != b->loadout.stacks[i]) return false;
     }
-    for(uint8_t i = 0; i < FT_SIGLIB_SLOTS; i++) {
-        if(a->lib.ids[i] != b->lib.ids[i]) return false;
-    }
-    if(a->lib.count != b->lib.count || a->lib.next != b->lib.next) return false;
-
     if(a->room != b->room || a->tx != b->tx || a->ty != b->ty) return false;
     if(a->save_room != b->save_room) return false;
     if(a->save_tx != b->save_tx || a->save_ty != b->save_ty) return false;
@@ -2427,10 +2396,9 @@ static void test_save_world(void) {
     FtWorld w;
     ft_world_init(&w);
 
-    /* Play a little: move rooms, beat something, level up, capture a signal. */
+    /* Play a little: move rooms, beat something, level up, install a card. */
     ft_world_enter(&w, 2, 3, 4);
     ft_world_clear_entity(&w, 0);
-    ft_siglib_capture(&w.lib, 4242u);
     level_into(&w.stats, FT_UP_RAM);
     ft_loadout_add(&w.loadout, FT_MOD_AMPLIFY);
 
@@ -2458,7 +2426,6 @@ static void test_save_world(void) {
     CHECK_EQ(loaded.save_room, 2);
     CHECK_EQ(loaded.stats.ram_max, w.stats.ram_max);
     CHECK_EQ(loaded.stats.level, w.stats.level);
-    CHECK(ft_siglib_holds(&loaded.lib, 4242u), "captures survive a save");
     CHECK_EQ(loaded.loadout.stacks[FT_MOD_AMPLIFY], 1);
     CHECK(!coach, "the tips setting survives too");
 
@@ -3274,11 +3241,9 @@ static void test_losing_costs(void) {
 
     const int16_t saved_charge_max = w.stats.charge_max;
 
-    /* Now make progress past the save: beat the room's encounter, level up,
-     * capture something. */
+    /* Now make progress past the save: beat the room's encounter, level up. */
     ft_world_clear_entity(&w, 0);
     level_into(&w.stats, FT_UP_CHARGE);
-    ft_siglib_capture(&w.lib, 1234u);
 
     CHECK(ft_world_entity_gone(&w, 0), "the foe was beaten");
     CHECK(w.stats.charge_max > saved_charge_max, "and a level was taken");
@@ -3291,7 +3256,6 @@ static void test_losing_costs(void) {
     CHECK(!ft_world_entity_gone(&after, 0), "the foe is standing again");
     CHECK_EQ(after.stats.charge_max, saved_charge_max);
     CHECK_EQ(after.stats.level, 1);
-    CHECK(!ft_siglib_holds(&after.lib, 1234u), "the capture is gone too");
     CHECK_EQ(after.room, 1);
 
     /* The foe really is back on its tile, not merely un-flagged. */
@@ -3991,6 +3955,247 @@ static void test_guard_aftermath(void) {
     }
 }
 
+/* ---- The deflect stance ------------------------------------------------ */
+
+/* Run an encounter to the next enemy wind-up, guarding at `before_impact` ms
+ * (negative for no guard at all). Returns false if the fight ended first. */
+static bool telegraph_and_guard(FtEncounter* e, int32_t before_impact) {
+    for(int t = 0; t < 4000; t++) {
+        if(ft_encounter_over(e)) return false;
+
+        if(e->phase == FT_PHASE_MENU) return false; /* caller drives the menu */
+
+        if(e->phase == FT_PHASE_TELEGRAPH && before_impact >= 0 && !e->guard_pressed) {
+            const int32_t gap = (int32_t)FT_READY_MS + (int32_t)FT_TELEGRAPH_MS -
+                                (int32_t)e->phase_ms;
+            if(gap <= before_impact) ft_encounter_press_ok(e);
+        }
+
+        const FtPhase was = e->phase;
+        ft_encounter_tick(e, 10);
+        if(was == FT_PHASE_TELEGRAPH && e->phase != FT_PHASE_TELEGRAPH) return true;
+    }
+    return false;
+}
+
+static void test_deflect(void) {
+    section("deflect");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* Arming costs a bar and the action, and does no damage by itself. */
+    FtEncounter e;
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    e.signal.value = FT_SIGNAL_PER_BAR;
+
+    const int16_t foe_before = e.foes[0].charge;
+    const uint8_t bars_before = ft_signal_bars(&e.signal);
+    CHECK(bars_before >= 1u, "a full bar to spend");
+    CHECK(ft_encounter_action_block(&e, FT_ACTION_DEFLECT) == NULL, "and so it offers");
+
+    e.menu_index = FT_ACTION_DEFLECT;
+    ft_encounter_press_ok(&e);
+
+    CHECK(e.deflect_armed, "the stance goes up");
+    CHECK(ft_signal_bars(&e.signal) < bars_before, "and the bar is gone");
+    CHECK_EQ(e.foes[0].charge, foe_before);
+    CHECK_EQ(e.last_total_damage, 0);
+
+    /* Armed already: it refuses rather than eating a second bar. */
+    CHECK(ft_encounter_action_block(&e, FT_ACTION_DEFLECT) != NULL,
+          "a stance already up refuses");
+
+    /* A perfect block sends the whole attack back. */
+    FtEncounter full;
+    ft_encounter_init_single(&full, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    full.deflect_armed = true;
+    full.phase = FT_PHASE_TELEGRAPH;
+    full.phase_ms = 0;
+    full.foes[0].attack_index = 0;
+
+    const int16_t hp_before = full.foes[0].charge;
+    CHECK(telegraph_and_guard(&full, 20), "the wind-up resolved");
+    CHECK_EQ(full.last_guard, FT_GUARD_CAPTURE);
+    CHECK(full.last_deflect_fired, "and it went back");
+    CHECK(full.last_deflect_damage > 0, "for real damage (%d)",
+          (int)full.last_deflect_damage);
+    CHECK(full.foes[0].charge < hp_before, "which the thrower actually took");
+    CHECK_EQ(full.last_enemy_hit.damage, 0); /* a perfect block still blocks */
+
+    /* A jam sends half of it. */
+    FtEncounter half;
+    ft_encounter_init_single(&half, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    half.deflect_armed = true;
+    half.phase = FT_PHASE_TELEGRAPH;
+    half.phase_ms = 0;
+    half.foes[0].attack_index = 0;
+
+    CHECK(telegraph_and_guard(&half, 120), "the wind-up resolved");
+    CHECK_EQ(half.last_guard, FT_GUARD_JAM);
+    CHECK(half.last_deflect_fired, "a jam bounces too");
+    CHECK(half.last_deflect_damage > 0, "for something");
+    CHECK(half.last_deflect_damage <= full.last_deflect_damage,
+          "but never more than a perfect one (%d vs %d)",
+          (int)half.last_deflect_damage, (int)full.last_deflect_damage);
+
+    /* No guard, no bounce — the bar is simply spent. */
+    FtEncounter missed;
+    ft_encounter_init_single(&missed, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    missed.deflect_armed = true;
+    missed.phase = FT_PHASE_TELEGRAPH;
+    missed.phase_ms = 0;
+
+    const int16_t miss_hp = missed.foes[0].charge;
+    CHECK(telegraph_and_guard(&missed, -1), "the wind-up resolved");
+    CHECK(!missed.last_deflect_fired, "nothing to send back");
+    CHECK_EQ(missed.last_deflect_damage, 0);
+    CHECK_EQ(missed.foes[0].charge, miss_hp);
+
+    /* Without the stance, a perfect block is just a perfect block. */
+    FtEncounter bare;
+    ft_encounter_init_single(&bare, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    bare.phase = FT_PHASE_TELEGRAPH;
+    bare.phase_ms = 0;
+
+    const int16_t bare_hp = bare.foes[0].charge;
+    CHECK(telegraph_and_guard(&bare, 20), "the wind-up resolved");
+    CHECK_EQ(bare.last_guard, FT_GUARD_CAPTURE);
+    CHECK(!bare.last_deflect_fired, "no stance, no bounce");
+    CHECK_EQ(bare.foes[0].charge, bare_hp);
+
+    /* A bounced broadcast sprays; a bounced contact goes to the sender.
+     * The Stray Packet's only attack is a broadcast, so a group of them all
+     * take it. */
+    const FtEnemyId three[3] = {
+        FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET};
+    FtEncounter wide;
+    ft_encounter_init(&wide, three, 3u, &lo, 5);
+    wide.deflect_armed = true;
+    wide.phase = FT_PHASE_TELEGRAPH;
+    wide.acting_foe = 0;
+    wide.phase_ms = 0;
+
+    int16_t was[3];
+    for(uint8_t i = 0; i < 3u; i++) was[i] = wide.foes[i].charge;
+
+    CHECK(telegraph_and_guard(&wide, 20), "the wind-up resolved");
+    CHECK(wide.last_deflect_fired, "and bounced");
+    for(uint8_t i = 0; i < 3u; i++) {
+        CHECK(wide.foes[i].charge < was[i], "foe %u caught the broadcast back", i);
+    }
+
+    /* A contact attack goes back to the one that threw it and nobody else. */
+    const FtEnemyId pair[2] = {FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_SCRAP_CRAWLER};
+    FtEncounter one;
+    ft_encounter_init(&one, pair, 2u, &lo, 5);
+    one.deflect_armed = true;
+    one.phase = FT_PHASE_TELEGRAPH;
+    one.acting_foe = 1;
+    one.phase_ms = 0;
+    one.foes[1].attack_index = 0; /* Rip: contact */
+
+    const int16_t idle = one.foes[0].charge, actor = one.foes[1].charge;
+    CHECK(telegraph_and_guard(&one, 20), "the wind-up resolved");
+    CHECK(one.last_deflect_fired, "and bounced");
+    CHECK_EQ(one.foes[0].charge, idle);
+    CHECK(one.foes[1].charge < actor, "only the thrower catches a contact bounce");
+
+    /* A wall in front eats the bounce, which is what a wall is for. */
+    const FtEnemyId walled[2] = {FT_ENEMY_BLANK_WALL, FT_ENEMY_SCRAP_CRAWLER};
+    FtEncounter shielded;
+    ft_encounter_init(&shielded, walled, 2u, &lo, 5);
+    shielded.deflect_armed = true;
+    shielded.phase = FT_PHASE_TELEGRAPH;
+    shielded.acting_foe = 1;
+    shielded.phase_ms = 0;
+    shielded.foes[1].attack_index = 0;
+
+    const int16_t wall_hp = shielded.foes[0].charge;
+    const int16_t behind = shielded.foes[1].charge;
+    CHECK(telegraph_and_guard(&shielded, 20), "the wind-up resolved");
+    CHECK(shielded.foes[0].charge < wall_hp, "the wall takes it");
+    CHECK_EQ(shielded.foes[1].charge, behind);
+
+    /* A jammer locks the meter, so the stance is never even on offer. */
+    FtEncounter jammed;
+    ft_encounter_init_single(&jammed, FT_ENEMY_MAST_RELAY, &lo, 5);
+    jammed.signal.value = FT_SIGNAL_PER_BAR * 4;
+    CHECK(jammed.signal.locked, "a jammer locks the meter");
+    CHECK(ft_encounter_action_block(&jammed, FT_ACTION_DEFLECT) != NULL,
+          "so the deflect refuses");
+
+    /* Arming is free: it costs the bar, never one of the round's two turns.
+     * Any action cost lands in the fights where SP actually fills, which are
+     * the close ones, and the simulator measured that as a straight loss. */
+    FtEncounter free_act;
+    ft_encounter_init_single(&free_act, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    free_act.signal.value = FT_SIGNAL_PER_BAR;
+
+    const uint16_t turns_before = free_act.player_turns;
+    free_act.menu_index = FT_ACTION_DEFLECT;
+    ft_encounter_press_ok(&free_act);
+
+    CHECK(free_act.deflect_armed, "armed");
+    CHECK_EQ(free_act.player_turns, turns_before);
+    CHECK_EQ(free_act.phase, FT_PHASE_MENU); /* still your move */
+
+    /* And it waits for its counter rather than expiring unused: the bar is
+     * never spent on nothing. */
+    FtEncounter waits;
+    ft_encounter_init_single(&waits, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    waits.deflect_armed = true;
+    waits.phase = FT_PHASE_TELEGRAPH;
+    waits.phase_ms = 0;
+
+    CHECK(telegraph_and_guard(&waits, -1), "a wind-up came and went");
+    CHECK(!waits.last_deflect_fired, "with nothing sent back");
+    CHECK(waits.deflect_armed, "so the stance is still up");
+
+    /* Once it does fire, it is spent. */
+    waits.phase = FT_PHASE_TELEGRAPH;
+    waits.phase_ms = 0;
+    waits.guard_pressed = false;
+    CHECK(telegraph_and_guard(&waits, 20), "the next one resolved");
+    CHECK(waits.last_deflect_fired, "and bounced");
+    CHECK(!waits.deflect_armed, "which uses it up");
+
+    /* While it is up, a jam stops the hit dead rather than halving it. That
+     * defensive half is what pays for the bar; the bounce alone measured at
+     * about three damage, against an action worth six to eight. */
+    FtEncounter soft;
+    ft_encounter_init_single(&soft, FT_ENEMY_SCRAP_CRAWLER, &lo, 5);
+    soft.phase = FT_PHASE_TELEGRAPH;
+    soft.phase_ms = 0;
+    CHECK(telegraph_and_guard(&soft, 120), "a plain jam resolved");
+    CHECK_EQ(soft.last_guard, FT_GUARD_JAM);
+    const int16_t halved = soft.last_enemy_hit.damage;
+    CHECK(halved > 0, "which still lets something through (%d)", (int)halved);
+
+    FtEncounter hard;
+    ft_encounter_init_single(&hard, FT_ENEMY_SCRAP_CRAWLER, &lo, 5);
+    hard.deflect_armed = true;
+    hard.phase = FT_PHASE_TELEGRAPH;
+    hard.phase_ms = 0;
+    CHECK(telegraph_and_guard(&hard, 120), "the same jam with the stance up");
+    CHECK_EQ(hard.last_guard, FT_GUARD_JAM); /* the readout still says jam */
+    CHECK_EQ(hard.last_enemy_hit.damage, 0);
+    CHECK(hard.last_deflect_fired, "and it went back");
+
+    /* Every reason it can refuse fits one line. */
+    FtEncounter say;
+    ft_encounter_init_single(&say, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    say.signal.value = 0;
+    const char* why = ft_encounter_action_block(&say, FT_ACTION_DEFLECT);
+    CHECK(why && strlen(why) <= FT_TUTORIAL_MAX_CHARS, "no bar: \"%s\"", why ? why : "");
+
+    say.signal.value = FT_SIGNAL_PER_BAR;
+    say.deflect_armed = true;
+    why = ft_encounter_action_block(&say, FT_ACTION_DEFLECT);
+    CHECK(why && strlen(why) <= FT_TUTORIAL_MAX_CHARS, "already up: \"%s\"",
+          why ? why : "");
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -4002,7 +4207,6 @@ int main(void) {
     test_jam_and_capture();
     test_roll();
     test_signal_meter();
-    test_signal_library();
     test_priority();
     test_progression();
     test_flash_budget();
@@ -4034,6 +4238,7 @@ int main(void) {
     test_npc();
     test_notice();
     test_guard_aftermath();
+    test_deflect();
     test_always_something_to_do();
     test_bulwark();
     test_sleeper();

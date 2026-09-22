@@ -229,7 +229,6 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
      * its own, which is right for a standalone fight and wrong here. */
     app->encounter.stats = app->world.stats;
     ft_roll_init(&app->encounter.roll, app->world.stats.charge);
-    app->encounter.lib = app->world.lib;
     app->encounter.coach = app->coach;
 
     if(first_strike) {
@@ -255,10 +254,9 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
 }
 
 static void ft_leave_battle_now(FlipperTales* app, bool won) {
-    /* Carry the player back out, including anything captured in the fight. */
+    /* Carry the player back out. */
     app->world.stats = app->encounter.stats;
     app->world.stats.charge = app->encounter.roll.current;
-    app->world.lib = app->encounter.lib;
     app->coach = false;
 
     if(won) {
@@ -283,8 +281,8 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
          * It used to heal you to the brim, move you to the save point and
          * leave everything else exactly as it was — so losing cost nothing
          * and was strictly better than walking away hurt. You kept the
-         * signals you had just captured and every foe you had beaten since
-         * saving, and got a free top-up for the trouble.
+         * every foe you had beaten since saving, and got a free top-up for
+         * the trouble.
          *
          * Reloading is what a checkpoint means. Everything since it is gone:
          * the stats, the captures, the cleared encounters. That is the cost,

@@ -370,7 +370,6 @@ void ft_world_init(FtWorld* w) {
 
     ft_loadout_init(&w->loadout);
     ft_stats_init(&w->stats);
-    ft_siglib_init(&w->lib);
     ft_guide_init(&w->guide);
     ft_quests_init(&w->quests);
 

@@ -6,7 +6,7 @@
 
 /* A single incoming or outgoing attack. */
 typedef struct {
-    uint16_t      id;             /* stable id, used by the Signal Library */
+    uint16_t      id;             /* stable id, for the field guide */
     int16_t       base_power;
     uint8_t       pierce;         /* flat shield ignored */
     bool          pierce_half;    /* additionally ignore half the shield,
@@ -42,7 +42,7 @@ typedef struct {
     FtHitOutcome outcome;
     int16_t      damage;
     bool         payload_applied;
-    bool         captured;    /* attack should be written to the Signal Library */
+    bool         perfect;    /* a capture-grade block: frame-perfect timing */
     bool         countered;   /* capture against a contact attack counters it */
     int8_t       ram_refund;  /* ENCRYPTED refunds RAM, making the turn a Pass */
 } FtHitResult;

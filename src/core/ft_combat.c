@@ -86,7 +86,7 @@ FtHitResult ft_resolve_hit(const FtAttack* atk, const FtDefender* def, const FtH
     switch(guard) {
     case FT_GUARD_CAPTURE:
         damage = 0;
-        res.captured = true;
+        res.perfect = true;
         res.countered = (atk->delivery == FT_DELIVERY_CONTACT);
         break;
 

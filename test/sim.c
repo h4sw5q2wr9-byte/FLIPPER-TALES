@@ -13,6 +13,8 @@
 #define SIM_MAX_MS    240000u
 #define SIM_TICK_MS   10u
 
+static uint32_t g_arms = 0, g_bounces = 0, g_bounce_damage = 0;
+
 typedef struct {
     uint32_t wins, losses, stalls;
     uint32_t total_turns;
@@ -39,6 +41,12 @@ static uint32_t press_offset(FtRng* rng, uint32_t window, uint32_t skill_pct, bo
     return ft_rng_below(rng, window);
 }
 
+/* Whether this run's player knows about the deflect stance. The baseline
+ * never used the old replay either, so leaving it out measures the same
+ * player as every previous balance table; turning it on measures the
+ * ceiling the new stance adds. */
+static bool g_use_deflect = false;
+
 static void play(const FtRoster* roster, uint32_t skill, uint32_t seed, SimResult* out) {
     FtLoadout lo;
     ft_loadout_init(&lo);
@@ -51,7 +59,7 @@ static void play(const FtRoster* roster, uint32_t skill, uint32_t seed, SimResul
     ft_rng_seed(&rng, seed ^ 0xA5A5u);
 
     uint32_t strike_at = 0, guard_at = 0;
-    bool strike_set = false, guard_set = false;
+    bool strike_set = false, guard_set = false, counted = false;
     uint32_t turns = 0;
 
     for(uint32_t t = 0; t < SIM_MAX_MS && !ft_encounter_over(&e); t += SIM_TICK_MS) {
@@ -65,6 +73,20 @@ static void play(const FtRoster* roster, uint32_t skill, uint32_t seed, SimResul
              * module is selectable now, so reach is the question. */
             const uint8_t bcast = reachable(&e, FT_ACTION_BROADCAST);
             const uint8_t contact = reachable(&e, FT_ACTION_CONTACT);
+
+            /* A player who has learned the stance arms it whenever it is
+             * free to, which is the most generous reading of it: a full bar
+             * always becomes a deflect. */
+            if(g_use_deflect &&
+               ft_encounter_action_block(&e, FT_ACTION_DEFLECT) == NULL) {
+                e.menu_index = (uint8_t)FT_ACTION_DEFLECT;
+                ft_encounter_press_ok(&e);
+                g_arms++;
+                strike_set = false;
+                guard_set = false;
+                turns++;
+                break;
+            }
 
             /* The baseline is unchanged from when these numbers were first
              * measured: wide while there is a crowd, strong once there is
@@ -113,7 +135,19 @@ static void play(const FtRoster* roster, uint32_t skill, uint32_t seed, SimResul
             if(strike_set && ft_encounter_sweep_ms(&e) >= strike_at) ft_encounter_press_ok(&e);
             break;
 
+        case FT_PHASE_IMPACT:
+            if(e.last_deflect_fired && !counted) {
+                g_bounces++;
+                if(e.last_deflect_damage > 0) {
+                    const uint32_t dmg = (uint32_t)e.last_deflect_damage;
+                    g_bounce_damage = g_bounce_damage + dmg;
+                }
+                counted = true;
+            }
+            break;
+
         case FT_PHASE_TELEGRAPH:
+            counted = false;
             if(!guard_set && !ft_encounter_in_ready(&e)) {
                 /* Guarding means pressing near the very end of the sweep. */
                 const uint32_t w = FT_TELEGRAPH_MS;
@@ -159,6 +193,11 @@ int main(void) {
 
     const uint32_t skills[] = {20, 50, 80};
 
+    for(int mode = 0; mode < 2; mode++) {
+    g_use_deflect = (mode == 1);
+    g_arms = g_bounces = g_bounce_damage = 0;
+    printf("\n=== %s ===\n", g_use_deflect ? "with DEFLECT" : "baseline (no deflect)");
+
     /* Every roster, not just the prologue's. An area fight that nobody has
      * measured is an area fight nobody knows is winnable. */
     for(uint8_t ri = 0; ri < FT_ROSTER_COUNT; ri++) {
@@ -182,6 +221,12 @@ int main(void) {
             snprintf(label, sizeof(label), "skill %u%%", skills[s]);
             report(label, &r);
         }
+    }
+    if(g_use_deflect) {
+        printf("\n  armed %u times, bounced %u (%u%%), %u total damage, %u per arm\n",
+               g_arms, g_bounces, g_arms ? (g_bounces * 100u / g_arms) : 0u,
+               g_bounce_damage, g_arms ? (g_bounce_damage / g_arms) : 0u);
+    }
     }
 
     printf("\n");
