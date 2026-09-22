@@ -113,7 +113,9 @@ static const FtEntity CB4_ENTS[] = {
  * Courier has no reason to take it, and Weldhome's gate refuses because
  * Warden Coll is holding it. Both are the same field in FtExit. */
 
-/* [10] The Approach. */
+/* [10] The Approach. The way down is a framed ladder shaft rather than a
+ * notch in the bottom wall: a route you have no reason to take should look
+ * like a route, not like a hole somebody forgot to fill in. */
 static const FtExit AP1_EXITS[] = {
     {0, 2, 3, 16, 8, 0, 0},
     {19, 5, 10, 1, 3, 0, 0},
@@ -122,14 +124,20 @@ static const FtExit AP1_EXITS[] = {
     {10, 8, 11, 10, 1, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_ACTIVE},
 };
 
-/* [11] Weldhome Gate. Coll stands beside the way through, not on it: the
- * exit is what refuses, so she can say why. */
+/* [11] Weldhome Gate. A real gate tile, so a way that is shut against you
+ * does not look like an ordinary doorway you have not tried yet. */
 static const FtExit WH1_EXITS[] = {
     {0, 3, 9, 18, 5, 0, 0},
     {19, 4, 4, 1, 2, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_DONE},
 };
 static const FtEntity WH1_ENTS[] = {
-    {FT_ENT_NPC, 18, 4, (uint8_t)FT_QUEST_WREN},
+    /* Beside the gate, not in front of it.
+     *
+     * She used to stand on (18,4), which is the only tile that touches the
+     * gate — so once the quest opened it, she was still bodily in the way
+     * and the reward for the whole chapter was a wall with a person on it.
+     * NPCs are solid; a guard has to guard from the side. */
+    {FT_ENT_NPC, 18, 3, (uint8_t)FT_QUEST_WREN},
 
     /* A village grows things and keeps a cell spare. This is the stock-up
      * before the hardest fight in the game, two rooms away. */

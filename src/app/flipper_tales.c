@@ -1098,6 +1098,13 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
         return;
     }
 
+    /* Something seeing you is worth hearing, because the half-second beat
+     * before it moves is only useful if you know it started. */
+    bool was_noticing = false;
+    for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) {
+        if(ft_world_foe_noticing(&app->world, i)) was_noticing = true;
+    }
+
     int8_t dx = 0, dy = 0;
     if(app->held & HELD_LEFT) dx -= 1;
     if(app->held & HELD_RIGHT) dx += 1;
@@ -1105,6 +1112,15 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
     if(app->held & HELD_DOWN) dy += 1;
 
     ft_world_update(&app->world, dx, dy, dt_ms);
+
+    if(!was_noticing) {
+        for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) {
+            if(ft_world_foe_noticing(&app->world, i)) {
+                ft_sound_play(&app->sound, FT_SFX_SPOT);
+                break;
+            }
+        }
+    }
 
     /* Doors take themselves the moment you finish stepping onto one: having
      * to stop and press to change room turns a corridor into paperwork. */

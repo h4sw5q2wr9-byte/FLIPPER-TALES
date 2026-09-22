@@ -66,6 +66,12 @@ typedef enum {
     FT_TILE_PYLON,  /* Signal Hill: a mast base, solid */
     FT_TILE_STATIC, /* The Deadzone: floor under interference, walkable */
 
+    /* A way somebody is holding shut. Walkable — whether you may pass is a
+     * quest's business (FtExit.need_quest), not the tile's — but it reads as
+     * a gate rather than a door, so a route that is closed to you looks
+     * closed to you. */
+    FT_TILE_GATE,
+
     FT_TILE_COUNT
 } FtTile;
 
@@ -91,7 +97,10 @@ typedef enum {
 /* Weeds scattered over open floor, placed procedurally rather than authored. */
 #define FT_TILE_ART_TUFT      (FT_TILE_COUNT + 5)
 
-#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 6)
+/* A gate in a vertical wall, same idea as the side door. */
+#define FT_TILE_ART_GATE_SIDE (FT_TILE_COUNT + 6)
+
+#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 7)
 
 /* Maps are stored as one byte per tile, streamed from the SD card. Kept as a
  * borrowed pointer so a map is never copied into RAM wholesale. */

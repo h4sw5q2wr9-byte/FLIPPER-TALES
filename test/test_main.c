@@ -3482,9 +3482,18 @@ static void test_world_links(void) {
         for(uint8_t e = 0; e < room->exit_count; e++) {
             const FtExit* x = &room->exits[e];
 
+            /* A door or a gate: both are ways out, and a gate is what a way
+             * somebody is holding shut looks like. */
             const FtTile here = ft_map_tile(room->map, x->tx, x->ty);
-            CHECK(here == FT_TILE_DOOR, "room %u exit %u stands on a door (got %d)",
-                  r, e, (int)here);
+            CHECK(here == FT_TILE_DOOR || here == FT_TILE_GATE,
+                  "room %u exit %u stands on a way out (got %d)", r, e, (int)here);
+
+            /* And a gated exit has to *look* gated, or the refusal arrives
+             * from nowhere. */
+            if(x->need_quest != 0u && x->need_state == (uint8_t)FT_QUEST_DONE) {
+                CHECK(here == FT_TILE_GATE,
+                      "room %u exit %u is held shut, so it is drawn as a gate", r, e);
+            }
 
             CHECK(x->dest_room < ft_room_count(), "room %u exit %u leads somewhere",
                   r, e);
@@ -4787,6 +4796,96 @@ static void test_audio(void) {
     CHECK_EQ(ft_sfx_length_ms(FT_SFX_COUNT), 0);
 }
 
+/* ---- Nobody stands in a doorway ---------------------------------------- */
+
+static void test_ways_out(void) {
+    section("every way out is walkable to");
+
+    /* The flood fill that already guards these rooms walks *tiles*. People
+     * are not tiles: Warden Coll stood on the one square that touches
+     * Weldhome's gate, so the reward for the whole chapter was a gate you
+     * could open and then not reach. This walks the room the way the player
+     * does, with everything solid that is solid to them. */
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        const FtRoom* room = ft_room(r);
+        const FtMap*  m = room->map;
+
+        static uint8_t seen[64 * 32];
+        static uint16_t queue[64 * 32];
+
+        const uint32_t tiles = (uint32_t)m->w * m->h;
+        if(tiles > sizeof(seen)) continue;
+
+        for(uint32_t i = 0; i < tiles; i++) seen[i] = 0u;
+
+        /* Everything the player bumps into rather than walks through. A tree
+         * counts: it is solid until it is picked. */
+        for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+            const FtEntKind k = room->ents[i].kind;
+            if(k != FT_ENT_NPC && k != FT_ENT_WREN && k != FT_ENT_TREE) continue;
+
+            const uint32_t at = (uint32_t)room->ents[i].ty * m->w + room->ents[i].tx;
+            if(at < tiles) seen[at] = 2u; /* blocked */
+        }
+
+        /* Start where the player arrives: the first exit's tile. */
+        uint16_t head = 0, tail = 0;
+        const uint32_t start = (uint32_t)room->exits[0].ty * m->w + room->exits[0].tx;
+        if(start >= tiles) continue;
+
+        seen[start] = 1u;
+        queue[tail++] = (uint16_t)start;
+
+        while(head < tail) {
+            const uint16_t at = queue[head++];
+            const int32_t x = at % m->w, y = at / m->w;
+
+            static const int8_t STEP[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for(uint8_t d = 0; d < 4u; d++) {
+                const int32_t nx = x + STEP[d][0], ny = y + STEP[d][1];
+                if(nx < 0 || ny < 0 || nx >= (int32_t)m->w || ny >= (int32_t)m->h) continue;
+
+                const uint32_t to = (uint32_t)ny * m->w + (uint32_t)nx;
+                if(seen[to]) continue;
+                if(ft_tile_solid(ft_map_tile(m, nx, ny))) continue;
+
+                seen[to] = 1u;
+                queue[tail++] = (uint16_t)to;
+            }
+        }
+
+        /* Every other way out has to be standable-on. */
+        for(uint8_t e = 1; e < room->exit_count; e++) {
+            const uint32_t at = (uint32_t)room->exits[e].ty * m->w + room->exits[e].tx;
+            CHECK(at < tiles && seen[at] == 1u,
+                  "room %u (%s): exit %u is not blocked by anybody", r, m->name, e);
+        }
+
+        /* And so does everybody you are meant to talk to, from at least one
+         * side — an NPC you cannot stand next to cannot be spoken to. */
+        for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+            const FtEntKind k = room->ents[i].kind;
+            if(k != FT_ENT_NPC && k != FT_ENT_WREN && k != FT_ENT_TREE &&
+               k != FT_ENT_CACHE) {
+                continue;
+            }
+
+            bool touchable = false;
+            static const int8_t STEP[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for(uint8_t d = 0; d < 4u; d++) {
+                const int32_t nx = (int32_t)room->ents[i].tx + STEP[d][0];
+                const int32_t ny = (int32_t)room->ents[i].ty + STEP[d][1];
+                if(nx < 0 || ny < 0 || nx >= (int32_t)m->w || ny >= (int32_t)m->h) continue;
+
+                const uint32_t to = (uint32_t)ny * m->w + (uint32_t)nx;
+                if(to < tiles && seen[to] == 1u) touchable = true;
+            }
+            CHECK(touchable, "room %u (%s): entity %u can be stood next to", r,
+                  m->name, i);
+        }
+    }
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -4846,6 +4945,7 @@ int main(void) {
     test_scene_wipe();
     test_broadcast_sweep();
     test_world_links();
+    test_ways_out();
     test_world_tour();
     test_rng();
 

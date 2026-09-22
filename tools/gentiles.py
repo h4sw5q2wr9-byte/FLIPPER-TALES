@@ -122,6 +122,32 @@ TILES["door_side"] = """
 ########
 """
 
+# A GATE somebody is holding, in a horizontal wall. Heavier than a door and
+# crossed by two bars, so a way that is shut against you never looks like an
+# ordinary doorway you have not tried yet.
+TILES["gate"] = """
+########
+##....##
+#.#..#.#
+########
+#.#..#.#
+#.#..#.#
+########
+#.#..#.#
+"""
+
+# The same gate in a vertical wall, where you pass left-to-right.
+TILES["gate_side"] = """
+########
+#.####.#
+..#..#..
+..#..#..
+..#..#..
+..#..#..
+#.####.#
+########
+"""
+
 # Locked port in a vertical wall: the same gap, barred.
 TILES["lock_side"] = """
 ########
@@ -324,8 +350,9 @@ static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
     # Must match FtTile, then the orientation variants (FT_TILE_ART_*).
     # Must match FtTile exactly, then the orientation variants (FT_TILE_ART_*).
     order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock",
-             "crate", "ladder", "scrap", "frost", "pylon", "static",
-             "door_side", "lock_side", "cable_v", "wall_top", "shadow", "tuft"]
+             "crate", "ladder", "scrap", "frost", "pylon", "static", "gate",
+             "door_side", "lock_side", "cable_v", "wall_top", "shadow", "tuft",
+             "gate_side"]
     for name in order:
         fh.write("    /* %-6s */ {%s},\n" % (name, ", ".join("0x%02X" % b for b in data[name])))
     fh.write("};\n\n#endif /* FT_TILES_H */\n")

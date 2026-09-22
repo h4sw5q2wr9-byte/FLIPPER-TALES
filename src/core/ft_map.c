@@ -82,6 +82,8 @@ uint8_t ft_map_art_index(const FtMap* m, int32_t tx, int32_t ty) {
         return ft_map_side_passage(m, tx, ty) ? FT_TILE_ART_DOOR_SIDE : (uint8_t)t;
     case FT_TILE_LOCK:
         return ft_map_side_passage(m, tx, ty) ? FT_TILE_ART_LOCK_SIDE : (uint8_t)t;
+    case FT_TILE_GATE:
+        return ft_map_side_passage(m, tx, ty) ? FT_TILE_ART_GATE_SIDE : (uint8_t)t;
     case FT_TILE_CABLE:
         return cable_is_vertical(m, tx, ty) ? FT_TILE_ART_CABLE_V : (uint8_t)t;
     default:

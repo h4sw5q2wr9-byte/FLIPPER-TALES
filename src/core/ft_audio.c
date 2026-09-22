@@ -15,6 +15,7 @@
 #define F5  698
 #define G5  784
 #define A5  880
+#define B5  988
 #define C6 1047
 #define E6 1319
 #define G6 1568
@@ -24,14 +25,26 @@
  * Kept short. Anything over about 300ms on a step or a hit starts arriving
  * after the thing it is describing, and a buzzer has no decay to hide in. */
 
-static const FtNote SFX_MOVE[]  = {{C5, 12}};
+static const FtNote SFX_MOVE[]  = {{C5, 10}};
+
+/* Seen. Two clipped beeps on the same note: a warning reads as a warning
+ * because it repeats, not because it is loud. */
+static const FtNote SFX_SPOT[]  = {{B5, 40}, {FT_NOTE_REST, 35}, {B5, 70}};
 static const FtNote SFX_PICK[]  = {{G5, 40}, {C6, 70}};
 static const FtNote SFX_DENY[]  = {{A4, 50}, {F4, 80}};
 static const FtNote SFX_TALK[]  = {{E5, 30}, {FT_NOTE_REST, 20}, {G5, 40}};
 
-static const FtNote SFX_SWING[] = {{G4, 25}, {C5, 25}};
-static const FtNote SFX_HIT[]   = {{C6, 30}, {G5, 50}};
-static const FtNote SFX_HURT[]  = {{E4, 45}, {C4, 90}};
+static const FtNote SFX_SWING[] = {{G4, 20}, {C5, 20}};
+
+/* A hit is a fast fall, not a note.
+ *
+ * Two tones read as a beep; four, dropping an octave in under a tenth of a
+ * second, read as something connecting. A buzzer has no decay to land the
+ * impact for you, so the shape has to do it. */
+static const FtNote SFX_HIT[]   = {{E6, 14}, {C6, 18}, {G5, 22}, {E5, 38}};
+
+/* Taking one is the same shape, lower and slower: it happened to you. */
+static const FtNote SFX_HURT[]  = {{A4, 25}, {F4, 35}, {D4, 45}, {C4, 80}};
 
 /* A jam is a small click up; a perfect block is the same idea with the top
  * note the fanfare uses, so "that was the good one" is audible without
@@ -59,26 +72,33 @@ static const FtNote SFX_ENCOUNTER[] = {
     {C5, 45}, {FT_NOTE_REST, 30}, {G5, 45}, {FT_NOTE_REST, 30}, {C6, 90},
 };
 
-#define CUE(a) {a, (uint8_t)(sizeof(a) / sizeof((a)[0]))}
+#define CUE(a, v) {a, (uint8_t)(sizeof(a) / sizeof((a)[0])), v}
 
 static const struct {
     const FtNote* notes;
     uint8_t       count;
+    uint8_t       volume; /* 0-100 */
 } FT_CUES[FT_SFX_COUNT] = {
-    [FT_SFX_MOVE]      = CUE(SFX_MOVE),
-    [FT_SFX_PICK]      = CUE(SFX_PICK),
-    [FT_SFX_DENY]      = CUE(SFX_DENY),
-    [FT_SFX_TALK]      = CUE(SFX_TALK),
-    [FT_SFX_SWING]     = CUE(SFX_SWING),
-    [FT_SFX_HIT]       = CUE(SFX_HIT),
-    [FT_SFX_HURT]      = CUE(SFX_HURT),
-    [FT_SFX_JAM]       = CUE(SFX_JAM),
-    [FT_SFX_PERFECT]   = CUE(SFX_PERFECT),
-    [FT_SFX_DEFLECT]   = CUE(SFX_DEFLECT),
-    [FT_SFX_LEVEL]     = CUE(SFX_LEVEL),
-    [FT_SFX_WIN]       = CUE(SFX_WIN),
-    [FT_SFX_LOSE]      = CUE(SFX_LOSE),
-    [FT_SFX_ENCOUNTER] = CUE(SFX_ENCOUNTER),
+    /* A footstep fires on every tile, so it is barely there: loud enough to
+     * give walking a texture, quiet enough to stop being noticed. */
+    [FT_SFX_MOVE]      = CUE(SFX_MOVE, 12),
+    [FT_SFX_SPOT]      = CUE(SFX_SPOT, 70),
+    [FT_SFX_PICK]      = CUE(SFX_PICK, 45),
+    [FT_SFX_DENY]      = CUE(SFX_DENY, 40),
+    [FT_SFX_TALK]      = CUE(SFX_TALK, 35),
+
+    /* The fight is the loud part. */
+    [FT_SFX_SWING]     = CUE(SFX_SWING, 45),
+    [FT_SFX_HIT]       = CUE(SFX_HIT, 90),
+    [FT_SFX_HURT]      = CUE(SFX_HURT, 80),
+    [FT_SFX_JAM]       = CUE(SFX_JAM, 70),
+    [FT_SFX_PERFECT]   = CUE(SFX_PERFECT, 90),
+    [FT_SFX_DEFLECT]   = CUE(SFX_DEFLECT, 95),
+
+    [FT_SFX_LEVEL]     = CUE(SFX_LEVEL, 70),
+    [FT_SFX_WIN]       = CUE(SFX_WIN, 75),
+    [FT_SFX_LOSE]      = CUE(SFX_LOSE, 60),
+    [FT_SFX_ENCOUNTER] = CUE(SFX_ENCOUNTER, 65),
 };
 
 const FtNote* ft_sfx(FtSfxId id, uint8_t* count) {
@@ -88,6 +108,11 @@ const FtNote* ft_sfx(FtSfxId id, uint8_t* count) {
     }
     if(count) *count = FT_CUES[id].count;
     return FT_CUES[id].notes;
+}
+
+uint8_t ft_sfx_volume(FtSfxId id) {
+    if(id >= FT_SFX_COUNT) return 0u;
+    return FT_CUES[id].volume;
 }
 
 uint16_t ft_sfx_length_ms(FtSfxId id) {

@@ -3,8 +3,9 @@
 #include <furi_hal_speaker.h>
 
 /* The buzzer is loud and the game is played in a room with other people in
- * it. Half volume is the difference between a game and a nuisance. */
-#define FT_SOUND_VOLUME 0.5f
+ * it, so even a cue at 100 is played at half the hardware's range. Per-cue
+ * volume scales inside that. */
+#define FT_SOUND_CEILING 0.55f
 
 /* How long to wait for the speaker. Zero: another app holding it is not a
  * reason for this one to stall a frame. */
@@ -36,7 +37,7 @@ static void sound_voice(FtSound* s) {
         s->held = true;
     }
     if(furi_hal_speaker_is_mine()) {
-        furi_hal_speaker_start((float)hz, FT_SOUND_VOLUME);
+        furi_hal_speaker_start((float)hz, s->volume);
     }
 }
 
@@ -45,6 +46,7 @@ void ft_sound_init(FtSound* s, bool on) {
     s->count = 0;
     s->at = 0;
     s->note_ms = 0;
+    s->volume = FT_SOUND_CEILING;
     s->on = on;
     s->held = false;
 }
@@ -68,6 +70,7 @@ void ft_sound_play(FtSound* s, FtSfxId id) {
     s->count = n;
     s->at = 0;
     s->note_ms = 0;
+    s->volume = FT_SOUND_CEILING * (float)ft_sfx_volume(id) / 100.0f;
 
     sound_voice(s);
 }

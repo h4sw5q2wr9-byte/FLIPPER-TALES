@@ -16,6 +16,7 @@ typedef struct {
     uint8_t       count;
     uint8_t       at;
     uint32_t      note_ms;
+    float         volume; /* the current cue's, already scaled */
 
     bool on;    /* the player's setting */
     bool held;  /* we currently own the speaker */

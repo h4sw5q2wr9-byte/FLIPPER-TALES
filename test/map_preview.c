@@ -74,9 +74,9 @@ int main(void) {
         {"cb1-tree",     0, &FT_MAP_CB1, 80,  40, FT_FACE_RIGHT, false, 9000},
         {"cb4-cache",    3, &FT_MAP_CB4, 16,  64, FT_FACE_RIGHT, false, 9000},
         /* Chapter 1: the fork, the gate and the junction. */
-        {"ap1-fork",     9, &FT_MAP_AP1, 80,  40, FT_FACE_DOWN,  false, 0},
-        {"ap1-drop",     9, &FT_MAP_AP1, 80,  56, FT_FACE_DOWN,  false, 9000},
-        {"wh1-gate",    10, &FT_MAP_WH1, 136, 32, FT_FACE_RIGHT, false, 0},
+        {"ap1-fork",     9, &FT_MAP_AP1, 160, 40, FT_FACE_DOWN,  false, 0},
+        {"ap1-drop",     9, &FT_MAP_AP1, 160, 96, FT_FACE_DOWN,  false, 9000},
+        {"wh1-gate",    10, &FT_MAP_WH1, 272, 64, FT_FACE_RIGHT, false, 0},
         {"wh1-village", 10, &FT_MAP_WH1, 64,  24, FT_FACE_RIGHT, false, 9000},
         {"ej1-wren",    11, &FT_MAP_EJ1, 128, 16, FT_FACE_RIGHT, false, 0},
         {"cb2-foe",      1, &FT_MAP_CB2, 48,  28, FT_FACE_RIGHT, true,  0},
@@ -221,6 +221,9 @@ int main(void) {
     write_whole_map(&FT_MAP_CB2, "preview/whole_2_cb2.pbm");
     write_whole_map(&FT_MAP_CB3, "preview/whole_3_cb3.pbm");
     write_whole_map(&FT_MAP_CB4, "preview/whole_4_cb4.pbm");
+    write_whole_map(&FT_MAP_AP1, "preview/whole_a_ap1.pbm");
+    write_whole_map(&FT_MAP_WH1, "preview/whole_b_wh1.pbm");
+    write_whole_map(&FT_MAP_EJ1, "preview/whole_c_ej1.pbm");
     write_whole_map(&FT_MAP_SL1, "preview/whole_5_sl1.pbm");
     write_whole_map(&FT_MAP_CS1, "preview/whole_6_cs1.pbm");
     write_whole_map(&FT_MAP_TS1, "preview/whole_7_ts1.pbm");

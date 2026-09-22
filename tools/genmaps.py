@@ -23,6 +23,7 @@ LEGEND = {
     "f": 11, # frost    (Cold Storage)
     "Y": 12, # pylon    (Signal Hill)
     "s": 13, # static   (The Deadzone)
+    "G": 14, # gate     (a way somebody is holding shut)
 }
 
 MAPS = {}
@@ -107,24 +108,24 @@ MAPS["ap1"] = ("The Approach", 16, """
 ####################
 #..................#
 D.......C..........#
-#..................#
-#.....*......**....#
-#..................D
-#........#..#......#
-#........#..#......#
-##########DD########
+#...*..........*...#
+#........#H#.......#
+#........#H#.......D
+#........#H#.......#
+#........#H#.......#
+##########D#########
 """)
 
 # [11] Weldhome Gate. A junction village built into the Carrier, with the way
 # through held shut. Warden Coll stands in front of it.
 MAPS["wh1"] = ("Weldhome Gate", 12, """
 ####################
-#....##......##....#
+#....##......##..###
 #....##..T...##....#
-D..................#
-#..................D
-#....##......##....#
-#..*.##..**..##..*.#
+D..............##..#
+#..................G
+#....##......##..###
+#..*.##..**..##....#
 ####################
 """)
 
@@ -237,6 +238,7 @@ Dss~~ssssCsss~~~sssss#
 
 SOLID = {1, 2, 8, 10, 12}  # wall, void, crate, scrap, pylon
 DOOR = 5
+GATE = 14  # a way out, like a door, and allowed on a border
 
 
 def parse(art):
@@ -261,7 +263,8 @@ def check_border(key, w, h, rows):
             if 0 < x < w - 1 and 0 < y < h - 1:
                 continue
             t = rows[y][x]
-            if t in SOLID or t == DOOR:
+            # A gate is a way out like a door is: it may sit on the border.
+            if t in SOLID or t == DOOR or t == GATE:
                 continue
             bad.append((x, y, t))
 

@@ -25,6 +25,7 @@ typedef struct {
 
 typedef enum {
     FT_SFX_MOVE = 0,   /* a step onto a new tile */
+    FT_SFX_SPOT,       /* something has seen you */
     FT_SFX_PICK,       /* took something */
     FT_SFX_DENY,       /* an action that will not happen */
     FT_SFX_TALK,       /* somebody said something */
@@ -46,5 +47,12 @@ const FtNote* ft_sfx(FtSfxId id, uint8_t* count);
 
 /* The longest any cue runs, so the app can size its own expectations. */
 uint16_t ft_sfx_length_ms(FtSfxId id);
+
+/* How loud, 0-100.
+ *
+ * Per cue, not per game, because the one that fires on every single tile
+ * cannot be as loud as the one that fires when you win. A footstep at the
+ * same volume as a fanfare is a game you turn off. */
+uint8_t ft_sfx_volume(FtSfxId id);
 
 #endif /* FT_AUDIO_H */
