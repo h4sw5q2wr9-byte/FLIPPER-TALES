@@ -67,6 +67,25 @@ static const uint16_t FT_SPRITE_BOOTER[FT_SPRITE_H] = {
     0x0000,
 };
 
+static const uint16_t FT_SPRITE_NPC[FT_SPRITE_H] = {
+    0x0000,
+    0x07E0,
+    0x0FF0,
+    0x1FF8,
+    0x1818,
+    0x17E8,
+    0x1818,
+    0x0FF0,
+    0x07E0,
+    0x3FF0,
+    0x7878,
+    0x7038,
+    0x7038,
+    0x77B8,
+    0x77B8,
+    0xF87C,
+};
+
 static const uint16_t FT_SPRITE_CRAWLER[FT_SPRITE_H] = {
     0x0000,
     0x0000,

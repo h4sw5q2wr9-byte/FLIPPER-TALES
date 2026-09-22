@@ -85,6 +85,17 @@ uint8_t ft_encounter_anim_progress(const FtEncounter* e) {
     return (uint8_t)((e->phase_ms * 255u) / FT_ANIM_MS);
 }
 
+int32_t ft_encounter_guard_offset(const FtEncounter* e) {
+    return e->last_guard_offset;
+}
+
+int32_t ft_encounter_guard_gap(const FtEncounter* e) {
+    if(e->phase != FT_PHASE_TELEGRAPH || !e->guard_pressed) return -1;
+
+    const int32_t gap = (int32_t)FT_TELEGRAPH_MS - (int32_t)e->guard_press_ms;
+    return (gap < 0) ? 0 : gap;
+}
+
 /* ---- Foes ------------------------------------------------------------ */
 
 bool ft_encounter_foe_alive(const FtEncounter* e, uint8_t i) {
@@ -222,7 +233,9 @@ void ft_encounter_init(
 
     e->guard_pressed = false;
     e->guard_press_ms = 0;
+    e->guard_locked_ms = 0;
     e->last_guard = FT_GUARD_NONE;
+    e->last_guard_offset = -1;
 
     const FtHitResult blank = {FT_HIT_OK, 0, false, false, false, 0};
     e->last_player_hit = blank;
@@ -670,12 +683,16 @@ static void choose_enemy_attack(FtEncounter* e) {
         e->foes[e->acting_foe].attack_index = (uint8_t)(en->attack_count - 1u);
         e->guard_pressed = false;
         e->guard_press_ms = 0;
+        e->guard_locked_ms = 0;
+        e->last_guard_offset = -1;
         return;
     }
 
     e->foes[e->acting_foe].attack_index = (uint8_t)ft_rng_below(&e->rng, en->attack_count);
     e->guard_pressed = false;
     e->guard_press_ms = 0;
+    e->guard_locked_ms = 0;
+    e->last_guard_offset = -1;
 }
 
 const FtAttack* ft_encounter_incoming(const FtEncounter* e) {
@@ -693,6 +710,7 @@ static void resolve_enemy_action(FtEncounter* e) {
         e->guard_pressed ? (int32_t)FT_TELEGRAPH_MS - (int32_t)e->guard_press_ms : -1;
 
     e->last_guard = ft_guard_from_timing(before_impact, e->fx.hard_mode, atk->klass);
+    e->last_guard_offset = before_impact;
 
     /* Bracing is a real shield, so it can blunt or even deflect a hit. */
     const FtDefender def = {e->defending ? FT_DEFEND_SHIELD : 0, 0};
@@ -763,6 +781,7 @@ void ft_encounter_press_ok(FtEncounter* e) {
         if(!e->guard_pressed) {
             e->guard_pressed = true;
             e->guard_press_ms = ft_encounter_sweep_ms(e);
+            e->guard_locked_ms = 0;
         }
         break;
 
@@ -892,6 +911,11 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         break;
 
     case FT_PHASE_TELEGRAPH:
+        /* Unlike the strike check, a guard press does not stop the clock: the
+         * hit is still coming. What freezes is the marker, so the gap between
+         * where you guarded and where the hit lands can be watched closing. */
+        if(e->guard_pressed) e->guard_locked_ms += dt_ms;
+
         if(e->phase_ms >= FT_READY_MS + FT_TELEGRAPH_MS) {
             resolve_enemy_action(e);
             enter_phase(e, FT_PHASE_IMPACT);

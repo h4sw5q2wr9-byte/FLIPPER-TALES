@@ -44,7 +44,9 @@ typedef enum {
     FT_MODE_BATTLE,
     FT_MODE_PAUSE,
     FT_MODE_PRACTICE, /* the arena's setup screen */
-    FT_MODE_LEVELUP,  /* spending the levels a win just paid out */
+    FT_MODE_ORBS,     /* placing orbs — from a level-up, or from the menu */
+    FT_MODE_QUESTS,   /* what has been asked of you */
+    FT_MODE_TALK,     /* somebody saying something */
     FT_MODE_CONFIRM,  /* the gate in front of erasing a run */
     FT_MODE_DEBUG,    /* the testing tools, kept out of the player's way */
     FT_MODE_GUIDE,    /* the field guide's index */
@@ -75,10 +77,19 @@ typedef struct {
     FtPractice practice;
     bool       in_practice;
 
-    /* Levels a win owes but the player has not spent yet. They are spent one
-     * at a time, because each one is a choice. */
-    int16_t levels_owed;
-    uint8_t levelup_item;
+    /* Which stat row the orb screen is on, and how it was opened: a level-up
+     * hands you straight back to the world, the pause menu back to the menu. */
+    uint8_t orb_item;
+    bool    orbs_from_pause;
+
+    /* Did the fight that just ended pay out a level? Only then is the orb
+     * screen pushed at the player unasked. */
+    bool    levelled;
+
+    /* Which quest row is highlighted, and whatever was last said. */
+    uint8_t     quest_item;
+    FtQuestTalk talk;
+    const char* talk_who;
 
     /* The New game confirmation. Defaults to No. */
     bool confirm_yes;
@@ -145,7 +156,9 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
     if(app->show_help) {
         ft_render_help(canvas, app->help_page);
     } else if(app->mode == FT_MODE_PAUSE) {
-        ft_render_pause(canvas, app->pause_item, app->coach);
+        ft_render_pause(canvas, app->pause_item, app->coach,
+                        app->world.stats.orbs,
+                        app->paused_from == FT_MODE_BATTLE);
     } else if(app->mode == FT_MODE_PRACTICE) {
         ft_render_practice(canvas, &app->practice);
     } else if(app->mode == FT_MODE_GUIDE) {
@@ -158,9 +171,12 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
                         ft_room(app->travel_room)->map->name);
     } else if(app->mode == FT_MODE_CONFIRM) {
         ft_render_confirm(canvas, "Erase this run?", app->confirm_yes);
-    } else if(app->mode == FT_MODE_LEVELUP) {
-        ft_render_levelup(
-            canvas, &app->world.stats, app->levelup_item, app->levels_owed);
+    } else if(app->mode == FT_MODE_ORBS) {
+        ft_render_orbs(canvas, &app->world.stats, app->orb_item);
+    } else if(app->mode == FT_MODE_QUESTS) {
+        ft_render_quests(canvas, &app->world.quests, app->quest_item);
+    } else if(app->mode == FT_MODE_TALK) {
+        ft_render_talk(canvas, app->talk_who, &app->talk);
     } else if(app->mode == FT_MODE_BATTLE) {
         ft_render_battle(canvas, &app->encounter);
     } else {
@@ -230,6 +246,9 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
     /* Reached you rather than the other way round: they open. */
     if(ambush) ft_encounter_enemy_opens(&app->encounter);
 
+    /* Some things you are asked to do are asked of you not fighting. */
+    ft_quest_battle(&app->world.quests);
+
     app->battle_entity = entity;
     app->battle_first_strike = first_strike;
     app->mode = FT_MODE_BATTLE;
@@ -248,12 +267,14 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
         }
         if(app->world.stats.charge < 1) app->world.stats.charge = 1;
 
-        /* XP is banked on the way out, and any levels it bought are spent on
-         * the next frame — the level-up screen owns that, not this. */
+        /* XP is banked on the way out. Each level it bought is taken here and
+         * pays out an orb; what the orbs become is the player's business, and
+         * stays the player's business — they can be moved again later. */
         const int16_t xp = ft_encounter_xp(&app->encounter);
-        app->levels_owed = (int16_t)(
-            app->levels_owed +
-            ft_xp_gain(&app->world.stats, xp, ft_level_cap(app->chapters_done)));
+        const int16_t levels =
+            ft_xp_gain(&app->world.stats, xp, ft_level_cap(app->chapters_done));
+        for(int16_t i = 0; i < levels; i++) ft_level_take(&app->world.stats);
+        app->levelled = (levels > 0);
 
         ft_toast(app, "Cleared.");
     } else {
@@ -281,17 +302,20 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
             ft_toast(app, "No save. Restarted.");
         }
 
-        app->levels_owed = 0;
         app->world.stats.charge = app->world.stats.charge_max;
         app->world.stats.ram = app->world.stats.ram_max;
     }
 
     app->battle_entity = -1;
 
-    /* A level owed takes the screen before the world comes back. */
-    if(app->levels_owed > 0) {
-        app->levelup_item = 0;
-        app->mode = FT_MODE_LEVELUP;
+    /* A level just earned takes the screen before the world comes back. Orbs
+     * banked on purpose do not: a player who is saving them should not have
+     * the screen pushed at them after every fight. The pause menu's Orbs row
+     * shows the count, which is where a reminder belongs. */
+    if(won && app->levelled && app->world.stats.orbs > 0) {
+        app->orb_item = 0;
+        app->orbs_from_pause = false;
+        app->mode = FT_MODE_ORBS;
         return;
     }
 
@@ -406,10 +430,12 @@ static void ft_debug_pick(FlipperTales* app) {
         const int16_t owed =
             ft_xp_gain(&app->world.stats, 100, ft_level_cap(app->chapters_done));
 
-        app->levels_owed = (int16_t)(app->levels_owed + owed);
-        if(app->levels_owed > 0) {
-            app->levelup_item = 0;
-            app->mode = FT_MODE_LEVELUP;
+        for(int16_t i = 0; i < owed; i++) ft_level_take(&app->world.stats);
+
+        if(app->world.stats.orbs > 0) {
+            app->orb_item = 0;
+            app->orbs_from_pause = false;
+            app->mode = FT_MODE_ORBS;
         } else {
             ft_toast(app, "XP banked.");
         }
@@ -457,6 +483,28 @@ static void ft_overworld_ok(FlipperTales* app) {
     const int ahead = ft_world_foe_ahead(&app->world);
     if(ahead >= 0) {
         ft_begin_battle(app, ahead, true, false);
+        return;
+    }
+
+    /* Somebody you are facing is talked to. An NPC is solid, so walking into
+     * one and pressing OK is the whole interaction. */
+    const int who = ft_world_npc_ahead(&app->world);
+    if(who >= 0) {
+        const FtRoom*   room = ft_room(app->world.room);
+        const FtQuestId id = (FtQuestId)room->ents[who].roster;
+
+        app->talk = ft_quest_talk(&app->world.quests, id);
+        app->talk_who = ft_quest_def(id)->name;
+
+        if(app->talk.orbs > 0) {
+            app->world.stats.orbs = (int16_t)(app->world.stats.orbs + app->talk.orbs);
+
+            /* Paid work is progress worth keeping even if the walk home goes
+             * badly, so it is written out before the screen changes. */
+            ft_save_now(app);
+        }
+
+        app->mode = FT_MODE_TALK;
         return;
     }
 
@@ -560,6 +608,22 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 }
                 app->mode = app->paused_from;
                 break;
+            case FT_PAUSE_ORBS:
+                /* Not mid-fight: moving a point to escape a hit you have
+                 * already taken is not a build decision. */
+                if(app->paused_from == FT_MODE_BATTLE) {
+                    ft_toast(app, "Not in a fight.");
+                    app->mode = app->paused_from;
+                    break;
+                }
+                app->orb_item = 0;
+                app->orbs_from_pause = true;
+                app->mode = FT_MODE_ORBS;
+                break;
+            case FT_PAUSE_QUESTS:
+                app->quest_item = 0;
+                app->mode = FT_MODE_QUESTS;
+                break;
             case FT_PAUSE_GUIDE:
                 app->guide_item = 0;
                 app->mode = FT_MODE_GUIDE;
@@ -570,9 +634,6 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 break;
             case FT_PAUSE_NEWGAME:
                 app->confirm_yes = false;
-    app->debug_item = 0;
-    app->travel_room = 0;
-    app->guide_item = 0;
                 app->mode = FT_MODE_CONFIRM;
                 break;
             case FT_PAUSE_TIPS:
@@ -657,7 +718,6 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 ft_storage_erase();
                 ft_world_init(&app->world);
                 app->coach = true;
-                app->levels_owed = 0;
                 app->battle_entity = -1;
                 ft_toast(app, "New run.");
             }
@@ -671,35 +731,73 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
         return;
     }
 
-    if(app->mode == FT_MODE_LEVELUP) {
+    if(app->mode == FT_MODE_ORBS) {
+        static const FtLevelChoice CHOICE[FT_UP_COUNT] = {
+            FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
+
         switch(event->key) {
         case InputKeyUp:
-            app->levelup_item = (uint8_t)((app->levelup_item + 2u) % 3u);
+            app->orb_item =
+                (uint8_t)((app->orb_item + FT_UP_COUNT - 1u) % FT_UP_COUNT);
             break;
         case InputKeyDown:
-            app->levelup_item = (uint8_t)((app->levelup_item + 1u) % 3u);
+            app->orb_item = (uint8_t)((app->orb_item + 1u) % FT_UP_COUNT);
             break;
-        case InputKeyOk: {
-            static const FtLevelChoice CHOICE[3] = {
-                FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
 
-            /* A capped stat refuses, and the level stays owed — there is no
-             * way to lose one by pressing OK on the wrong row. */
-            if(!ft_level_apply(&app->world.stats, CHOICE[app->levelup_item])) break;
+        case InputKeyOk:
+        case InputKeyRight:
+            /* A capped stat, or an empty hand, simply refuses: there is no
+             * way to lose an orb by pressing the wrong row. */
+            if(ft_orb_spend(&app->world.stats, CHOICE[app->orb_item])) {
+                ft_save_now(app);
+            }
+            break;
 
-            app->levels_owed--;
-            if(app->levels_owed > 0) break; /* straight on to the next one */
+        case InputKeyLeft:
+            /* And back out again, at any time. This is the whole point: a
+             * build you are stuck with is one you had to be told about. */
+            if(ft_orb_refund(&app->world.stats, CHOICE[app->orb_item])) {
+                ft_save_now(app);
+            }
+            break;
 
-            /* Levelling is progress worth keeping even if the player walks
-             * into something and goes down on the next screen. */
-            ft_save_now(app);
-            app->mode = FT_MODE_OVERWORLD;
+        case InputKeyBack:
+        default:
+            /* Leaving with orbs in hand is fine — they keep, and the pause
+             * menu says how many. The screen used to refuse to close, which
+             * made a level-up a modal interruption. */
+            app->mode = app->orbs_from_pause ? FT_MODE_PAUSE : FT_MODE_OVERWORLD;
             break;
         }
-        default:
-            /* BACK does not dismiss it: the level is owed either way, and a
-             * screen you can escape from is a stat you can lose. */
+        return;
+    }
+
+    if(app->mode == FT_MODE_QUESTS) {
+        switch(event->key) {
+        case InputKeyUp:
+            app->quest_item =
+                (uint8_t)((app->quest_item + FT_QUEST_COUNT - 1u) % FT_QUEST_COUNT);
             break;
+        case InputKeyDown:
+            app->quest_item = (uint8_t)((app->quest_item + 1u) % FT_QUEST_COUNT);
+            break;
+        case InputKeyBack:
+        default:
+            app->mode = FT_MODE_PAUSE;
+            break;
+        }
+        return;
+    }
+
+    if(app->mode == FT_MODE_TALK) {
+        /* Any key closes it. A conversation you have to find the right button
+         * to leave is a conversation nobody finishes. */
+        if(app->world.stats.orbs > 0 && app->talk.orbs > 0) {
+            app->orb_item = 0;
+            app->orbs_from_pause = false;
+            app->mode = FT_MODE_ORBS;
+        } else {
+            app->mode = FT_MODE_OVERWORLD;
         }
         return;
     }
@@ -792,7 +890,8 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
 
     if(app->show_help) return;
     if(app->mode == FT_MODE_PAUSE || app->mode == FT_MODE_PRACTICE) return;
-    if(app->mode == FT_MODE_LEVELUP || app->mode == FT_MODE_CONFIRM) return;
+    if(app->mode == FT_MODE_ORBS || app->mode == FT_MODE_CONFIRM) return;
+    if(app->mode == FT_MODE_QUESTS || app->mode == FT_MODE_TALK) return;
     if(app->mode == FT_MODE_DEBUG) return;
     if(app->mode == FT_MODE_GUIDE || app->mode == FT_MODE_GUIDE_ENTRY) return;
 
@@ -859,8 +958,22 @@ static FlipperTales* ft_alloc(void) {
     app->pend_ambush = false;
     app->pend_won = false;
     app->in_practice = false;
-    app->levels_owed = 0;
-    app->levelup_item = 0;
+    /* These three were being reset inside the pause menu's New game case
+     * instead of here, so they started a run holding whatever malloc left
+     * behind. Nothing crashed — ft_room clamps, and the list cursors are
+     * taken modulo before they are moved — but the first frame of the debug
+     * menu and the field guide could each highlight a row at random. */
+    app->debug_item = 0;
+    app->travel_room = 0;
+    app->guide_item = 0;
+
+    app->orb_item = 0;
+    app->orbs_from_pause = false;
+    app->levelled = false;
+    app->quest_item = 0;
+    app->talk_who = "";
+    app->talk.lines = 0;
+    app->talk.orbs = 0;
     app->chapters_done = 0;
     app->confirm_yes = false;
     ft_practice_init(&app->practice, furi_get_tick());

@@ -67,6 +67,18 @@ static void build(FtEncounter* e, const Shot* s) {
     case FT_PHASE_TELEGRAPH:
     case FT_PHASE_IMPACT:
         e->foes[e->acting_foe].attack_index = (uint8_t)s->variant;
+
+        /* `menu_index` is dead weight in these two phases, so it doubles as
+         * the guard knob: 5 is a press inside the window, 6 one that went up
+         * far too early, 7 no press at all. */
+        if(s->menu_index >= 5u) {
+            const bool early = (s->menu_index == 6u);
+            e->guard_pressed = (s->menu_index != 7u);
+            e->guard_press_ms = early ? 300u : (FT_TELEGRAPH_MS - 40u);
+            e->guard_locked_ms = 90u;
+            e->last_guard_offset =
+                e->guard_pressed ? (int32_t)(FT_TELEGRAPH_MS - e->guard_press_ms) : -1;
+        }
         break;
     case FT_PHASE_PLAYER_ACT:
         e->action_pressed = (s->variant != 0);
@@ -86,6 +98,13 @@ static void build(FtEncounter* e, const Shot* s) {
         e->last_enemy_hit.captured = (s->variant == 0);
         e->last_enemy_hit.damage = (s->variant == 0) ? 0 : 3;
         e->last_capture_was_new = true;
+
+        /* A guard that lapsed, or was never raised, lands as a plain hit. */
+        if(s->menu_index >= 6u) {
+            e->last_guard = FT_GUARD_NONE;
+            e->last_enemy_hit.captured = false;
+            e->last_enemy_hit.damage = 6;
+        }
     }
 
     if(s->variant == 9) e->coach = false;
@@ -146,6 +165,14 @@ int main(void) {
         {"telegraph-near",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1270, 0, 0, 0, false},
         {"telegraph-guard", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1240, 0, 1, 0, false},
         {"telegraph-undo",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_TELEGRAPH,  1100, 0, 1, 0, false},
+        /* The guard aftermath: the marker frozen where the block went up,
+         * with the impact edge still closing on it, and the readings the
+         * popup gives afterwards. */
+        {"guard-held",      FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1280, 5, 0, 0, false},
+        {"guard-tooearly",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1000, 6, 0, 0, false},
+        {"after-jam",       FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  5, 1, 0, false},
+        {"after-early",     FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  6, 1, 0, false},
+        {"after-noguard",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  7, 1, 0, false},
         {"anim-incoming",   FT_ENEMY_SEALED_LOCK,  FT_PHASE_IMPACT,     110,  0, 1, 0, false},
         {"anim-capture",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     110,  0, 0, 0, false},
         {"impact-capture",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  0, 0, 0, false},
@@ -197,7 +224,7 @@ int main(void) {
     /* The menus are screens too, and they were the two nobody was looking at
      * until a row was added to one of them. */
     for(uint8_t i = 0; i < FT_PAUSE_COUNT; i++) {
-        ft_render_pause(canvas, i, (i % 2) != 0);
+        ft_render_pause(canvas, i, (i % 2) != 0, (i == 0u) ? 0 : 12, (i % 3u) == 0u);
 
         char pp[64];
         snprintf(pp, sizeof(pp), "preview/80_pause%u.pbm", i);
@@ -282,36 +309,82 @@ int main(void) {
     }
 
     {
-        /* The level-up screen: each row, and the capped case, which changes
-         * what the value column says. */
+        /* The orb screen: each row, and the widest the value column gets. */
         FtStats st;
         ft_stats_init(&st);
         st.level = 7;
 
-        for(uint8_t i = 0; i < 3u; i++) {
-            ft_render_levelup(canvas, &st, i, (i == 0u) ? 3 : 1);
+        /* Built the way the game builds it, so the value column and the count
+         * beside it agree. Setting `spent` by hand showed "14 (4)". */
+        for(uint8_t l = 0; l < 5u; l++) {
+            ft_level_take(&st);
+            if(l < 4u) ft_orb_spend(&st, FT_UP_CHARGE);
+        }
+
+        for(uint8_t i = 0; i < FT_UP_COUNT; i++) {
+            ft_render_orbs(canvas, &st, i);
 
             char lp[64];
-            snprintf(lp, sizeof(lp), "preview/87_level%u.pbm", i);
+            snprintf(lp, sizeof(lp), "preview/87_orbs%u.pbm", i);
             ft_stub_canvas_write_pbm(canvas, lp);
 
             const int c = ft_stub_canvas_clipped(canvas);
             total_clipped += c;
-            printf("  level row %u         %s\n", i, c ? "CLIPPED" : "ok");
+            printf("  orb row %u           %s\n", i, c ? "CLIPPED" : "ok");
         }
 
-        /* Every stat at its cap, and at three digits, which is the widest the
-         * value column ever gets. */
+        /* Every stat at its cap, at three digits, with a two-digit orb count
+         * beside each one: the widest this screen can ever be. */
         st.charge_max = FT_CAP_CHARGE;
         st.ram_max = FT_CAP_RAM;
         st.flash_max = FT_CAP_FLASH;
         st.level = 99;
+        st.orbs = 99;
+        for(uint8_t i = 0; i < FT_UP_COUNT; i++) st.spent[i] = 99u;
+        st.charge = st.charge_max;
 
-        ft_render_levelup(canvas, &st, 0, 1);
-        ft_stub_canvas_write_pbm(canvas, "preview/88_levelcap.pbm");
+        ft_render_orbs(canvas, &st, 0);
+        ft_stub_canvas_write_pbm(canvas, "preview/88_orbcap.pbm");
         total_clipped += ft_stub_canvas_clipped(canvas);
-        printf("  level capped        %s\n",
+        printf("  orbs capped         %s\n",
                ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
+    }
+
+    {
+        /* Quests, and everything anybody says. Both are new screens, and the
+         * talk box is the only one whose content comes out of core as text. */
+        FtQuests q;
+        ft_quests_init(&q);
+
+        for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+            q.state[0] = st;
+            ft_render_quests(canvas, &q, 0);
+
+            char qp[64];
+            snprintf(qp, sizeof(qp), "preview/89_quests%u.pbm", st);
+            ft_stub_canvas_write_pbm(canvas, qp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  quests state %u      %s\n", st, c ? "CLIPPED" : "ok");
+        }
+
+        for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+            FtQuests talker;
+            ft_quests_init(&talker);
+            talker.state[0] = st;
+
+            const FtQuestTalk t = ft_quest_talk(&talker, FT_QUEST_CLEAN_RUN);
+            ft_render_talk(canvas, ft_quest_def(FT_QUEST_CLEAN_RUN)->name, &t);
+
+            char tp[64];
+            snprintf(tp, sizeof(tp), "preview/90_talk%u.pbm", st);
+            ft_stub_canvas_write_pbm(canvas, tp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  talk state %u        %s\n", st, c ? "CLIPPED" : "ok");
+        }
     }
 
     {

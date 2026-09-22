@@ -691,7 +691,28 @@ static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
         return;
     }
 
-    draw_cursor(canvas, TRACK_X + ms_to_px(ft_encounter_sweep_ms(e), FT_TELEGRAPH_MS));
+    const int32_t live = TRACK_X + ms_to_px(ft_encounter_sweep_ms(e), FT_TELEGRAPH_MS);
+
+    if(e->guard_pressed) {
+        /* Frozen where the guard went up, flashing, with the impact edge
+         * still closing on it. The strike check has always shown the player
+         * exactly where they landed; the guard showed nothing at all, so a
+         * mistimed block was indistinguishable from an unblockable hit. */
+        const int32_t at = TRACK_X + ms_to_px(e->guard_press_ms, FT_TELEGRAPH_MS);
+
+        if((e->guard_locked_ms / 70u) % 2u) {
+            canvas_draw_box(canvas, at - 1, TRACK_Y - 4, 5, TRACK_H + 8);
+        } else {
+            draw_cursor(canvas, at);
+        }
+
+        /* A thin line, not a second cursor: the eye should follow the gap
+         * shrinking, not mistake this for another thing to aim with. */
+        canvas_draw_line(canvas, live, TRACK_Y - 2, live, TRACK_Y + TRACK_H + 1);
+        return;
+    }
+
+    draw_cursor(canvas, live);
 }
 
 /* ---- Popups ---------------------------------------------------------- */
@@ -762,25 +783,66 @@ static void draw_player_result(Canvas* canvas, const FtEncounter* e) {
     }
 }
 
+/* Where the guard actually landed, in words, in under 20 characters.
+ *
+ * "you were hit" and "you blocked too early by a fifth of a second" used to
+ * look identical. The bar now freezes at the press; this is the same reading
+ * as a number, which is what survives being looked at for half a second. */
+static void guard_note(const FtEncounter* e, char* out, size_t n) {
+    const FtAttack* atk = ft_encounter_incoming(e);
+    const int32_t   off = ft_encounter_guard_offset(e);
+
+    if(atk == NULL || atk->klass == FT_CLASS_UNDODGEABLE) {
+        out[0] = '\0';
+        return;
+    }
+    if(off < 0) {
+        snprintf(out, n, "no guard");
+        return;
+    }
+
+    const int32_t jam = (int32_t)ft_jam_window_ms(e->fx.hard_mode, atk->klass);
+
+    /* Inside the window the number is how tight it was; outside it is how
+     * much too early, which is the number you can actually act on. */
+    if(off <= jam) {
+        snprintf(out, n, "at %dms", (int)off);
+    } else {
+        snprintf(out, n, "%dms early", (int)(off - jam));
+    }
+}
+
 static void draw_enemy_result(Canvas* canvas, const FtEncounter* e) {
     const FtHitResult* r = &e->last_enemy_hit;
-    char detail[24];
+
+    /* Wide enough that the compiler can see no format can be truncated; the
+     * popup clamps to the panel anyway, so the extra bytes cost a frame of
+     * stack and nothing else. */
+    char detail[48];
+    char note[20];
+
+    guard_note(e, note, sizeof(note));
 
     if(r->captured) {
-        draw_popup(canvas, "CAPTURED!",
-                   e->last_capture_was_new ? "signal stored" : "already held");
+        snprintf(detail, sizeof(detail), "%s %s",
+                 e->last_capture_was_new ? "stored" : "held", note);
+        draw_popup(canvas, "CAPTURED!", detail);
         return;
     }
     if(e->last_guard == FT_GUARD_JAM) {
-        snprintf(detail, sizeof(detail), "jammed  -%d", (int)r->damage);
+        snprintf(detail, sizeof(detail), "-%d  %s", (int)r->damage, note);
         draw_popup(canvas, "JAM", detail);
         return;
     }
     if(r->damage > 0) {
-        snprintf(detail, sizeof(detail), "-%d", (int)r->damage);
+        if(note[0]) {
+            snprintf(detail, sizeof(detail), "-%d  %s", (int)r->damage, note);
+        } else {
+            snprintf(detail, sizeof(detail), "-%d", (int)r->damage);
+        }
         draw_popup(canvas, "HIT", detail);
     } else {
-        draw_popup(canvas, "NO DAMAGE", NULL);
+        draw_popup(canvas, "NO DAMAGE", note[0] ? note : NULL);
     }
 }
 
@@ -1051,9 +1113,12 @@ void ft_render_menu_list(
     }
 }
 
-void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
+void ft_render_pause(
+    Canvas* canvas, uint8_t selected, bool tips_on, int16_t orbs, bool in_battle) {
     static const char* const ITEMS[FT_PAUSE_COUNT] = {
         "Resume",
+        "Orbs",
+        "Quests",
         "Save",
         "Field guide",
         "How to play",
@@ -1063,8 +1128,18 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
         "Quit",
     };
 
+    char orbval[12];
     const char* values[FT_PAUSE_COUNT] = {NULL};
     values[FT_PAUSE_TIPS] = tips_on ? "ON" : "OFF";
+
+    /* Rebuilding mid-fight would let a losing turn be undone by moving a
+     * point, so the row says why rather than vanishing. */
+    if(in_battle) {
+        values[FT_PAUSE_ORBS] = "not in battle";
+    } else {
+        snprintf(orbval, sizeof(orbval), "%d", (int)orbs);
+        values[FT_PAUSE_ORBS] = orbval;
+    }
 
     ft_render_menu_list(
         canvas, "PAUSED", ITEMS, values, FT_PAUSE_COUNT, selected);
@@ -1171,31 +1246,26 @@ void ft_render_practice(Canvas* canvas, const FtPractice* p) {
 
 /* The level-up screen. Three stats, what each is worth, and what it would
  * become — a choice nobody can make from the stat's name alone. */
-void ft_render_levelup(
-    Canvas* canvas, const FtStats* stats, uint8_t selected, int16_t owed) {
+void ft_render_orbs(Canvas* canvas, const FtStats* stats, uint8_t selected) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
     canvas_set_font(canvas, FontSecondary);
 
     char head[32];
-    if(owed > 1) {
-        snprintf(head, sizeof(head), "LEVEL %d  (%d more)", (int)stats->level, (int)owed - 1);
-    } else {
-        snprintf(head, sizeof(head), "LEVEL %d", (int)stats->level);
-    }
+    snprintf(head, sizeof(head), "L%d   %d orb%s", (int)stats->level, (int)stats->orbs,
+             (stats->orbs == 1) ? "" : "s");
     draw_centred(canvas, FT_SCREEN_W / 2, 8, head);
     canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
 
-    static const char* const NAMES[3] = {"HP", "MP", "Cards"};
-    static const FtLevelChoice CHOICE[3] = {FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
-    static const int16_t STEP[3] = {FT_LEVEL_UP_CHARGE, FT_LEVEL_UP_RAM, FT_LEVEL_UP_FLASH};
+    static const char* const NAMES[FT_UP_COUNT] = {"HP", "MP", "Cards"};
+    static const FtLevelChoice CHOICE[FT_UP_COUNT] = {FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
 
-    const int16_t now[3] = {stats->charge_max, stats->ram_max, stats->flash_max};
+    const int16_t now[FT_UP_COUNT] = {
+        stats->charge_max, stats->ram_max, stats->flash_max};
 
-    for(uint8_t i = 0; i < 3u; i++) {
+    for(uint8_t i = 0; i < FT_UP_COUNT; i++) {
         const int32_t y = 14 + (int32_t)i * 12;
-        const bool on = (i == selected);
-        const bool can = ft_level_choice_available(stats, CHOICE[i]);
+        const bool    on = (i == selected);
 
         if(on) {
             canvas_draw_box(canvas, 4, y, 120, 11);
@@ -1204,14 +1274,10 @@ void ft_render_levelup(
 
         canvas_draw_str(canvas, 9, y + 8, NAMES[i]);
 
-        char value[16];
-        if(can) {
-            snprintf(value, sizeof(value), "%d>%d", (int)now[i], (int)(now[i] + STEP[i]));
-        } else {
-            /* Capped, not hidden: the row stays so the list does not change
-             * shape between level-ups. */
-            snprintf(value, sizeof(value), "%d MAX", (int)now[i]);
-        }
+        /* Value, then how many orbs are sitting in it. Seeing "35 (4)" is
+         * what tells you there are four to take back out. */
+        char value[20];
+        snprintf(value, sizeof(value), "%d (%d)", (int)now[i], (int)stats->spent[CHOICE[i]]);
 
         const int32_t vw = (int32_t)canvas_string_width(canvas, value);
         canvas_draw_str(canvas, 119 - vw, y + 8, value);
@@ -1219,7 +1285,44 @@ void ft_render_levelup(
         if(on) canvas_set_color(canvas, ColorBlack);
     }
 
-    draw_centred(canvas, FT_SCREEN_W / 2, 62, "OK to take it");
+    draw_centred(canvas, FT_SCREEN_W / 2, 62, "LEFT/RIGHT to move");
+}
+
+void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected) {
+    static const char* names[FT_QUEST_COUNT];
+    static const char* values[FT_QUEST_COUNT];
+
+    for(uint8_t i = 0; i < FT_QUEST_COUNT; i++) {
+        names[i] = ft_quest_def((FtQuestId)i)->name;
+
+        switch(ft_quest_state(q, (FtQuestId)i)) {
+        case FT_QUEST_ACTIVE: values[i] = "on"; break;
+        case FT_QUEST_FAILED: values[i] = "failed"; break;
+        case FT_QUEST_READY:  values[i] = "collect"; break;
+        case FT_QUEST_DONE:   values[i] = "done"; break;
+        default:              values[i] = "not met"; break;
+        }
+    }
+
+    ft_render_menu_list(canvas, "QUESTS", names, values, FT_QUEST_COUNT, selected);
+}
+
+void ft_render_talk(Canvas* canvas, const char* who, const FtQuestTalk* t) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 8, who);
+    canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
+
+    /* 38 tall, not 34: at 34 the third line's descenders sat on the frame's
+     * bottom edge and the box drew a rule through the last thing said. */
+    canvas_draw_frame(canvas, 2, 14, FT_SCREEN_W - 4, 38);
+    for(uint8_t i = 0; i < t->lines && i < FT_QUEST_LINES; i++) {
+        if(t->line[i]) canvas_draw_str(canvas, 6, 25 + (int32_t)i * 11, t->line[i]);
+    }
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 60, "OK");
 }
 
 /* The field guide's index. Empty until something has been fought, because a

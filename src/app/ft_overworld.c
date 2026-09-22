@@ -217,6 +217,27 @@ static void draw_foe(Canvas* c, const uint16_t* rows, int32_t x, int32_t y) {
     blit_keyed(c, wide, FT_SPRITE_H, sx, sy, FT_SPRITE_W);
 }
 
+/* The mark over something that has just seen you. White-backed so it reads
+ * over any tile, and gone the moment the group starts moving. */
+static void draw_notice(Canvas* c, int32_t x, int32_t y) {
+    const int32_t sx = x * FT_ZOOM + FT_SPRITE_W / 2 - 2;
+
+    /* Clamped downward rather than skipped: against the top wall the mark
+     * would otherwise silently not be drawn, and a warning you only get in
+     * open ground is not a warning. */
+    int32_t sy = y * FT_ZOOM + (FT_TILE_PX * FT_ZOOM - FT_SPRITE_H) - 9;
+    if(sy < 1) sy = 1;
+
+    if(sx < 1 || sx + 5 >= FT_PANEL_W) return;
+    if(sy + 9 >= FT_PANEL_H) return;
+
+    canvas_set_color(c, ColorWhite);
+    canvas_draw_box(c, sx - 1, sy - 1, 7, 11);
+    canvas_set_color(c, ColorBlack);
+    canvas_draw_box(c, sx + 1, sy, 3, 6);
+    canvas_draw_box(c, sx + 1, sy + 7, 3, 2);
+}
+
 void ft_overworld_toast(Canvas* canvas, const char* text) {
     if(!text) return;
 
@@ -283,6 +304,15 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
      * sprites at fixed offsets from a leader made a group of three read as
      * one object being dragged about. */
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(room->ents[i].kind == FT_ENT_NPC) {
+            /* Standing still on their tile, drawn like a foe so the world has
+             * one scale. They never move, so there is no stepper to ask. */
+            draw_foe(canvas,
+                     FT_SPRITE_NPC,
+                     (int32_t)room->ents[i].tx * FT_TILE_PX - cam.x,
+                     (int32_t)room->ents[i].ty * FT_TILE_PX - cam.y);
+            continue;
+        }
         if(room->ents[i].kind != FT_ENT_FOE) continue;
         if(!w->foes[i].alive) continue;
 
@@ -294,6 +324,13 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
             /* Both actors are bottom-aligned on their tile by draw_foe and
              * draw_avatar, so no fudge is needed here. */
             draw_foe(canvas, ft_enemy_art(roster->foes[m]), fp.x - cam.x, fp.y - cam.y);
+        }
+
+        /* Spotted. The mark sits over the first walker only — three of them
+         * with three marks is a row of punctuation, not a warning. */
+        if(ft_world_foe_noticing(w, i) && w->foes[i].count > 0u) {
+            const FtPos fp = ft_stepper_pos(&w->foes[i].w[0].mv, FT_FOE_STEP_MS);
+            draw_notice(canvas, fp.x - cam.x, fp.y - cam.y);
         }
     }
 

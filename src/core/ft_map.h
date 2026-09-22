@@ -26,6 +26,15 @@
 #define FT_FOE_THINK_MS 150
 #define FT_FOE_ALERT    5   /* tiles: how far a foe can notice you */
 
+/* The beat between being seen and being chased.
+ *
+ * A foe that starts walking on the same frame it notices you gives the player
+ * nothing to react to: the first thing you know about it is that it is
+ * already moving. Half a second of standing still, with a mark over its head,
+ * turns "you were caught" into "you were spotted, and you had a moment" —
+ * which is the difference between a chase and an ambush. */
+#define FT_FOE_NOTICE_MS 500
+
 /* How far a foe will drift from where it was placed. Without a leash an idle
  * room slowly empties as everything random-walks into a corner. */
 #define FT_FOE_LEASH    4

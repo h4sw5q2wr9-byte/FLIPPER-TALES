@@ -56,6 +56,30 @@ SPRITES["booter"] = """
 """
 
 
+# The one person in the prologue who wants something. Not a fighter: a hood
+# and a satchel, no eyes to speak of, so it reads as "someone standing there"
+# rather than as another thing to hit. Wider at the base than the hero, which
+# is what keeps the two apart at a glance.
+SPRITES["npc"] = """
+................
+.....######.....
+....########....
+...##########...
+...##......##...
+...#.######.#...
+...##......##...
+....########....
+.....######.....
+....##########..
+...####....####.
+...###......###.
+...###......###.
+...###.####.###.
+...###.####.###.
+..#####....#####
+"""
+
+
 # ---- One enemy per area ------------------------------------------------
 #
 # Each has to be told apart from the prologue three at a glance, on a 1-bit

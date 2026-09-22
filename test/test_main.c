@@ -405,6 +405,20 @@ static void test_priority(void) {
     CHECK_EQ(tied[2].actor, 9);
 }
 
+/* What ft_level_apply used to do, in one call: take the level and put the
+ * orb it pays into a stat. The two are separate now precisely so the second
+ * half can be undone later. */
+static bool level_into(FtStats* s, FtLevelChoice choice) {
+    ft_level_take(s);
+    if(ft_orb_spend(s, choice)) return true;
+
+    /* Refused: hand the level back so a capped stat costs nothing, which is
+     * what the old all-or-nothing call guaranteed. */
+    s->level--;
+    s->orbs = (int16_t)(s->orbs - FT_ORBS_PER_LEVEL);
+    return false;
+}
+
 static void test_progression(void) {
     section("levelling and XP (DESIGN 4.1)");
 
@@ -421,18 +435,18 @@ static void test_progression(void) {
     /* A level-up raises one stat and fully restores Charge and RAM. */
     s.charge = 1;
     s.ram = 0;
-    CHECK(ft_level_apply(&s, FT_UP_CHARGE), "charge upgrade should apply");
+    CHECK(level_into(&s, FT_UP_CHARGE), "charge upgrade should apply");
     CHECK_EQ(s.charge_max, FT_START_CHARGE + FT_LEVEL_UP_CHARGE);
     CHECK_EQ(s.charge, s.charge_max);
     CHECK_EQ(s.ram, s.ram_max);
 
-    CHECK(ft_level_apply(&s, FT_UP_FLASH), "flash upgrade should apply");
+    CHECK(level_into(&s, FT_UP_FLASH), "flash upgrade should apply");
     CHECK_EQ(s.flash_max, FT_START_FLASH + FT_LEVEL_UP_FLASH);
 
     /* Capped stats become unavailable as choices. */
     s.flash_max = FT_CAP_FLASH;
     CHECK(!ft_level_choice_available(&s, FT_UP_FLASH), "capped Flash is unavailable");
-    CHECK(!ft_level_apply(&s, FT_UP_FLASH), "capped Flash cannot be raised");
+    CHECK(!level_into(&s, FT_UP_FLASH), "capped Flash cannot be raised");
 
     /* Underlevelled enemies taper to nothing. */
     CHECK_EQ(ft_xp_award(5, 3, 30), 30); /* enemy above the player: full */
@@ -1762,26 +1776,46 @@ static void test_foe_ai(void) {
      * forever, and one chasing round a corner stopped at the corner. */
     for(uint8_t rm = 0; rm < ft_room_count(); rm++) {
         const FtRoom* rr = ft_room(rm);
-        if(rr->ent_count == 0u) continue;
+
+        /* The first entity that actually fights. Room 0's is a person to talk
+         * to, who is never alive and never moves. */
+        int which = -1;
+        for(uint8_t i = 0; i < rr->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+            if(rr->ents[i].kind == FT_ENT_FOE) {
+                which = (int)i;
+                break;
+            }
+        }
+        if(which < 0) continue;
 
         FtWorld hunt;
         ft_world_init(&hunt);
         ft_world_enter(&hunt, rm, rr->exits[0].tx, rr->exits[0].ty);
-        hunt.foes[0].alert = true;
+        hunt.foes[which].alert = true;
 
-        const FtFoeWalker* k = &hunt.foes[0].w[0];
-        int32_t best = abs_i32((int32_t)k->mv.tx - (int32_t)hunt.mv.tx) +
-                       abs_i32((int32_t)k->mv.ty - (int32_t)hunt.mv.ty);
+        /* The nearest member of the group, not member zero. A roster walks a
+         * corridor in single file, so which one arrives first is a matter of
+         * traffic — and "did the group reach you" is the question. */
+        const FtFoeState* f = &hunt.foes[which];
+        int32_t best = INT32_MAX;
+        for(uint8_t m = 0; m < f->count; m++) {
+            const int32_t d = abs_i32((int32_t)f->w[m].mv.tx - (int32_t)hunt.mv.tx) +
+                              abs_i32((int32_t)f->w[m].mv.ty - (int32_t)hunt.mv.ty);
+            if(d < best) best = d;
+        }
         const int32_t start = best;
 
         /* The player stands still; the chaser has plenty of time. */
         for(int t = 0; t < 600; t++) {
             ft_world_update(&hunt, 0, 0, 20);
-            hunt.foes[0].alert = true;
+            hunt.foes[which].alert = true;
 
-            const int32_t d = abs_i32((int32_t)k->mv.tx - (int32_t)hunt.mv.tx) +
-                              abs_i32((int32_t)k->mv.ty - (int32_t)hunt.mv.ty);
-            if(d < best) best = d;
+            for(uint8_t m = 0; m < f->count; m++) {
+                const int32_t d =
+                    abs_i32((int32_t)f->w[m].mv.tx - (int32_t)hunt.mv.tx) +
+                    abs_i32((int32_t)f->w[m].mv.ty - (int32_t)hunt.mv.ty);
+                if(d < best) best = d;
+            }
         }
 
         CHECK(best < start || start <= 1,
@@ -2397,7 +2431,7 @@ static void test_save_world(void) {
     ft_world_enter(&w, 2, 3, 4);
     ft_world_clear_entity(&w, 0);
     ft_siglib_capture(&w.lib, 4242u);
-    ft_level_apply(&w.stats, FT_UP_RAM);
+    level_into(&w.stats, FT_UP_RAM);
     ft_loadout_add(&w.loadout, FT_MOD_AMPLIFY);
 
     w.save_room = 2;
@@ -3243,7 +3277,7 @@ static void test_losing_costs(void) {
     /* Now make progress past the save: beat the room's encounter, level up,
      * capture something. */
     ft_world_clear_entity(&w, 0);
-    ft_level_apply(&w.stats, FT_UP_CHARGE);
+    level_into(&w.stats, FT_UP_CHARGE);
     ft_siglib_capture(&w.lib, 1234u);
 
     CHECK(ft_world_entity_gone(&w, 0), "the foe was beaten");
@@ -3275,7 +3309,7 @@ static void test_levelup(void) {
     /* Applying a choice is what actually levels you. Before this, level never
      * moved, so the cap never bit and every enemy paid full XP forever. */
     const int16_t charge_before = s.charge_max;
-    CHECK(ft_level_apply(&s, FT_UP_CHARGE), "the level is spent");
+    CHECK(level_into(&s, FT_UP_CHARGE), "the level is spent");
     CHECK_EQ(s.level, 2);
     CHECK_EQ(s.charge_max, charge_before + FT_LEVEL_UP_CHARGE);
 
@@ -3284,7 +3318,7 @@ static void test_levelup(void) {
     ft_stats_init(&capped);
     capped.flash_max = FT_CAP_FLASH;
     const int16_t lv = capped.level;
-    CHECK(!ft_level_apply(&capped, FT_UP_FLASH), "a capped stat refuses");
+    CHECK(!level_into(&capped, FT_UP_FLASH), "a capped stat refuses");
     CHECK_EQ(capped.level, lv);
 
     /* XP banks into levels, and stops at the cap for the chapters done. */
@@ -3301,8 +3335,8 @@ static void test_levelup(void) {
     CHECK_EQ(ft_xp_gain(&p, FT_XP_PER_LEVEL * 5, cap), 1);
 
     /* Spending them raises the level once each. */
-    CHECK(ft_level_apply(&p, FT_UP_CHARGE), "first");
-    CHECK(ft_level_apply(&p, FT_UP_RAM), "second");
+    CHECK(level_into(&p, FT_UP_CHARGE), "first");
+    CHECK(level_into(&p, FT_UP_RAM), "second");
     CHECK_EQ(p.level, 3);
 
     /* At the cap, XP stops being awarded at all rather than banking up for a
@@ -3361,7 +3395,7 @@ static void test_levelup(void) {
             owed = (int16_t)(owed + ft_xp_gain(&run, fight, ft_level_cap(0)));
 
             while(owed > 0) {
-                ft_level_apply(&run, FT_UP_CHARGE);
+                level_into(&run, FT_UP_CHARGE);
                 owed--;
             }
         }
@@ -3538,6 +3572,425 @@ static void test_world_links(void) {
     }
 }
 
+
+/* ---- Orbs: the build you can change ----------------------------------- */
+
+static void test_orbs(void) {
+    section("orbs");
+
+    FtStats s;
+    ft_stats_init(&s);
+    CHECK_EQ(s.orbs, 0);
+    CHECK_EQ(s.spent[FT_UP_CHARGE], 0);
+
+    /* Nothing to place is nothing to place. */
+    CHECK(!ft_orb_spend(&s, FT_UP_CHARGE), "an empty hand cannot place one");
+    CHECK_EQ(s.charge_max, FT_START_CHARGE);
+
+    /* A level pays out an orb and does not choose for you. */
+    ft_level_take(&s);
+    CHECK_EQ(s.level, 2);
+    CHECK_EQ(s.orbs, FT_ORBS_PER_LEVEL);
+    CHECK_EQ(s.charge_max, FT_START_CHARGE);
+
+    /* Placing one raises the stat, and grants the gain there and then: this
+     * is a thing you are meant to be able to do while hurt. */
+    s.charge = 3;
+    CHECK(ft_orb_spend(&s, FT_UP_CHARGE), "the orb goes in");
+    CHECK_EQ(s.charge_max, FT_START_CHARGE + FT_LEVEL_UP_CHARGE);
+    CHECK_EQ(s.charge, 3 + FT_LEVEL_UP_CHARGE);
+    CHECK_EQ(s.orbs, 0);
+    CHECK_EQ(s.spent[FT_UP_CHARGE], 1);
+
+    /* And out again. This is the whole feature: a build is never final. */
+    CHECK(ft_orb_can_refund(&s, FT_UP_CHARGE), "it can come back out");
+    CHECK(ft_orb_refund(&s, FT_UP_CHARGE), "and does");
+    CHECK_EQ(s.charge_max, FT_START_CHARGE);
+    CHECK_EQ(s.orbs, 1);
+    CHECK_EQ(s.spent[FT_UP_CHARGE], 0);
+    CHECK(s.charge <= s.charge_max, "current HP is clamped to the new maximum");
+    CHECK(s.charge >= 1, "but never to zero: a menu cannot down you");
+
+    /* Nothing went into MP, so nothing comes out of it. */
+    CHECK(!ft_orb_can_refund(&s, FT_UP_RAM), "an empty stat refuses a refund");
+    CHECK(!ft_orb_refund(&s, FT_UP_RAM), "and stays put");
+    CHECK_EQ(s.ram_max, FT_START_RAM);
+
+    /* Round trips never invent or lose anything. */
+    FtStats t;
+    ft_stats_init(&t);
+    for(int i = 0; i < 6; i++) ft_level_take(&t);
+
+    const int16_t banked = t.orbs;
+    ft_orb_spend(&t, FT_UP_CHARGE);
+    ft_orb_spend(&t, FT_UP_CHARGE);
+    ft_orb_spend(&t, FT_UP_RAM);
+    ft_orb_spend(&t, FT_UP_FLASH);
+    CHECK_EQ(t.orbs, banked - 4);
+
+    while(ft_orb_refund(&t, FT_UP_CHARGE)) {}
+    while(ft_orb_refund(&t, FT_UP_RAM)) {}
+    while(ft_orb_refund(&t, FT_UP_FLASH)) {}
+
+    CHECK_EQ(t.orbs, banked);
+    CHECK_EQ(t.charge_max, FT_START_CHARGE);
+    CHECK_EQ(t.ram_max, FT_START_RAM);
+    CHECK_EQ(t.flash_max, FT_START_FLASH);
+
+    /* Cards are a budget something else is spending. Pulling an orb out from
+     * under an installed card would leave flash_used above flash_max, and
+     * every install check downstream would read that as "no room" forever. */
+    FtStats c;
+    ft_stats_init(&c);
+    ft_level_take(&c);
+    CHECK(ft_orb_spend(&c, FT_UP_FLASH), "a card slot is bought");
+
+    ft_flash_install(&c, c.flash_max);
+    CHECK(!ft_orb_can_refund(&c, FT_UP_FLASH), "a full budget refuses the refund");
+    CHECK(!ft_orb_refund(&c, FT_UP_FLASH), "and nothing moves");
+    CHECK(c.flash_used <= c.flash_max, "so the budget never goes negative");
+
+    ft_flash_uninstall(&c, c.flash_max);
+    CHECK(ft_orb_refund(&c, FT_UP_FLASH), "with the cards off, it comes out");
+
+    /* A capped stat refuses, and the orb stays in hand rather than vanishing. */
+    FtStats m;
+    ft_stats_init(&m);
+    ft_level_take(&m);
+    m.charge_max = FT_CAP_CHARGE;
+    CHECK(!ft_orb_spend(&m, FT_UP_CHARGE), "a capped stat refuses");
+    CHECK_EQ(m.orbs, FT_ORBS_PER_LEVEL);
+
+    /* No stat can ever be pushed past its cap by a legal sequence. */
+    FtStats hi;
+    ft_stats_init(&hi);
+    for(int i = 0; i < 400; i++) {
+        ft_level_take(&hi);
+        ft_orb_spend(&hi, FT_UP_CHARGE);
+        ft_orb_spend(&hi, FT_UP_RAM);
+        ft_orb_spend(&hi, FT_UP_FLASH);
+    }
+    CHECK(hi.charge_max <= FT_CAP_CHARGE, "HP stops at its cap");
+    CHECK(hi.ram_max <= FT_CAP_RAM, "MP stops at its cap");
+    CHECK(hi.flash_max <= FT_CAP_FLASH, "Cards stop at their cap");
+}
+
+/* ---- Quests ------------------------------------------------------------ */
+
+static void test_quests(void) {
+    section("quests");
+
+    FtQuests q;
+    ft_quests_init(&q);
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_UNKNOWN);
+
+    const FtQuestDef* d = ft_quest_def(FT_QUEST_CLEAN_RUN);
+    CHECK(d->goal_room != d->giver_room, "the goal is somewhere else");
+    CHECK(d->goal_room < ft_room_count(), "and is a room that exists");
+    CHECK(d->reward_orbs > 0, "and it pays something");
+
+    /* Somebody has to be standing in the giver's room to offer it. */
+    const FtRoom* giver = ft_room(d->giver_room);
+    bool has_npc = false;
+    for(uint8_t i = 0; i < giver->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(giver->ents[i].kind == FT_ENT_NPC &&
+           giver->ents[i].roster == (uint8_t)FT_QUEST_CLEAN_RUN) {
+            has_npc = true;
+        }
+    }
+    CHECK(has_npc, "the room that gives it has somebody in it");
+
+    /* Talking takes it. */
+    FtQuestTalk t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
+    CHECK_EQ(t.orbs, 0);
+
+    /* Talking again says something, and does not re-take it. */
+    t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
+    CHECK_EQ(t.orbs, 0);
+
+    /* Rooms that are not the goal change nothing. */
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        if(r == d->goal_room) continue;
+        ft_quest_enter_room(&q, r);
+    }
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
+
+    /* The goal room arms the payout. */
+    ft_quest_enter_room(&q, d->goal_room);
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_READY);
+
+    /* Collecting pays exactly once. */
+    t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
+    CHECK_EQ(t.orbs, d->reward_orbs);
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_DONE);
+
+    t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
+    CHECK_EQ(t.orbs, 0);
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_DONE);
+
+    /* Fighting fails it, whether it was under way or already armed. */
+    FtQuests f;
+    ft_quests_init(&f);
+    ft_quest_talk(&f, FT_QUEST_CLEAN_RUN);
+    ft_quest_battle(&f);
+    CHECK_EQ(ft_quest_state(&f, FT_QUEST_CLEAN_RUN), FT_QUEST_FAILED);
+
+    FtQuests g;
+    ft_quests_init(&g);
+    ft_quest_talk(&g, FT_QUEST_CLEAN_RUN);
+    ft_quest_enter_room(&g, d->goal_room);
+    ft_quest_battle(&g);
+    CHECK_EQ(ft_quest_state(&g, FT_QUEST_CLEAN_RUN), FT_QUEST_FAILED);
+
+    /* A failed run does not pay, and can be taken again. */
+    t = ft_quest_talk(&g, FT_QUEST_CLEAN_RUN);
+    CHECK_EQ(t.orbs, 0);
+    CHECK_EQ(ft_quest_state(&g, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
+
+    /* A finished quest is not undone by fighting afterwards. */
+    FtQuests done;
+    ft_quests_init(&done);
+    ft_quest_talk(&done, FT_QUEST_CLEAN_RUN);
+    ft_quest_enter_room(&done, d->goal_room);
+    ft_quest_talk(&done, FT_QUEST_CLEAN_RUN);
+    ft_quest_battle(&done);
+    CHECK_EQ(ft_quest_state(&done, FT_QUEST_CLEAN_RUN), FT_QUEST_DONE);
+
+    /* Every line anybody says fits the panel, in every state. */
+    for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+        FtQuests say;
+        ft_quests_init(&say);
+        say.state[FT_QUEST_CLEAN_RUN] = st;
+
+        const FtQuestTalk line = ft_quest_talk(&say, FT_QUEST_CLEAN_RUN);
+        CHECK(line.lines > 0 && line.lines <= FT_QUEST_LINES,
+              "state %u says between one and %d lines", st, FT_QUEST_LINES);
+
+        for(uint8_t i = 0; i < line.lines; i++) {
+            CHECK(line.line[i] != NULL, "state %u line %u exists", st, i);
+            CHECK(line.line[i] && strlen(line.line[i]) <= FT_TUTORIAL_MAX_CHARS,
+                  "state %u line %u fits: \"%s\"", st, i,
+                  line.line[i] ? line.line[i] : "");
+        }
+    }
+
+    for(uint8_t i = 0; i < FT_QUEST_COUNT; i++) {
+        CHECK(strlen(ft_quest_def((FtQuestId)i)->name) <= FT_TUTORIAL_MAX_CHARS,
+              "quest %u's name fits", i);
+    }
+
+    /* The world carries them, and walking into the goal room advances them
+     * without anybody asking it to. */
+    FtWorld w;
+    ft_world_init(&w);
+    CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_CLEAN_RUN), FT_QUEST_UNKNOWN);
+
+    ft_quest_talk(&w.quests, FT_QUEST_CLEAN_RUN);
+    ft_world_enter(&w, d->goal_room, 1, 2);
+    CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_CLEAN_RUN), FT_QUEST_READY);
+}
+
+/* ---- Talking to somebody ----------------------------------------------- */
+
+static void test_npc(void) {
+    section("somebody to talk to");
+
+    const int which = ft_quest_for_room(0);
+    CHECK(which >= 0, "the first room has a quest giver");
+
+    const FtRoom* r = ft_room(0);
+    int at = -1;
+    for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(r->ents[i].kind == FT_ENT_NPC) at = (int)i;
+    }
+    CHECK(at >= 0, "and somebody standing in it");
+    if(at < 0) return;
+
+    const uint8_t nx = r->ents[at].tx, ny = r->ents[at].ty;
+    CHECK(!ft_tile_solid(ft_map_tile(r->map, nx, ny)), "on a tile you can reach");
+
+    /* Facing them from the tile to their left is what talking to them is. */
+    FtWorld w;
+    ft_world_init(&w);
+    ft_world_enter(&w, 0, (uint8_t)(nx - 1u), ny);
+    w.facing = FT_FACE_RIGHT;
+    CHECK_EQ(ft_world_npc_ahead(&w), at);
+
+    /* Facing anywhere else is not. */
+    w.facing = FT_FACE_LEFT;
+    CHECK_EQ(ft_world_npc_ahead(&w), -1);
+
+    /* They are solid: walking into one stops you rather than putting you
+     * inside them, and that is what leaves you facing them. */
+    w.facing = FT_FACE_RIGHT;
+    for(int t = 0; t < 120; t++) ft_world_update(&w, 1, 0, 20);
+
+    CHECK_EQ(w.mv.tx, (uint8_t)(nx - 1u));
+    CHECK_EQ(w.mv.ty, ny);
+    CHECK_EQ(ft_world_npc_ahead(&w), at);
+
+    /* And they are not a foe: nothing about them starts a fight. */
+    CHECK_EQ(ft_world_foe_ahead(&w), -1);
+    CHECK_EQ(ft_world_foe_contact(&w), -1);
+}
+
+/* ---- The beat between being seen and being chased ---------------------- */
+
+static void test_notice(void) {
+    section("spotted");
+
+    /* Room 1's group is placed well to the right of the door, so there is
+     * room to be out of range and then walk into it. */
+    const uint8_t ROOM = 1;
+    const FtRoom* r = ft_room(ROOM);
+
+    FtWorld w;
+    ft_world_init(&w);
+    ft_world_enter(&w, ROOM, (uint8_t)(r->ents[0].tx - 2u), r->ents[0].ty);
+
+    CHECK(!w.foes[0].alert, "not seen yet");
+    CHECK_EQ(w.foes[0].notice_ms, 0);
+
+    /* The update that notices you arms the beat. */
+    ft_world_update(&w, 0, 0, 1);
+    CHECK(w.foes[0].alert, "standing that close is being seen");
+    CHECK(w.foes[0].notice_ms > 0, "and the beat starts");
+    CHECK(ft_world_foe_noticing(&w, 0), "which is what the mark is drawn from");
+
+    /* Nothing moves while it runs. */
+    uint8_t tx[FT_MAX_ENEMIES], ty[FT_MAX_ENEMIES];
+    for(uint8_t m = 0; m < w.foes[0].count; m++) {
+        tx[m] = w.foes[0].w[m].mv.tx;
+        ty[m] = w.foes[0].w[m].mv.ty;
+    }
+
+    uint32_t held = 0;
+    while(w.foes[0].notice_ms > 0u) {
+        ft_world_update(&w, 0, 0, 20);
+        held += 20u;
+
+        for(uint8_t m = 0; m < w.foes[0].count; m++) {
+            CHECK(w.foes[0].w[m].mv.tx == tx[m] && w.foes[0].w[m].mv.ty == ty[m],
+                  "walker %u holds still at %ums", m, (unsigned)held);
+        }
+        if(held > FT_FOE_NOTICE_MS * 4u) break;
+    }
+
+    CHECK(held >= FT_FOE_NOTICE_MS - 20u, "the beat lasts about half a second (%u)",
+          (unsigned)held);
+    CHECK(held <= FT_FOE_NOTICE_MS + 40u, "and not much longer (%u)", (unsigned)held);
+    CHECK(!ft_world_foe_noticing(&w, 0), "then the mark comes down");
+
+    /* And then they come for you. */
+    int32_t before = 0, after = 0;
+    for(uint8_t m = 0; m < w.foes[0].count; m++) {
+        before += abs_i32((int32_t)w.foes[0].w[m].mv.tx - (int32_t)w.mv.tx) +
+                  abs_i32((int32_t)w.foes[0].w[m].mv.ty - (int32_t)w.mv.ty);
+    }
+    for(int t = 0; t < 60; t++) ft_world_update(&w, 0, 0, 20);
+    for(uint8_t m = 0; m < w.foes[0].count; m++) {
+        after += abs_i32((int32_t)w.foes[0].w[m].mv.tx - (int32_t)w.mv.tx) +
+                 abs_i32((int32_t)w.foes[0].w[m].mv.ty - (int32_t)w.mv.ty);
+    }
+    CHECK(after < before || before <= 1,
+          "once the beat is over they close in (%d -> %d)", (int)before, (int)after);
+
+    /* Staying in range does not re-arm it: only the transition does, or the
+     * room would freeze solid for as long as you stood there. */
+    CHECK_EQ(w.foes[0].notice_ms, 0);
+    for(int t = 0; t < 10; t++) {
+        ft_world_update(&w, 0, 0, 20);
+        CHECK_EQ(w.foes[0].notice_ms, 0);
+    }
+}
+
+/* ---- The guard aftermath ------------------------------------------------ */
+
+static void test_guard_aftermath(void) {
+    section("where the guard landed");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* A press inside the jam window reports how far before impact it was. */
+    FtEncounter e;
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 7u);
+    CHECK_EQ(ft_encounter_guard_offset(&e), -1);
+
+    e.phase = FT_PHASE_TELEGRAPH;
+    e.phase_ms = FT_READY_MS;
+    CHECK_EQ(ft_encounter_guard_gap(&e), -1);
+
+    /* Wind on to 40ms before impact and guard there. */
+    const uint32_t at = FT_TELEGRAPH_MS - 40u;
+    ft_encounter_tick(&e, at);
+    ft_encounter_press_ok(&e);
+
+    CHECK(e.guard_pressed, "the guard went up");
+    CHECK(ft_encounter_guard_gap(&e) <= 60 && ft_encounter_guard_gap(&e) >= 20,
+          "and the gap to impact is about 40ms (%d)", (int)ft_encounter_guard_gap(&e));
+
+    /* The marker's flash clock runs while the wind-up finishes, so it can be
+     * drawn frozen where it landed rather than sailing past. */
+    const uint32_t before_lock = e.guard_locked_ms;
+    ft_encounter_tick(&e, 20);
+    CHECK(e.guard_locked_ms > before_lock, "and the lock clock runs");
+
+    /* Once it resolves, the offset is the aftermath: the exact distance. */
+    while(e.phase == FT_PHASE_TELEGRAPH) ft_encounter_tick(&e, 20);
+
+    CHECK(ft_encounter_guard_offset(&e) >= 0, "a press is reported");
+    CHECK(ft_encounter_guard_offset(&e) <= (int32_t)FT_JAM_WINDOW_MS,
+          "and it was inside the window (%d)", (int)ft_encounter_guard_offset(&e));
+    CHECK(e.last_guard != FT_GUARD_NONE, "so it actually guarded");
+
+    /* A press far too early is reported as a press, not as silence — that
+     * distinction is the whole point: "you were early" and "you did nothing"
+     * used to look identical. */
+    FtEncounter early;
+    ft_encounter_init_single(&early, FT_ENEMY_STRAY_PACKET, &lo, 7u);
+    early.phase = FT_PHASE_TELEGRAPH;
+    early.phase_ms = FT_READY_MS;
+    ft_encounter_tick(&early, 100);
+    ft_encounter_press_ok(&early);
+    while(early.phase == FT_PHASE_TELEGRAPH) ft_encounter_tick(&early, 20);
+
+    CHECK(ft_encounter_guard_offset(&early) > (int32_t)FT_JAM_WINDOW_MS,
+          "an early press is reported as early (%d)",
+          (int)ft_encounter_guard_offset(&early));
+    CHECK_EQ(early.last_guard, FT_GUARD_NONE);
+
+    /* No press at all stays negative. */
+    FtEncounter none;
+    ft_encounter_init_single(&none, FT_ENEMY_STRAY_PACKET, &lo, 7u);
+    none.phase = FT_PHASE_TELEGRAPH;
+    none.phase_ms = FT_READY_MS;
+    while(none.phase == FT_PHASE_TELEGRAPH) ft_encounter_tick(&none, 20);
+
+    CHECK_EQ(ft_encounter_guard_offset(&none), -1);
+    CHECK_EQ(none.last_guard, FT_GUARD_NONE);
+
+    /* Each new wind-up starts from nothing, so last round's reading is never
+     * shown against this round's hit. */
+    FtEncounter fresh;
+    ft_encounter_init_single(&fresh, FT_ENEMY_STRAY_PACKET, &lo, 7u);
+    fresh.last_guard_offset = 123;
+    fresh.guard_pressed = true;
+
+    fresh.phase = FT_PHASE_MENU;
+    fresh.phase_ms = 0;
+    ft_encounter_press_ok(&fresh);
+    for(int t = 0; t < 400 && fresh.phase != FT_PHASE_TELEGRAPH; t++) {
+        ft_encounter_tick(&fresh, 20);
+    }
+    if(fresh.phase == FT_PHASE_TELEGRAPH) {
+        CHECK(!fresh.guard_pressed, "a new wind-up starts unguarded");
+        CHECK_EQ(fresh.last_guard_offset, -1);
+    }
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -3576,6 +4029,11 @@ int main(void) {
     test_save_world();
     test_payloads();
     test_ambush();
+    test_orbs();
+    test_quests();
+    test_npc();
+    test_notice();
+    test_guard_aftermath();
     test_always_something_to_do();
     test_bulwark();
     test_sleeper();

@@ -40,10 +40,16 @@ static const FtRoster FT_ROSTERS[] = {
 /* Kept in step with the table by the compiler rather than by memory. */
 typedef char ft_roster_count_matches[(ROSTER_COUNT == FT_ROSTER_COUNT) ? 1 : -1];
 
-/* [1] Wake: a terminal and the way out. No foe — the first room teaches
- * walking and saving, nothing else. */
+/* [1] Wake: a terminal, the way out, and the one person who asks you for
+ * anything. No foe — the first room teaches walking, saving and talking,
+ * nothing else. */
 static const FtExit CB1_EXITS[] = {
     {15, 3, 1, 1, 2},
+};
+static const FtEntity CB1_ENTS[] = {
+    /* Two tiles from where you wake up, off the line to the door, so you
+     * meet them by choice rather than by walking into them. */
+    {FT_ENT_NPC, 7, 2, FT_QUEST_CLEAN_RUN},
 };
 
 /* [2] Boot Corridor: the first encounter, placed far enough right that it is
@@ -148,7 +154,7 @@ static const FtEntity DZ1_ENTS[] = {
 };
 
 static const FtRoom FT_ROOMS[] = {
-    {&FT_MAP_CB1, CB1_EXITS, 1, NULL, 0},
+    {&FT_MAP_CB1, CB1_EXITS, 1, CB1_ENTS, 1},
     {&FT_MAP_CB2, CB2_EXITS, 2, CB2_ENTS, 1},
     {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 2},
     {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 1},
@@ -292,6 +298,10 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
     w->arrived = false;
     w->ambushed = false;
 
+    /* Arriving somewhere is the only thing a quest watches for on its own;
+     * everything else it hears about from the app. */
+    ft_quest_enter_room(&w->quests, w->room);
+
     /* Foes start where the room says, and are alive unless already beaten. */
     const FtRoom* r = ft_room(w->room);
     for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) {
@@ -299,6 +309,7 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
 
         f->alive = false;
         f->alert = false;
+        f->notice_ms = 0;
         f->count = 0;
 
         if(i >= r->ent_count || r->ents[i].kind != FT_ENT_FOE) continue;
@@ -361,6 +372,7 @@ void ft_world_init(FtWorld* w) {
     ft_stats_init(&w->stats);
     ft_siglib_init(&w->lib);
     ft_guide_init(&w->guide);
+    ft_quests_init(&w->quests);
 
     /* World stats are authoritative and carry the loadout's bonuses, because a
      * battle copies them in rather than building its own. */
@@ -581,6 +593,10 @@ static void foe_think(FtWorld* w, FtFoeWalker* k, bool alert, const FtMap* map) 
 
 /* ---- Update ------------------------------------------------------------ */
 
+/* Defined with the other tile queries below; the player's step needs it,
+ * because an NPC is something you walk into rather than through. */
+static int npc_at_tile(const FtWorld* w, int32_t tx, int32_t ty);
+
 void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     const FtMap* map = ft_world_map(w);
 
@@ -605,8 +621,10 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
         else if(dy > 0) w->facing = FT_FACE_DOWN;
 
         /* Facing always updates, even into a wall — that is what lets you
-         * turn and strike something you cannot walk into. */
-        if(step_target_free(map, w->mv.tx, w->mv.ty, dx, dy)) {
+         * turn and strike something you cannot walk into, and what lets you
+         * turn and talk to someone you just bumped into. */
+        if(step_target_free(map, w->mv.tx, w->mv.ty, dx, dy) &&
+           npc_at_tile(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) < 0) {
             w->mv.dx = dx;
             w->mv.dy = dy;
             w->mv.step_ms = 0;
@@ -631,8 +649,20 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     }
     if(any_spotted) {
         for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+            /* Only the transition starts the beat. Re-arming it every frame
+             * the player stays in range would freeze the room solid. */
+            if(!w->foes[i].alert) w->foes[i].notice_ms = FT_FOE_NOTICE_MS;
             w->foes[i].alert = true;
         }
+    }
+
+    /* Run the beat down before anything alerted gets to move. */
+    for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        FtFoeState* f = &w->foes[i];
+        if(f->notice_ms == 0u) continue;
+        f->notice_ms = (dt_ms >= (uint32_t)f->notice_ms)
+                           ? 0u
+                           : (uint16_t)(f->notice_ms - (uint16_t)dt_ms);
     }
 
     /* One search per room per player tile, shared by every chaser in it. */
@@ -649,6 +679,10 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
         /* Every walker steps and thinks on its own clock. */
         for(uint8_t m = 0; m < f->count; m++) {
             FtFoeWalker* k = &f->w[m];
+
+            /* Spotted you, and taking it in. A step already under way still
+             * finishes — stopping dead mid-tile would break the grid. */
+            if(f->notice_ms > 0u && !(k->mv.dx || k->mv.dy)) continue;
 
             if(k->mv.dx || k->mv.dy) {
                 /* A walker that finishes its step standing on the player
@@ -672,11 +706,28 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     }
 }
 
+bool ft_world_foe_noticing(const FtWorld* w, uint8_t index) {
+    if(index >= FT_MAX_ROOM_ENTS) return false;
+    const FtFoeState* f = &w->foes[index];
+    return f->alive && f->notice_ms > 0u;
+}
+
 /* ---- Queries ----------------------------------------------------------- */
 
 static void facing_delta(FtFacing f, int32_t* dx, int32_t* dy) {
     *dx = (f == FT_FACE_LEFT) ? -1 : (f == FT_FACE_RIGHT) ? 1 : 0;
     *dy = (f == FT_FACE_UP) ? -1 : (f == FT_FACE_DOWN) ? 1 : 0;
+}
+
+/* NPCs never move and are never cleared, so this is a plain table lookup. */
+static int npc_at_tile(const FtWorld* w, int32_t tx, int32_t ty) {
+    const FtRoom* r = ft_room(w->room);
+
+    for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(r->ents[i].kind != FT_ENT_NPC) continue;
+        if((int32_t)r->ents[i].tx == tx && (int32_t)r->ents[i].ty == ty) return (int)i;
+    }
+    return -1;
 }
 
 static int foe_at_tile(const FtWorld* w, int32_t tx, int32_t ty) {
@@ -711,6 +762,14 @@ int ft_world_foe_ahead(const FtWorld* w) {
     int32_t dx, dy;
     facing_delta(w->facing, &dx, &dy);
     return foe_at_tile(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy);
+}
+
+int ft_world_npc_ahead(const FtWorld* w) {
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+
+    const int32_t tx = (int32_t)w->mv.tx + dx, ty = (int32_t)w->mv.ty + dy;
+    return npc_at_tile(w, tx, ty);
 }
 
 const FtExit* ft_world_exit_under(const FtWorld* w) {

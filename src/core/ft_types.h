@@ -34,6 +34,12 @@
 #define FT_XP_PER_LEVEL   100
 #define FT_XP_BATTLE_CAP  100
 
+/* What a level pays out. Levelling no longer raises a stat directly: it hands
+ * you an Orb, and an Orb can be moved between stats at any time outside a
+ * fight. A build you cannot change is a build you have to be told about
+ * beforehand, which is not a thing a game on a 128x64 panel can do. */
+#define FT_ORBS_PER_LEVEL 1
+
 #define FT_LEVEL_CAP_BASE         4
 #define FT_LEVEL_CAP_PER_CHAPTER  4
 
@@ -186,11 +192,6 @@ typedef enum {
 /* Taking a hit: both fighters flicker, then an iris closes to black, holds,
  * and opens again onto the same fight. Measured from the strike frame. */
 #define FT_FLICKER_MS   180
-/* The wipe between the overworld and a fight. Longer than the hit iris: this
- * one is a scene change, not a flinch. */
-#define FT_WIPE_CLOSE_MS 260
-#define FT_WIPE_OPEN_MS  260
-
 /* The wipe between the overworld and a fight. Longer than the hit iris: this
  * one is a scene change, not a flinch. */
 #define FT_WIPE_CLOSE_MS 260

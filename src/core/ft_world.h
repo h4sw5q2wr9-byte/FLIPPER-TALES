@@ -10,6 +10,7 @@
 #include "ft_guide.h"
 #include "ft_map.h"
 #include "ft_progress.h"
+#include "ft_quest.h"
 #include "ft_signal.h"
 
 #define FT_MAX_ROOM_ENTS 6
@@ -25,13 +26,14 @@
 
 typedef enum {
     FT_ENT_NONE = 0,
-    FT_ENT_FOE
+    FT_ENT_FOE,
+    FT_ENT_NPC  /* someone to talk to; `roster` carries their quest id */
 } FtEntKind;
 
 typedef struct {
     FtEntKind kind;
     uint8_t   tx, ty;
-    uint8_t   roster; /* the group this one fights as */
+    uint8_t   roster; /* a foe's group, or an NPC's quest */
 } FtEntity;
 
 typedef struct {
@@ -95,6 +97,10 @@ typedef struct {
      * room: one of them noticing you brings the rest. */
     bool    alert;
 
+    /* Counting down the notice beat. While this is running the group has
+     * seen you and is not moving yet — see FT_FOE_NOTICE_MS. */
+    uint16_t notice_ms;
+
     uint8_t count; /* walkers, from the roster */
     FtFoeWalker w[FT_MAX_ENEMIES];
 } FtFoeState;
@@ -131,6 +137,9 @@ typedef struct {
      * a loss like everything else. */
     FtGuide         guide;
     FtLoadout       loadout;
+
+    /* What has been asked of you, and how far through it you are. */
+    FtQuests        quests;
 } FtWorld;
 
 void ft_world_init(FtWorld* w);
@@ -161,6 +170,14 @@ int ft_world_foe_contact(const FtWorld* w);
 
 /* Index of a living foe on the tile the player faces, else -1. */
 int ft_world_foe_ahead(const FtWorld* w);
+
+/* Has this group just spotted the player and not started moving yet? The
+ * renderer puts a mark over it for exactly this long. */
+bool ft_world_foe_noticing(const FtWorld* w, uint8_t index);
+
+/* Index of the NPC on the tile the player faces, else -1. An NPC is solid, so
+ * this is what you get by walking into one. */
+int ft_world_npc_ahead(const FtWorld* w);
 
 /* The exit under the player, or NULL. */
 const FtExit* ft_world_exit_under(const FtWorld* w);

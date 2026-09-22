@@ -4,19 +4,29 @@
 
 #include "ft_types.h"
 
+typedef enum {
+    FT_UP_CHARGE = 0,
+    FT_UP_RAM,
+    FT_UP_FLASH,
+    FT_UP_COUNT
+} FtLevelChoice;
+
 typedef struct {
     int16_t charge, charge_max;
     int16_t ram, ram_max;
     int16_t flash_used, flash_max;
     int16_t level;
     int16_t xp;
-} FtStats;
 
-typedef enum {
-    FT_UP_CHARGE = 0,
-    FT_UP_RAM,
-    FT_UP_FLASH
-} FtLevelChoice;
+    /* Orbs: the part of the build that is not final.
+     *
+     * `orbs` is what is in hand; `spent` is how many went into each stat, and
+     * is what makes taking one back possible at all — without it there is no
+     * way to tell a levelled stat from a starting one. Every max above is
+     * therefore derived, never accumulated. */
+    int16_t orbs;
+    uint8_t spent[FT_UP_COUNT];
+} FtStats;
 
 void ft_stats_init(FtStats* s);
 
@@ -26,10 +36,26 @@ int16_t ft_level_cap(int16_t chapters_completed);
 /* Can this stat still be raised? Caps make some choices unavailable. */
 bool ft_level_choice_available(const FtStats* s, FtLevelChoice choice);
 
-/* Spend one owed level-up on this stat. Raises `level`, and restores Charge
- * and RAM in full as levelling always does. Returns false if that stat is
- * already capped, in which case nothing changes and the level is not spent. */
-bool ft_level_apply(FtStats* s, FtLevelChoice choice);
+/* Take one owed level: raises `level`, pays out FT_ORBS_PER_LEVEL orbs, and
+ * restores HP and MP in full as levelling always did. Nothing here picks a
+ * stat — that is the orb's job, and it can be changed later. */
+void ft_level_take(FtStats* s);
+
+/* What one orb is worth in this stat. */
+int16_t ft_orb_step(FtLevelChoice choice);
+
+/* Put an orb into a stat. False — and nothing changes — with no orbs in hand
+ * or the stat already capped. The gain is granted immediately, so raising HP
+ * mid-run actually heals you by that much. */
+bool ft_orb_spend(FtStats* s, FtLevelChoice choice);
+
+/* Can this orb be taken back out? False when none went in here, or when
+ * pulling it would leave less Card space than is currently installed —
+ * refunding into a negative budget is the one way this could corrupt a run. */
+bool ft_orb_can_refund(const FtStats* s, FtLevelChoice choice);
+
+/* Take an orb back out. Current HP and MP are clamped to the new maximum. */
+bool ft_orb_refund(FtStats* s, FtLevelChoice choice);
 
 /* Bank XP and report how many level-ups are now owed. XP is capped per battle
  * before it gets here. */

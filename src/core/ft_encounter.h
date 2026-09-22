@@ -106,10 +106,17 @@ typedef struct {
     uint32_t action_press_ms;
     FtRating last_rating;
 
-    /* Guard state. */
+    /* Guard state. The press freezes the cursor where it landed, exactly as
+     * the strike check does, and the lock clock drives its flash. */
     bool     guard_pressed;
     uint32_t guard_press_ms;
+    uint32_t guard_locked_ms;
     FtGuard  last_guard;
+
+    /* How far before the impact frame the last guard was pressed, in ms.
+     * Negative when nothing was pressed at all. This is the aftermath: the
+     * exact distance between what you did and what you were aiming at. */
+    int32_t  last_guard_offset;
 
     /* Per-foe results, so a broadcast can show what it did to each of them. */
     FtHitResult foe_hits[FT_MAX_ENEMIES];
@@ -200,6 +207,17 @@ const char* ft_encounter_status_tag(const FtEncounter* e);
 
 /* Player actions this round. A stall halves them. */
 uint8_t ft_encounter_turns_this_round(const FtEncounter* e);
+
+/* ---- Guard aftermath --------------------------------------------------- */
+
+/* Milliseconds before impact that the last guard landed, or -1 for no press.
+ * Smaller is later and therefore better: inside the capture window is a
+ * capture, inside the jam window a jam, anything wider has lapsed. */
+int32_t ft_encounter_guard_offset(const FtEncounter* e);
+
+/* The same figure while the wind-up is still running, so the marker can be
+ * drawn frozen at the press with the impact edge closing on it. */
+int32_t ft_encounter_guard_gap(const FtEncounter* e);
 
 /* ---- Foes ------------------------------------------------------------ */
 

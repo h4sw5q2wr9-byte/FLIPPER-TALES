@@ -12,6 +12,8 @@
 #include "../core/ft_encounter.h"
 #include "../core/ft_guide.h"
 #include "../core/ft_practice.h"
+#include "../core/ft_quest.h"
+#include "../core/ft_world.h"
 
 #define FT_SCREEN_W 128
 #define FT_SCREEN_H 64
@@ -30,6 +32,8 @@
 /* The pause menu, opened with Back. */
 typedef enum {
     FT_PAUSE_RESUME = 0,
+    FT_PAUSE_ORBS,
+    FT_PAUSE_QUESTS,
     FT_PAUSE_SAVE,
     FT_PAUSE_GUIDE,
     FT_PAUSE_HELP,
@@ -53,7 +57,10 @@ void ft_render_menu_list(
     uint8_t            count,
     uint8_t            selected);
 
-void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on);
+/* `orbs` is what is in hand, shown on the Orbs row so the player never has to
+ * open the screen to find out there is nothing to place. */
+void ft_render_pause(
+    Canvas* canvas, uint8_t selected, bool tips_on, int16_t orbs, bool in_battle);
 
 /* Everything that exists to test the game rather than to play it. Kept
  * together behind one door so the pause menu stays the player's. */
@@ -79,10 +86,17 @@ void ft_render_practice(Canvas* canvas, const FtPractice* p);
 /* A yes/no gate in front of something irreversible. */
 void ft_render_confirm(Canvas* canvas, const char* what, bool yes);
 
-/* The level-up screen: pick which stat the level goes into. `owed` is how
- * many more follow this one, so the player knows to expect them. */
-void ft_render_levelup(
-    Canvas* canvas, const FtStats* stats, uint8_t selected, int16_t owed);
+/* The orb screen: where the points earned by levelling and by quests sit, and
+ * where they are moved between HP, MP and Cards. Reachable from the pause
+ * menu at any time outside a fight, which is the whole point of it — nothing
+ * placed here is ever final. */
+void ft_render_orbs(Canvas* canvas, const FtStats* stats, uint8_t selected);
+
+/* What has been asked of you, one row each. Read-only. */
+void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected);
+
+/* Somebody talking: up to FT_QUEST_LINES lines in a box, and a prompt. */
+void ft_render_talk(Canvas* canvas, const char* who, const FtQuestTalk* t);
 
 void ft_render_battle(Canvas* canvas, const FtEncounter* e);
 

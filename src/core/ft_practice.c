@@ -165,11 +165,14 @@ void ft_practice_start(FtPractice* p, FtEncounter* e) {
 
     ft_encounter_init(e, foes, count, &lo, p->seed);
 
-    /* Levels, applied as the game applies them: a level is a stat choice, and
-     * the arena spreads them evenly rather than making you pick ten times. */
-    static const FtLevelChoice CYCLE[3] = {FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
+    /* Levels, taken and spent as the game takes and spends them: each level
+     * pays an orb, and the arena places them evenly rather than making you
+     * pick ten times. */
+    static const FtLevelChoice CYCLE[FT_UP_COUNT] = {
+        FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
     for(uint8_t l = 1; l < p->level; l++) {
-        ft_level_apply(&e->stats, CYCLE[(l - 1u) % 3u]);
+        ft_level_take(&e->stats);
+        ft_orb_spend(&e->stats, CYCLE[(l - 1u) % FT_UP_COUNT]);
     }
     e->stats.charge_max = (int16_t)(e->stats.charge_max + e->fx.charge_max_bonus);
     e->stats.charge = e->stats.charge_max;

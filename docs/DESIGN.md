@@ -678,9 +678,13 @@ is how the rule teaches itself.
 
 A save also records **where you came back from**. Being downed used to return
 you to a hardcoded room 0, which quietly undid everything past it; it now
-returns you to the terminal you last saved at. Levelling also writes the file
-straight away, because a stat you chose and then lost on the next screen is
-the worst possible outcome.
+returns you to the terminal you last saved at. Placing or moving an orb writes
+the file straight away, as does collecting a quest reward, because progress
+you made and then lost on the next screen is the worst possible outcome.
+
+The payload carries the run's stats (including `orbs` and `spent[]`), the
+loadout, the signal library, the field guide, quest state, where you stand,
+where you save, the cleared bits, and whether coaching is on. Version **4**.
 
 `ft_save_to_world()` restores the cleared-entity flags **before** entering the
 room, because entering is what decides which foes spawn. Load-then-enter would
@@ -689,23 +693,86 @@ put a foe you already beat back on its tile and only then mark it dead.
 **New game** is the one irreversible thing on the menu, so it asks first, and
 No is the default answer.
 
-### 5.4 Levelling
+### 5.4 Levelling, and orbs
 
 `ft_encounter_xp()` totals a won fight, tapering each foe against the player's
 level separately so a mixed group pays properly rather than being averaged.
 `ft_xp_gain()` banks it — capped at `FT_XP_BATTLE_CAP` per battle, so no one
 fight ever hands over two levels — and reports how many level-ups are **owed**.
 
-Owed levels take the screen before the world comes back, one at a time,
-because each one is a choice: Charge, RAM or Flash, each row showing what the
-stat is now and what it would become. A capped stat still shows, reading
-"MAX", so the list does not change shape between level-ups; picking it refuses
-and the level stays owed. BACK does not dismiss the screen — a screen you can
-escape from is a stat you can lose.
+A level is no longer a stat choice. `ft_level_take()` raises `level`, restores
+HP and MP in full, and pays out `FT_ORBS_PER_LEVEL` **orbs**. What an orb
+becomes is decided somewhere else, and can be decided again later.
 
-`ft_level_apply()` is what actually raises `level`. It did not, which meant
-the level never moved, the chapter cap never bit, and every enemy was worth
-full XP forever. The anti-farming taper only started working once this did.
+That is the whole point. A build you cannot change is one you have to be told
+about beforehand, and there is nowhere on a 128×64 panel to tell anyone that
+MP only matters if they intend to lean on NFC. Under the old rule a player who
+put four levels into Cards before finding out what Cards were for carried that
+for the rest of the run.
+
+**The orb screen** (`ft_render_orbs`) is reachable two ways: automatically
+when a win leaves orbs in hand, and from the pause menu at any time outside a
+fight. Three rows — HP, MP, Cards — each showing the current maximum and, in
+brackets, how many orbs are sitting in it. RIGHT or OK puts one in, LEFT takes
+one back out. Every move writes the save, so nothing here can be lost to a
+bad next fight.
+
+The rules that make it safe to be reversible:
+
+- **`spent[]`, not accumulation.** `FtStats` records how many orbs went into
+  each stat. Without that there is no way to tell a levelled stat from a
+  starting one, and no way to know how much to give back.
+- **HP is granted on the spot.** Moving an orb into HP heals you by that much
+  immediately. This is a thing you are meant to be able to do when hurt, not a
+  promise for the next fight.
+- **Refunding HP never downs you.** Current HP is clamped to the new maximum
+  and then floored at 1. Being downed is something a fight does.
+- **Cards refuse a refund that would go negative.** `flash_used` is a budget
+  something is already spending; pulling a slot out from under an installed
+  card would leave `flash_used > flash_max`, which every install check
+  downstream reads as "no room" forever.
+- **Not mid-fight.** The pause menu's Orbs row says "not in battle" rather
+  than disappearing. Moving a point to survive a hit you have already taken is
+  not a build decision.
+
+Caps still bite: a capped stat refuses the orb and the orb stays in hand,
+rather than vanishing into a row that could not take it.
+
+`ft_level_take()` is what actually raises `level`. Its predecessor did not,
+which meant the level never moved, the chapter cap never bit, and every enemy
+was worth full XP forever. The anti-farming taper only started working once
+that was fixed.
+
+### 5.4a Quests
+
+A quest is a **condition over state the world already tracks** — which room
+you walked into, whether a fight started — rather than a script with its own
+idea of where you are. That is what keeps it testable, and what stops a quest
+and the world disagreeing about what happened.
+
+`ft_quest.c` holds one quest so far, **Clean Run**: touch the Cold Gate at the
+far end of the prologue and come back, without a single fight. It pays two
+orbs. Four rooms out and four back, with foes respawning behind you (§5.3),
+so "without a fight" is a route to find rather than a formality.
+
+States run `UNKNOWN → ACTIVE → READY → DONE`, with `FAILED` hanging off the
+middle. `ft_quest_enter_room()` flips ACTIVE to READY on arrival at the goal;
+`ft_quest_battle()`, called the moment a battle is built, fails anything live
+that asked you not to fight. READY fails too — turning round at the gate and
+punching your way home is not a clean run, and the reward is for the route.
+
+Failing **re-offers** rather than closing the door. A quest that can only be
+failed once is a punishment for trying it early, which is exactly when a
+player would try it.
+
+**The giver** is an `FT_ENT_NPC` entity standing in room 0, two tiles off the
+line between where you wake up and the door, so you meet them by choice. NPCs
+are solid: you walk into one, which leaves you facing them, and OK talks. Up
+to three lines of at most 20 characters come back out of core as data; the app
+only draws them. A test walks every state and measures every line.
+
+The quest state rides in `FtWorld` and in the save (`FT_QUEST_BYTES`, sized
+with headroom so adding a quest does not change the layout).
 
 ### 5.5 The debug menu
 
@@ -778,6 +845,62 @@ makes it affordable. The buffers are file statics rather than part of
 `FtWorld`: they are scratch, rebuilt whenever used, and `FtWorld` gets copied
 around (saves, tests) where another kilobyte and a half would ride along for
 nothing.
+
+#### The beat before the chase
+
+A foe that starts walking on the frame it notices you gives the player nothing
+to react to: the first thing you know about it is that it is already moving.
+
+`FT_FOE_NOTICE_MS` (500) is the pause between the two. The transition from
+not-alert to alert arms `notice_ms` on the whole group; while it runs nobody
+thinks or takes a new step, and a mark is drawn over the group's first walker.
+Then they come.
+
+Three details that matter:
+
+- **Only the transition arms it.** Re-arming every frame the player stayed in
+  range would freeze the room solid.
+- **A step already under way finishes.** Stopping dead mid-tile would break
+  the grid everything else depends on.
+- **One mark, not three.** A roster of three with three marks is a row of
+  punctuation, not a warning.
+
+The mark is clamped downward rather than skipped when it would run off the top
+of the panel. A warning you only get in open ground is not a warning, and a
+skipped draw is invisible to the layout checker.
+
+### 5.8 The guard aftermath
+
+The strike check has always frozen its cursor where the player pressed. The
+guard check drew nothing at all, so a block that went up a fifth of a second
+too early and an attack that could not be blocked looked identical: you took
+the hit either way and learned nothing from it.
+
+Two readings now come out of the same press.
+
+**While the wind-up finishes**, the marker freezes and flashes where the guard
+went up, and a thin line keeps sweeping to the impact edge. The gap between
+them is the error, closing in real time. The line is deliberately thin rather
+than a second cursor — the eye should follow the gap shrinking, not mistake it
+for another thing to aim with.
+
+**After it lands**, the popup's second line carries the number.
+`ft_encounter_guard_offset()` reports how many milliseconds before impact the
+press was, or −1 for no press at all, and the renderer turns that into one of
+three readings:
+
+| reading | means |
+|---|---|
+| `at 40ms` | inside the window; the number is how tight it was |
+| `450ms early` | outside it, by that much — the number you can act on |
+| `no guard` | nothing was pressed |
+
+Inside the window the figure is a skill readout; outside it, it is the
+correction. "You were early" and "you did nothing" are different facts and now
+look different.
+
+Unlike the strike check, the press does **not** stop the clock. The hit is
+still coming — only the marker freezes.
 
 ## 6. Architecture
 
@@ -1082,6 +1205,12 @@ made backtracking free and "go round again" the answer to everything; now the
 room is as dangerous on the way back as it was on the way in. The bitfield
 stays, because it is how anything genuinely permanent will be remembered — but
 a beaten foe is only beaten for the visit.
+
+**NPCs are.** `FT_ENT_NPC` reuses the roster byte as a quest id. They never
+move, are never cleared, and are **solid**: walking into one stops you, which
+is what leaves you facing them, and OK talks. Nothing about them starts a
+fight — `ft_world_foe_ahead` and `ft_world_foe_contact` both ignore them, so
+the strike-first rule cannot fire on a person.
 
 #### Foe behaviour
 

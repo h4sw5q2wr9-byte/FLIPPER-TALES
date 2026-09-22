@@ -70,6 +70,7 @@ int main(void) {
         {"cb1-wake",     0, &FT_MAP_CB1, 32,  28, FT_FACE_RIGHT, false, 0},
         {"cb1-terminal", 0, &FT_MAP_CB1, 36,  20, FT_FACE_UP,    false, 9000},
         {"cb1-exit",     0, &FT_MAP_CB1, 112, 28, FT_FACE_RIGHT, true,  9000},
+        {"cb1-npc",      0, &FT_MAP_CB1, 48,  16, FT_FACE_RIGHT, false, 9000},
         {"cb2-foe",      1, &FT_MAP_CB2, 48,  28, FT_FACE_RIGHT, true,  0},
         {"cb2-mid",      1, &FT_MAP_CB2, 96,  36, FT_FACE_RIGHT, true,  9000},
         {"cb3-shelf",    2, &FT_MAP_CB3, 48,  28, FT_FACE_DOWN,  true,  0},
@@ -135,6 +136,40 @@ int main(void) {
         const int clipped = ft_stub_canvas_clipped(canvas);
         clipped_total += clipped;
         printf("  %-14s %s\n", s->name, clipped ? "CLIPPED" : "ok");
+    }
+
+    /* Spotted: the mark over a group that has seen you and has not started
+     * moving yet. It is the only thing drawn above a sprite, so it is also
+     * the only thing that can run off the top of the panel. */
+    {
+        FtWorld n;
+        ft_world_init(&n);
+        ft_world_enter(&n, 1, 11, 3);
+        n.foes[0].alert = true;
+        n.foes[0].notice_ms = FT_FOE_NOTICE_MS;
+
+        ft_overworld_render(canvas, &n);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_19_spotted.pbm");
+
+        const int c = ft_stub_canvas_clipped(canvas);
+        clipped_total += c;
+        printf("  %-14s %s\n", "spotted", c ? "CLIPPED" : "ok");
+
+        /* And again with the group pressed against the top wall, where the
+         * mark has the least room above it. */
+        for(uint8_t m = 0; m < n.foes[0].count; m++) {
+            n.foes[0].w[m].mv.ty = 1u;
+            n.foes[0].w[m].mv.tx = (uint8_t)(10u + m);
+        }
+        n.mv.tx = 12;
+        n.mv.ty = 1;
+
+        ft_overworld_render(canvas, &n);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_20_spotted-top.pbm");
+
+        const int c2 = ft_stub_canvas_clipped(canvas);
+        clipped_total += c2;
+        printf("  %-14s %s\n", "spotted-top", c2 ? "CLIPPED" : "ok");
     }
 
     /* Camera must never show outside the map, however far the player pushes. */

@@ -52,6 +52,8 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
     put_i16(b, &at, d->stats.flash_max);
     put_i16(b, &at, d->stats.level);
     put_i16(b, &at, d->stats.xp);
+    put_i16(b, &at, d->stats.orbs);
+    for(uint8_t i = 0; i < FT_UP_COUNT; i++) put_u8(b, &at, d->stats.spent[i]);
 
     for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) put_u8(b, &at, d->loadout.stacks[i]);
 
@@ -62,6 +64,8 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
     put_u8(b, &at, d->lib.next);
 
     put_i16(b, &at, (int16_t)d->guide.seen);
+
+    for(uint8_t i = 0; i < FT_QUEST_BYTES; i++) put_u8(b, &at, d->quests.state[i]);
 
     put_u8(b, &at, d->room);
     put_u8(b, &at, d->tx);
@@ -88,6 +92,8 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     d->stats.flash_max = get_i16(b, &at);
     d->stats.level = get_i16(b, &at);
     d->stats.xp = get_i16(b, &at);
+    d->stats.orbs = get_i16(b, &at);
+    for(uint8_t i = 0; i < FT_UP_COUNT; i++) d->stats.spent[i] = get_u8(b, &at);
 
     for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) d->loadout.stacks[i] = get_u8(b, &at);
 
@@ -98,6 +104,8 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     d->lib.next = get_u8(b, &at);
 
     d->guide.seen = (uint16_t)get_i16(b, &at);
+
+    for(uint8_t i = 0; i < FT_QUEST_BYTES; i++) d->quests.state[i] = get_u8(b, &at);
 
     d->room = get_u8(b, &at);
     d->tx = get_u8(b, &at);
@@ -114,10 +122,11 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
 /* The payload length, which the header carries so a decode can check the file
  * is the size it claims before trusting a byte of it. */
 static uint8_t payload_bytes(void) {
-    return (uint8_t)(8u * 2u                      /* stats */
+    return (uint8_t)(9u * 2u + FT_UP_COUNT        /* stats, orbs, where they went */
                      + FT_MODULE_COUNT            /* loadout */
                      + FT_SIGLIB_SLOTS * 2u + 2u  /* library */
                      + 2u                         /* field guide */
+                     + FT_QUEST_BYTES             /* quests */
                      + 6u                         /* position and save point */
                      + FT_CLEARED_BYTES + 1u);    /* flags */
 }
@@ -185,6 +194,7 @@ void ft_save_from_world(const FtWorld* w, bool coach, FtSaveData* d) {
     d->loadout = w->loadout;
     d->lib = w->lib;
     d->guide = w->guide;
+    d->quests = w->quests;
 
     d->room = w->room;
     d->tx = w->mv.tx;
@@ -205,6 +215,7 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach) {
     w->loadout = d->loadout;
     w->lib = d->lib;
     w->guide = d->guide;
+    w->quests = d->quests;
 
     /* Cleared entities are restored *before* entering, because entering is
      * what decides which foes spawn. Loading and then walking into a foe you
