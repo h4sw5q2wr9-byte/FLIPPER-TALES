@@ -29,9 +29,14 @@ static void build(FtEncounter* e, const Shot* s) {
     ft_loadout_init(&lo);
 
     if(s->extra_foes) {
-        const FtEnemyId group[FT_MAX_ENEMIES] = {
+        const FtEnemyId plain[FT_MAX_ENEMIES] = {
             FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK};
-        ft_encounter_init(e, group, s->extra_foes, &lo, 42);
+        const FtEnemyId walled[FT_MAX_ENEMIES] = {
+            FT_ENEMY_BLANK_WALL, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
+
+        ft_encounter_init(
+            e, (s->enemy == FT_ENEMY_BLANK_WALL) ? walled : plain,
+            s->extra_foes, &lo, 42);
     } else {
         ft_encounter_init_single(e, s->enemy, &lo, 42);
     }
@@ -173,6 +178,8 @@ int main(void) {
         {"foe-drone",       FT_ENEMY_GATE_DRONE,    FT_PHASE_MENU,      0,    0, 0, 0, false},
         {"foe-relay",       FT_ENEMY_MAST_RELAY,    FT_PHASE_MENU,      0,    0, 0, 0, false},
         {"foe-null",        FT_ENEMY_NULL_FIELD,    FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-wall",        FT_ENEMY_BLANK_WALL,   FT_PHASE_MENU,      0,    0, 0, 3, false},
+        {"foe-booter",      FT_ENEMY_COLD_BOOTER,  FT_PHASE_MENU,      0,    0, 0, 0, false},
         {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0, 0, false},
         {"lose",            FT_ENEMY_SEALED_LOCK,  FT_PHASE_LOSE,       100,  0, 0, 0, false},
     };

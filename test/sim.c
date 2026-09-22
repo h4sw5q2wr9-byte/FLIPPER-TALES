@@ -74,6 +74,19 @@ static void play(const FtRoster* roster, uint32_t skill, uint32_t seed, SimResul
             FtAction2 want =
                 (ft_encounter_living(&e) > 1u) ? FT_ACTION_BROADCAST : FT_ACTION_CONTACT;
 
+            /* Out of MP means the strong module is off the table, and the
+             * sensible answer is to brace and get some back. */
+            if(!ft_encounter_action_available(&e, FT_ACTION_CONTACT)) {
+                want = (bcast > 0u) ? FT_ACTION_BROADCAST : FT_ACTION_DEFEND;
+
+                e.menu_index = (uint8_t)want;
+                ft_encounter_press_ok(&e);
+                strike_set = false;
+                guard_set = false;
+                turns++;
+                break;
+            }
+
             const uint8_t first = (want == FT_ACTION_BROADCAST) ? bcast : contact;
             const uint8_t other = (want == FT_ACTION_BROADCAST) ? contact : bcast;
 

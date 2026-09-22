@@ -29,6 +29,44 @@
 #define FT_HERO_EYE_Y    5
 #define FT_HERO_EYE_H    2
 
+static const uint16_t FT_SPRITE_WALL[FT_SPRITE_H] = {
+    0xFFFF,
+    0x8001,
+    0xBFFD,
+    0xA005,
+    0xAFF5,
+    0xA815,
+    0xABD5,
+    0xAA55,
+    0xAA55,
+    0xABD5,
+    0xA815,
+    0xAFF5,
+    0xA005,
+    0xBFFD,
+    0x8001,
+    0xFFFF,
+};
+
+static const uint16_t FT_SPRITE_BOOTER[FT_SPRITE_H] = {
+    0x0000,
+    0x0000,
+    0x0FF0,
+    0x3FFC,
+    0x7FFE,
+    0xCC33,
+    0x8C31,
+    0x8001,
+    0x8001,
+    0x87E1,
+    0x8C31,
+    0x7FFE,
+    0x3FFC,
+    0x0FF0,
+    0x0000,
+    0x0000,
+};
+
 static const uint16_t FT_SPRITE_CRAWLER[FT_SPRITE_H] = {
     0x0000,
     0x0000,

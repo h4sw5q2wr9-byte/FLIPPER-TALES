@@ -112,7 +112,15 @@ typedef enum {
 #define FT_ATTR_AIRBORNE  (1u << 0) /* contact attacks cannot reach it */
 #define FT_ATTR_ENCRYPTED (1u << 1) /* broadcast attacks do nothing, refund RAM */
 #define FT_ATTR_FAST      (1u << 2) /* acts before the player */
-#define FT_ATTR_JAMMER    (1u << 3) /* locks the Signal meter */
+#define FT_ATTR_JAMMER    (1u << 3) /* locks the SP meter */
+
+/* Never attacks, and nothing behind it can be touched while it stands. The
+ * whole fight becomes "get through this first". */
+#define FT_ATTR_BULWARK   (1u << 4)
+
+/* Sits the fight out while anything else is alive, then wakes up and is the
+ * hardest thing on the board. Clearing the room is what starts the fight. */
+#define FT_ATTR_SLEEPER   (1u << 5)
 
 /* ---- Status payloads ------------------------------------------------- */
 

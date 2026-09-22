@@ -336,6 +336,49 @@ A small heal makes the turn a real question: spend it staying alive, or spend
 it ending the fight. It still shields as well, because a heal that only buys
 back what the turn cost is not a choice either.
 
+### 4.7e HP, MP, SP
+
+The three numbers on the status row are now called what they are: **HP**, **MP**
+and **SP**. They were Charge, RAM and Signal — flavourful, and the reason
+people could not tell what any of them was.
+
+MP had a worse problem: it did nothing. `ft_module_ram_cost` was called from
+nowhere, so MP was earned by guarding and by locked hits and never spent on
+anything. A third of the readout was decoration, which is its own kind of
+confusion. **NFC costs 1 MP now**, which gives MP a job, gives Guard a second
+reason to exist, and gives a long fight a rhythm: hit hard until you are out,
+then brace to get it back. Out of MP, the row says so and names the fix.
+
+### 4.7f Two enemies that change the shape of a fight
+
+Both are built from one new attribute each, and neither changes a number the
+player has to track.
+
+**`FT_ATTR_BULWARK` — Blank Wall.** Never attacks, and nothing behind it can
+be touched while it stands. A broadcast included: a way round would make it
+scenery. The row becomes a queue, and the foes behind it keep attacking the
+whole time — being safe from you is not the same as being idle.
+
+The first version blocked single-target attacks and was *transparent to the
+one attack that hits everything*, because the broadcast path struck every
+living foe directly and never asked about reach (`ft_resolve_hit` only knows
+about AIRBORNE and ENCRYPTED). That roster measured 100% at every skill. With
+the block honest it measured 15% at low skill, which was the mechanic and the
+numbers both doing the work — so the wall came down to 14 HP and no shield. It
+is a gate, not a boss, and it is worth little XP for the same reason.
+
+**`FT_ATTR_SLEEPER` — Cold Booter.** Sits the fight out while anything else
+lives, then wakes as the hardest thing on the board and leads with its biggest
+attack. Clearing the room is what starts the fight, which inverts the usual
+read: the quiet one in the corner is the reason you should have kept something
+alive. It can be attacked while asleep, so dealing with it early is a choice
+you are offered rather than a trap.
+
+A foe that is not taking turns **says so** — a dormant badge on the sprite,
+and `WALL` / `SLP` on the title bar. A bulwark that looks like any other enemy
+is just an enemy with confusing rules, and a sleeper you cannot tell is asleep
+is a surprise rather than a decision.
+
 ### 4.8 Enemy attributes — Milestone 1 subset
 
 | Attribute | Effect | Block Tales equivalent |
@@ -985,9 +1028,16 @@ A foe's `data` indexes a **roster** — the group it fights as — which is what
 lets one visible sprite mean "and two friends", as the reference does. This is
 what the multi-foe battle work feeds.
 
-Persistent flags (an item taken, a port unlocked, a boss beaten) live in the
-save as a bitfield keyed by room and entity index, so the world remembers what
-you did without storing the world.
+Persistent flags (an item taken, a port unlocked) live in the save as a
+bitfield keyed by room and entity index, so the world remembers what you did
+without storing the world.
+
+**Foes are not persistent.** Walking into a room repopulates it, every time,
+including on a load. A cleared corridor used to stay cleared forever, which
+made backtracking free and "go round again" the answer to everything; now the
+room is as dangerous on the way back as it was on the way in. The bitfield
+stays, because it is how anything genuinely permanent will be remembered — but
+a beaten foe is only beaten for the visit.
 
 #### Foe behaviour
 

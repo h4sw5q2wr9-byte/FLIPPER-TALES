@@ -20,6 +20,8 @@ static const uint16_t* ft_enemy_art(FtEnemyId id) {
     case FT_ENEMY_GATE_DRONE:    return FT_SPRITE_DRONE;
     case FT_ENEMY_MAST_RELAY:    return FT_SPRITE_RELAY;
     case FT_ENEMY_NULL_FIELD:    return FT_SPRITE_NULLF;
+    case FT_ENEMY_BLANK_WALL:    return FT_SPRITE_WALL;
+    case FT_ENEMY_COLD_BOOTER:   return FT_SPRITE_BOOTER;
     case FT_ENEMY_STRAY_PACKET:
     default:                     return FT_SPRITE_PACKET;
     }

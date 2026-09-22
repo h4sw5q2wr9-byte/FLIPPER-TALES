@@ -106,6 +106,10 @@ typedef enum {
     FT_ENEMY_MAST_RELAY,       /* JAMMER          — no replays in this fight */
     FT_ENEMY_NULL_FIELD,       /* ENCRYPTED+JAM   — and its hits resist capture */
 
+    /* Two that change the shape of a fight rather than its numbers. */
+    FT_ENEMY_BLANK_WALL,       /* BULWARK  — never attacks, nothing gets past */
+    FT_ENEMY_COLD_BOOTER,      /* SLEEPER  — quiet until it is the last one */
+
     FT_ENEMY_COUNT
 } FtEnemyId;
 

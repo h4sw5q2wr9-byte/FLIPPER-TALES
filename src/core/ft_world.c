@@ -28,6 +28,12 @@ static const FtRoster FT_ROSTERS[] = {
      * room to learn either. A plain Packet gives it a partner without
      * giving it a second mechanic. */
     {2, {FT_ENEMY_NULL_FIELD, FT_ENEMY_STRAY_PACKET, 0}},              /* Deadzone */
+
+    /* [10-11] The shape-changers. Order matters for both: the wall stands in
+     * slot 0 so it is literally in front, and the sleeper sits in the last
+     * slot so clearing the row is what wakes it. */
+    {3, {FT_ENEMY_BLANK_WALL, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET}},
+    {3, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_COLD_BOOTER}},
 };
 #define ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
 
@@ -113,6 +119,7 @@ static const FtExit TS1_EXITS[] = {
 };
 static const FtEntity TS1_ENTS[] = {
     {FT_ENT_FOE, 15, 4, 7},
+    {FT_ENT_FOE, 4, 2, 10}, /* the wall, in a room about things in the way */
 };
 
 /* [8] Signal Hill. Pylons and dead cable runs on a terrace, with the ladder
@@ -137,7 +144,7 @@ static const FtExit DZ1_EXITS[] = {
 };
 static const FtEntity DZ1_ENTS[] = {
     {FT_ENT_FOE, 9, 4, 9},
-    {FT_ENT_FOE, 17, 7, 9},
+    {FT_ENT_FOE, 17, 7, 11}, /* the sleeper, at the far end */
 };
 
 static const FtRoom FT_ROOMS[] = {
@@ -147,7 +154,7 @@ static const FtRoom FT_ROOMS[] = {
     {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 1},
     {&FT_MAP_SL1, SL1_EXITS, 2, SL1_ENTS, 2},
     {&FT_MAP_CS1, CS1_EXITS, 2, CS1_ENTS, 2},
-    {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 1},
+    {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2},
     {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2},
     {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2},
 };
@@ -254,6 +261,24 @@ static const int8_t SPREAD[][2] = {
 
 void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
     w->room = (room < ft_room_count()) ? room : 0u;
+
+    /* Walking into a room repopulates it.
+     *
+     * Beaten foes used to stay beaten forever, so a cleared corridor was a
+     * cleared corridor and backtracking was free. Now the room is as
+     * dangerous on the way back as it was on the way in, which is what stops
+     * "go round again" being the answer to everything. The bitfield stays —
+     * it is how anything *permanent* will be remembered — but foes are not
+     * permanent. */
+    const FtRoom* fresh = ft_room(w->room);
+    for(uint8_t i = 0; i < fresh->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(fresh->ents[i].kind != FT_ENT_FOE) continue;
+
+        const uint16_t bit = cleared_bit(w->room, i);
+        if(bit < sizeof(w->cleared) * 8u) {
+            w->cleared[bit / 8u] &= (uint8_t)~(1u << (bit % 8u));
+        }
+    }
 
     w->mv.tx = tx;
     w->mv.ty = ty;

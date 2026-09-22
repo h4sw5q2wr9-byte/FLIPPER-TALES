@@ -92,6 +92,18 @@ static void draw_header(Canvas* canvas, const FtEncounter* e) {
      * and JAM locks the meter, and until they were wired up neither did
      * anything, so neither needed saying. An attribute that changes the
      * fight and is not on the screen is a rule the player has to lose to. */
+    if(en->attrs & FT_ATTR_SLEEPER) {
+        strcpy(tag, "SLP");
+        right -= (int32_t)canvas_string_width(canvas, tag);
+        canvas_draw_str(canvas, right, 7, tag);
+        right -= 3;
+    }
+    if(en->attrs & FT_ATTR_BULWARK) {
+        strcpy(tag, "WALL");
+        right -= (int32_t)canvas_string_width(canvas, tag);
+        canvas_draw_str(canvas, right, 7, tag);
+        right -= 3;
+    }
     if(en->attrs & FT_ATTR_JAMMER) {
         strcpy(tag, "JAM");
         right -= (int32_t)canvas_string_width(canvas, tag);
@@ -498,6 +510,21 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
         draw_sprite(canvas, art, x, y);
 
+        /* A foe that is not taking turns says so. A bulwark that looks like
+         * every other enemy is just an enemy with confusing rules, and a
+         * sleeper you cannot tell is asleep is a nasty surprise rather than
+         * a decision you were offered. */
+        if(!ft_encounter_foe_awake(e, i)) {
+            canvas_set_color(canvas, ColorWhite);
+            canvas_draw_box(canvas, x + 3, y + 6, 10, 5);
+            canvas_set_color(canvas, ColorBlack);
+            canvas_draw_frame(canvas, x + 3, y + 6, 10, 5);
+
+            for(int32_t d = 0; d < 3; d++) {
+                canvas_draw_dot(canvas, x + 5 + d * 3, y + 8);
+            }
+        }
+
         /* Only the foe that actually landed the hit flickers with you. */
         if(arena_fx.strobe && e->phase == FT_PHASE_IMPACT && i == e->acting_foe) {
             canvas_set_color(canvas, ColorXOR);
@@ -752,7 +779,7 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
     /* No "CHG" label. A quarter-ticked bar with a number beside it is already
      * unambiguous, and the three characters were the difference between a row
      * that reads and a row that is merely full. */
-    const int32_t bx = 2, bw = 46;
+    const int32_t bx = 2, bw = 40;
     canvas_draw_frame(canvas, bx, FT_STATUS_Y + 1, (size_t)bw, 6);
     {
         const int32_t fill = ft_bar_fill(e->roll.current, e->stats.charge_max, bw);
@@ -768,19 +795,21 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
         }
     }
 
-    snprintf(buf, sizeof(buf), "%d", (int)e->roll.current);
+    /* "HP", not "CHG". The three numbers on this row are the whole readout
+     * and a player should not have to be told twice what any of them is. */
+    snprintf(buf, sizeof(buf), "HP%d", (int)e->roll.current);
     canvas_draw_str(canvas, bx + bw + 3, FT_STATUS_Y + 6, buf);
 
-    snprintf(buf, sizeof(buf), "R%d", (int)e->stats.ram);
-    canvas_draw_str(canvas, 70, FT_STATUS_Y + 6, buf);
+    snprintf(buf, sizeof(buf), "MP%d", (int)e->stats.ram);
+    canvas_draw_str(canvas, 72, FT_STATUS_Y + 6, buf);
 
     /* One letter, not three: the pips beside it are self-explanatory once
      * they start filling, and the width is needed for four of them. */
-    canvas_draw_str(canvas, 88, FT_STATUS_Y + 6, "S");
+    canvas_draw_str(canvas, 92, FT_STATUS_Y + 6, "SP");
 
     const uint8_t bars = ft_signal_bars(&e->signal);
     for(uint8_t i = 0; i < e->signal.max_bars && i < 4u; i++) {
-        const int32_t sx = 96 + i * 7;
+        const int32_t sx = 103 + i * 6;
         if(e->signal.locked) {
             hatch(canvas, sx, FT_STATUS_Y + 1, 5, 6);
             canvas_draw_frame(canvas, sx, FT_STATUS_Y + 1, 5, 6);
@@ -819,9 +848,9 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
     switch(a) {
     case FT_ACTION_BROADCAST: return "All foes, weaker.";
     case FT_ACTION_CONTACT:   return "One foe, strong.";
-    case FT_ACTION_DEFEND:    return "Shield, heal, +RAM";
-    case FT_ACTION_FOCUS:     return "Fill the S meter.";
-    case FT_ACTION_SIGNAL:    return "Replay a capture.";
+    case FT_ACTION_DEFEND:    return "Guard, heal, +MP";
+    case FT_ACTION_FOCUS:     return "Charge up SP.";
+    case FT_ACTION_SIGNAL:    return "Replay, costs SP.";
     default:                  return "";
     }
 }
@@ -886,7 +915,7 @@ void ft_render_help(Canvas* canvas, uint8_t page) {
         "1/4  CONTROLS",
         "2/4  YOUR STRIKE",
         "3/4  THEIR TURN",
-        "4/4  MODULES",
+        "4/4  HP, MP, SP",
     };
 
     /* Four lines per page, 21 characters each: the panel's width budget. */
@@ -910,10 +939,10 @@ void ft_render_help(Canvas* canvas, uint8_t page) {
             "Solid = capture (0).",
         },
         {
-            "SIG replays a kept",
-            "attack, costs 1 bar.",
-            "AIR blocks NFC.",
-            "ENC blocks SUB.",
+            "HP is your health.",
+            "MP pays for NFC.",
+            "SP replays a kept",
+            "attack. Guard = +MP.",
         },
     };
 
@@ -1137,7 +1166,7 @@ void ft_render_levelup(
     draw_centred(canvas, FT_SCREEN_W / 2, 8, head);
     canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
 
-    static const char* const NAMES[3] = {"Charge", "RAM", "Flash"};
+    static const char* const NAMES[3] = {"HP", "MP", "Cards"};
     static const FtLevelChoice CHOICE[3] = {FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
     static const int16_t STEP[3] = {FT_LEVEL_UP_CHARGE, FT_LEVEL_UP_RAM, FT_LEVEL_UP_FLASH};
 
@@ -1225,7 +1254,7 @@ void ft_render_guide_entry(Canvas* canvas, FtEnemyId id) {
     draw_sprite(canvas, ft_enemy_art(id), FT_SCREEN_W - 18, 14);
 
     char line[24];
-    snprintf(line, sizeof(line), "CHG %d", (int)en->charge);
+    snprintf(line, sizeof(line), "HP %d", (int)en->charge);
     canvas_draw_str(canvas, 2, 20, line);
 
     ft_guide_traits(id, line, (uint8_t)sizeof(line));
@@ -1300,7 +1329,7 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
         if(won) {
             snprintf(detail, sizeof(detail), "%d signal(s) held", (int)e->lib.count);
         } else {
-            snprintf(detail, sizeof(detail), "charge depleted");
+            snprintf(detail, sizeof(detail), "out of HP");
         }
         draw_centred(canvas, FT_SCREEN_W / 2, 32, detail);
 

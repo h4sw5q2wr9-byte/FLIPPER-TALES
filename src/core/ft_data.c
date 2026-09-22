@@ -20,6 +20,9 @@
 #define FT_ATK_RELAY_SURGE  26
 #define FT_ATK_NULL_WASH    27
 #define FT_ATK_NULL_COLLAPSE 28
+#define FT_ATK_WALL_NONE     29
+#define FT_ATK_BOOT_STIR     30
+#define FT_ATK_BOOT_WAKE     31
 
 const FtModule FT_MODULES[FT_MODULE_COUNT] = {
     [FT_MOD_SUBGHZ] =
@@ -47,7 +50,13 @@ const FtModule FT_MODULES[FT_MODULE_COUNT] = {
         {.name = "NFC",
          .slot = FT_SLOT_CONTACT,
          .flash_cost = 0,
-         .ram_cost = 0,
+         /* MP was earned and never spent: ft_module_ram_cost was called from
+          * nowhere, so a third of the status row meant nothing and the player
+          * had one number to read that did not do anything. The strong module
+          * costs one, which gives MP a job, gives Guard a second reason to
+          * exist, and gives a long fight a rhythm: hit hard until you are
+          * out, then brace. */
+         .ram_cost = 1,
          .max_stacks = 1,
          /* Contact burst: higher power, and halves the target's shield. */
          .attack = {FT_ATK_NFC, 4, 0, true, FT_DELIVERY_CONTACT, FT_CLASS_NORMAL,
@@ -277,6 +286,50 @@ const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT] = {
                       FT_CLASS_GUARDED, FT_PAYLOAD_NONE},
                      {FT_ATK_NULL_COLLAPSE, 6, 0, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_GUARDED, FT_PAYLOAD_DRAIN}}},
+
+    /* ---- Shape-changers -------------------------------------------------
+     *
+     * Blank Wall never attacks and nothing behind it can be touched while it
+     * stands — a broadcast included, because a way round would make it
+     * scenery. All it does is decide the order you fight in, which turns a
+     * row of foes into a queue. Tough, but worth little: it is a delay, not
+     * a threat, and paying full XP for a punching bag would make it farm
+     * bait. Its attack entry exists only because every enemy has one; it is
+     * never chosen, because a BULWARK never takes a turn. */
+    [FT_ENEMY_BLANK_WALL] =
+        {.name = "Blank Wall",
+         /* A gate, not a boss. At 20 Charge behind a shield, with two foes
+          * hitting you freely the whole time it stands, the fight was 15% at
+          * low skill: the mechanic was doing all the work and the numbers
+          * were doing it again. */
+         .charge = 14,
+         .shielded = 0,
+         .attrs = FT_ATTR_BULWARK,
+         .level = 3,
+         .xp = 14,
+         .attack_count = 1,
+         .attacks = {{FT_ATK_WALL_NONE, 1, 0, false, FT_DELIVERY_CONTACT,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_NONE}}},
+
+    /* Cold Booter sits the fight out while anything else lives, then wakes
+     * up as the hardest thing on the board. Clearing the room is what starts
+     * the fight, which inverts the usual read: the safe-looking one in the
+     * corner is the reason you should have kept something alive. */
+    [FT_ENEMY_COLD_BOOTER] =
+        {.name = "Cold Booter",
+         .charge = 14,
+         .shielded = 2,
+         .attrs = FT_ATTR_SLEEPER,
+         .level = 5,
+         .xp = 44,
+         .attack_count = 2,
+         /* The first is never used — a sleeper leads with its last — but a
+          * captured replay needs somewhere sane to land if one is ever
+          * taken from it. */
+         .attacks = {{FT_ATK_BOOT_STIR, 3, 0, false, FT_DELIVERY_CONTACT,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
+                     {FT_ATK_BOOT_WAKE, 8, 1, false, FT_DELIVERY_CONTACT,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_CORRUPT}}},
 };
 
 const FtAttack* ft_attack_by_id(uint16_t id) {

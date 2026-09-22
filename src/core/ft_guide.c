@@ -99,6 +99,14 @@ void ft_guide_traits(FtEnemyId id, char* out, uint8_t cap) {
         if(out[0] != '\0') append(out, cap, " ");
         append(out, cap, "JAM");
     }
+    if(en->attrs & FT_ATTR_BULWARK) {
+        if(out[0] != '\0') append(out, cap, " ");
+        append(out, cap, "WALL");
+    }
+    if(en->attrs & FT_ATTR_SLEEPER) {
+        if(out[0] != '\0') append(out, cap, " ");
+        append(out, cap, "SLP");
+    }
 
     if(out[0] == '\0') append(out, cap, "no traits");
 }
@@ -124,7 +132,15 @@ const char* ft_guide_note(FtEnemyId id, uint8_t n) {
         at++;
     }
     if(en->attrs & FT_ATTR_JAMMER) {
-        if(at == n) return "Jams the S meter";
+        if(at == n) return "Jams your SP";
+        at++;
+    }
+    if(en->attrs & FT_ATTR_BULWARK) {
+        if(at == n) return "Blocks all behind it";
+        at++;
+    }
+    if(en->attrs & FT_ATTR_SLEEPER) {
+        if(at == n) return "Wakes up last, hard";
         at++;
     }
     if(en->shielded > 0) {

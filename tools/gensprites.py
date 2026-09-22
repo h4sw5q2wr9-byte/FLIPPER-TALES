@@ -12,6 +12,50 @@ SPRITES = {}
 # interior, and dark features at least 2x2 inside it. Mixing thin outline with
 # fill turns to mush at this size.
 
+# Blank Wall (BULWARK). A slab. It has to read as an obstacle rather than a
+# creature, so: no face, no legs, and the widest silhouette in the game.
+SPRITES["wall"] = """
+################
+#..............#
+#.############.#
+#.#..........#.#
+#.#.########.#.#
+#.#.#......#.#.#
+#.#.#.####.#.#.#
+#.#.#.#..#.#.#.#
+#.#.#.#..#.#.#.#
+#.#.#.####.#.#.#
+#.#.#......#.#.#
+#.#.########.#.#
+#.#..........#.#
+#.############.#
+#..............#
+################
+"""
+
+# Cold Booter (SLEEPER). Shut down: a closed shell with a dormant indicator.
+# Rounded and low, so it looks like something switched off rather than
+# something waiting.
+SPRITES["booter"] = """
+................
+................
+....########....
+..############..
+.##############.
+##..##....##..##
+#...##....##...#
+#..............#
+#..............#
+#....######....#
+#...##....##...#
+.##############.
+..############..
+....########....
+................
+................
+"""
+
+
 # ---- One enemy per area ------------------------------------------------
 #
 # Each has to be told apart from the prologue three at a glance, on a 1-bit

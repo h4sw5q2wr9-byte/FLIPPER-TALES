@@ -234,8 +234,22 @@ static const FtAttack* action_attack(const FtEncounter* e, FtAction2 action) {
     }
 }
 
+/* The first living foe that will not let anything past it, or -1. */
+static int living_bulwark(const FtEncounter* e) {
+    for(uint8_t i = 0; i < e->foe_count; i++) {
+        if(e->foes[i].charge <= 0) continue;
+        if(FT_ENEMIES[e->foes[i].id].attrs & FT_ATTR_BULWARK) return (int)i;
+    }
+    return -1;
+}
+
 bool ft_encounter_can_reach(const FtEncounter* e, FtAction2 action, uint8_t i) {
     if(!ft_encounter_foe_alive(e, i)) return false;
+
+    /* Everything behind a bulwark is safe until it is gone — a broadcast
+     * included, which is the point: there is no way round it. */
+    const int wall = living_bulwark(e);
+    if(wall >= 0 && (uint8_t)wall != i) return false;
 
     const FtAttack* atk = action_attack(e, action);
     if(atk == NULL) return false;
@@ -269,11 +283,23 @@ uint8_t ft_encounter_effective_target(const FtEncounter* e, FtAction2 action) {
     return 0u;
 }
 
+/* MP the chosen action will spend. Only the strong module costs any. */
+uint8_t ft_encounter_action_cost(const FtEncounter* e, FtAction2 action) {
+    (void)e;
+    if(action != FT_ACTION_CONTACT) return 0u;
+
+    return ft_module_ram_cost(FT_MOD_NFC, 1u);
+}
+
 const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
     /* Only what you do not *have* can stop you: a capture you never made, a
      * meter that is empty or jammed. An enemy's attributes never take a
      * module away from you — they decide who it lands on, which the caret
      * over the row already shows. */
+    if(e->stats.ram < (int16_t)ft_encounter_action_cost(e, action)) {
+        return "Out of MP. Guard.";
+    }
+
     switch(action) {
     case FT_ACTION_SIGNAL:
         if(ft_encounter_replay_attack(e) == NULL) return "Capture one first.";
@@ -470,6 +496,19 @@ FtHitFx ft_encounter_hit_fx(const FtEncounter* e) {
 }
 
 static void strike_foe(FtEncounter* e, uint8_t i, const FtAttack* atk, FtRating rating) {
+    /* Nothing gets past a bulwark, a broadcast least of all.
+     *
+     * The broadcast path struck every living foe directly and never asked
+     * about reach — ft_resolve_hit only knows about AIRBORNE and ENCRYPTED —
+     * so the wall blocked single-target attacks and was transparent to the
+     * one attack that hits everything. It was a 100% roster. */
+    const int wall = living_bulwark(e);
+    if(wall >= 0 && (uint8_t)wall != i) {
+        e->foe_hits[i] = (FtHitResult){FT_HIT_LOCKED, 0, false, false, false, 0};
+        e->foe_hit_valid[i] = true;
+        return;
+    }
+
     const FtEnemy* proto = &FT_ENEMIES[e->foes[i].id];
     const FtDefender def = {proto->shielded, proto->attrs};
     const FtHitParams p = {e->fx.atk_up, 0, rating, false, FT_GUARD_NONE, 0};
@@ -530,6 +569,7 @@ static void resolve_player_action(FtEncounter* e) {
         atk = &FT_MODULES[FT_MOD_SUBGHZ].attack;
     } else if(action == FT_ACTION_CONTACT) {
         atk = &FT_MODULES[FT_MOD_NFC].attack;
+        gain_ram(e, -(int16_t)ft_encounter_action_cost(e, action));
     }
 
     if(atk == NULL) return;
@@ -566,6 +606,17 @@ static void resolve_player_action(FtEncounter* e) {
 
 static void choose_enemy_attack(FtEncounter* e) {
     const FtEnemy* en = ft_encounter_enemy(e);
+
+    /* A sleeper that has woken up leads with its last attack, which is the
+     * big one: the whole shape of the fight is "it was quiet, and then it
+     * was not". */
+    if((en->attrs & FT_ATTR_SLEEPER) && en->attack_count > 1u) {
+        e->foes[e->acting_foe].attack_index = (uint8_t)(en->attack_count - 1u);
+        e->guard_pressed = false;
+        e->guard_press_ms = 0;
+        return;
+    }
+
     e->foes[e->acting_foe].attack_index = (uint8_t)ft_rng_below(&e->rng, en->attack_count);
     e->guard_pressed = false;
     e->guard_press_ms = 0;
@@ -665,6 +716,25 @@ static bool foe_is_fast(const FtEncounter* e, uint8_t i) {
     return ft_priority_for_enemy(FT_ENEMIES[e->foes[i].id].attrs) == FT_PRIO_FAST_ENEMY;
 }
 
+/* Is this foe taking turns at all right now? */
+static bool foe_acts(const FtEncounter* e, uint8_t i) {
+    const uint32_t attrs = FT_ENEMIES[e->foes[i].id].attrs;
+
+    /* A bulwark's whole job is standing there. */
+    if(attrs & FT_ATTR_BULWARK) return false;
+
+    /* A sleeper waits until it is the only thing left, and then it is the
+     * hardest thing you have met. */
+    if(attrs & FT_ATTR_SLEEPER) return ft_encounter_living(e) <= 1u;
+
+    return true;
+}
+
+bool ft_encounter_foe_awake(const FtEncounter* e, uint8_t i) {
+    if(!ft_encounter_foe_alive(e, i)) return false;
+    return foe_acts(e, i);
+}
+
 /* Next living foe at or after `from` on the side of the round we are in.
  *
  * FAST used to be a published attribute that nothing read: ft_priority.c
@@ -674,6 +744,7 @@ static bool foe_is_fast(const FtEncounter* e, uint8_t i) {
 static int next_actor(const FtEncounter* e, uint8_t from) {
     for(uint8_t i = from; i < e->foe_count; i++) {
         if(e->foes[i].charge <= 0) continue;
+        if(!foe_acts(e, i)) continue;
         if(foe_is_fast(e, i) == e->fast_phase) return (int)i;
     }
     return -1;

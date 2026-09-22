@@ -1623,18 +1623,48 @@ static void test_world(void) {
     CHECK_EQ(w.facing, FT_FACE_LEFT);
     CHECK_EQ(w.mv.tx, 1); /* the wall held */
 
-    /* Entity clearing is per room, so beating a foe in one room must not
-     * silently remove one in another. */
+    /* A foe you beat stays beaten for the visit... */
     ft_world_enter(&w, 1, 2, 2);
     CHECK(!ft_world_entity_gone(&w, 0), "foes start alive");
-    ft_world_clear_entity(&w, 0);
-    CHECK(ft_world_entity_gone(&w, 0), "and stay cleared");
+    CHECK(w.foes[0].alive, "and are on the board");
 
+    ft_world_clear_entity(&w, 0);
+    CHECK(ft_world_entity_gone(&w, 0), "beating one removes it");
+    CHECK(!w.foes[0].alive, "and takes it off the board");
+
+    /* ...and clearing is per room, so it does not reach into another one. */
     ft_world_enter(&w, 2, 2, 2);
     CHECK(!ft_world_entity_gone(&w, 0), "a different room is unaffected");
 
+    /* ...but walking back in repopulates it. A cleared corridor used to stay
+     * cleared forever, which made backtracking free and "go round again" the
+     * answer to everything. */
     ft_world_enter(&w, 1, 2, 2);
-    CHECK(ft_world_entity_gone(&w, 0), "and the first room remembers");
+    CHECK(!ft_world_entity_gone(&w, 0), "coming back finds it standing again");
+    CHECK(w.foes[0].alive, "and it is spawned");
+    CHECK(w.foes[0].count > 0, "with its walkers");
+
+    /* Every room with foes behaves the same way. */
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        const FtRoom* room = ft_room(r);
+        if(room->ent_count == 0u) continue;
+
+        FtWorld again;
+        ft_world_init(&again);
+        ft_world_enter(&again, r, room->exits[0].tx, room->exits[0].ty);
+
+        for(uint8_t i = 0; i < room->ent_count; i++) ft_world_clear_entity(&again, i);
+        for(uint8_t i = 0; i < room->ent_count; i++) {
+            CHECK(ft_world_entity_gone(&again, i), "room %u entity %u clears", r, i);
+        }
+
+        ft_world_enter(&again, r, room->exits[0].tx, room->exits[0].ty);
+        for(uint8_t i = 0; i < room->ent_count; i++) {
+            if(room->ents[i].kind != FT_ENT_FOE) continue;
+            CHECK(!ft_world_entity_gone(&again, i),
+                  "room %u entity %u comes back", r, i);
+        }
+    }
 }
 
 static int32_t abs_i32(int32_t v) { return v < 0 ? -v : v; }
@@ -2392,11 +2422,11 @@ static void test_save_world(void) {
     CHECK_EQ(loaded.loadout.stacks[FT_MOD_AMPLIFY], 1);
     CHECK(!coach, "the tips setting survives too");
 
-    /* The one that matters: a foe you already beat must not be standing
-     * there again. Restoring the flags after entering the room would spawn
-     * it and only then mark it dead. */
-    CHECK(ft_world_entity_gone(&loaded, 0), "a beaten foe stays beaten");
-    CHECK(!loaded.foes[0].alive, "and is not spawned by the load");
+    /* Loading walks you into the room, and walking into a room repopulates
+     * it — so a save made in a cleared room comes back to a live one. That
+     * is the same rule as backtracking, applied to the same act. */
+    CHECK(!ft_world_entity_gone(&loaded, 0), "loading repopulates the room");
+    CHECK(loaded.foes[0].alive, "and the foe is standing");
 
     /* Loading is a clean slate otherwise: no stepping half-finished, nothing
      * carried over from whatever the struct held before. */
@@ -2416,6 +2446,140 @@ static void test_save_world(void) {
     CHECK(ft_world_entity_gone(&elsewhere, 0) == false ||
               ft_room(0)->ent_count == 0,
           "clearing is per room, not global");
+}
+
+static void test_bulwark(void) {
+    section("a wall in front");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    const FtEnemyId row[FT_MAX_ENEMIES] = {
+        FT_ENEMY_BLANK_WALL, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
+
+    FtEncounter e;
+    ft_encounter_init(&e, row, 3, &lo, 5);
+
+    /* Nothing behind it can be touched, by anything. */
+    CHECK(ft_encounter_can_reach(&e, FT_ACTION_CONTACT, 0), "the wall can be hit");
+    for(uint8_t i = 1; i < 3u; i++) {
+        CHECK(!ft_encounter_can_reach(&e, FT_ACTION_CONTACT, i),
+              "foe %u is behind it", i);
+        CHECK(!ft_encounter_can_reach(&e, FT_ACTION_BROADCAST, i),
+              "and a broadcast does not get round it either");
+    }
+    CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_CONTACT), 0);
+
+    /* The broadcast path struck every living foe directly without ever
+     * asking about reach, so the wall blocked single-target attacks and was
+     * transparent to the one attack that hits everything. */
+    e.menu_index = FT_ACTION_BROADCAST;
+    ft_encounter_press_ok(&e);
+    ft_encounter_tick(&e, FT_READY_MS + FT_ACTION_WINDOW_MS / 2);
+    ft_encounter_press_ok(&e);
+    ft_encounter_tick(&e, FT_ACTION_WINDOW_MS);
+
+    CHECK(e.foes[0].charge < e.foes[0].charge_max, "the wall took it");
+    CHECK_EQ(e.foes[1].charge, e.foes[1].charge_max);
+    CHECK_EQ(e.foes[2].charge, e.foes[2].charge_max);
+    CHECK_EQ(e.foe_hits[1].outcome, FT_HIT_LOCKED);
+
+    /* It never takes a turn, but the foes behind it do — being safe from you
+     * is not the same as being idle. */
+    CHECK(!ft_encounter_foe_awake(&e, 0), "the wall is dormant");
+    CHECK(ft_encounter_foe_awake(&e, 1), "the ones behind it are not");
+
+    FtEncounter run;
+    ft_encounter_init(&run, row, 3, &lo, 5);
+
+    bool wall_acted = false, other_acted = false;
+    for(int i = 0; i < 60000 && !ft_encounter_over(&run); i++) {
+        if(run.phase == FT_PHASE_MENU) {
+            run.menu_index = FT_ACTION_FOCUS;
+            ft_encounter_press_ok(&run);
+        } else if(run.phase == FT_PHASE_TELEGRAPH) {
+            if(run.acting_foe == 0u) wall_acted = true;
+            else other_acted = true;
+        }
+        ft_encounter_tick(&run, 10);
+    }
+    CHECK(!wall_acted, "the wall never attacks");
+    CHECK(other_acted, "the ones behind it do");
+
+    /* Once it is down, everything opens up. */
+    FtEncounter fell;
+    ft_encounter_init(&fell, row, 3, &lo, 5);
+    fell.foes[0].charge = 0;
+
+    for(uint8_t i = 1; i < 3u; i++) {
+        CHECK(ft_encounter_can_reach(&fell, FT_ACTION_BROADCAST, i),
+              "foe %u is reachable once the wall is down", i);
+    }
+    CHECK(ft_encounter_effective_target(&fell, FT_ACTION_CONTACT) != 0,
+          "and the aim moves on");
+}
+
+static void test_sleeper(void) {
+    section("the one that wakes up");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    const FtEnemyId row[FT_MAX_ENEMIES] = {
+        FT_ENEMY_STRAY_PACKET, FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_COLD_BOOTER};
+
+    FtEncounter e;
+    ft_encounter_init(&e, row, 3, &lo, 5);
+
+    /* Asleep while anything else lives — but hittable the whole time, so you
+     * get to choose whether to deal with it early. */
+    CHECK(!ft_encounter_foe_awake(&e, 2), "the sleeper sits it out");
+    CHECK(ft_encounter_foe_awake(&e, 0), "the others do not");
+    CHECK(ft_encounter_can_reach(&e, FT_ACTION_CONTACT, 2),
+          "it can still be attacked while asleep");
+
+    /* Clear the room and it wakes. */
+    e.foes[0].charge = 0;
+    CHECK(!ft_encounter_foe_awake(&e, 2), "still asleep with one left");
+    e.foes[1].charge = 0;
+    CHECK(ft_encounter_foe_awake(&e, 2), "and awake once alone");
+
+    /* Awake, it leads with its last attack, which is the big one. */
+    FtEncounter solo;
+    ft_encounter_init_single(&solo, FT_ENEMY_COLD_BOOTER, &lo, 5);
+
+    const uint8_t last = (uint8_t)(FT_ENEMIES[FT_ENEMY_COLD_BOOTER].attack_count - 1u);
+    const FtAttack* big = &FT_ENEMIES[FT_ENEMY_COLD_BOOTER].attacks[last];
+
+    bool reached = false;
+    for(int i = 0; i < 60000 && !ft_encounter_over(&solo); i++) {
+        if(solo.phase == FT_PHASE_MENU) {
+            solo.menu_index = FT_ACTION_FOCUS;
+            ft_encounter_press_ok(&solo);
+        } else if(solo.phase == FT_PHASE_TELEGRAPH) {
+            CHECK_EQ(solo.foes[0].attack_index, last);
+            reached = true;
+            break;
+        }
+        ft_encounter_tick(&solo, 10);
+    }
+    CHECK(reached, "an awake sleeper takes a turn");
+
+    /* And that attack is worth being afraid of. */
+    for(uint8_t i = 0; i < FT_ENEMIES[FT_ENEMY_COLD_BOOTER].attack_count - 1u; i++) {
+        CHECK(big->base_power > FT_ENEMIES[FT_ENEMY_COLD_BOOTER].attacks[i].base_power,
+              "the wake-up hits harder than the rest");
+    }
+
+    /* A board of nothing but sleepers still fights: with one of them alone,
+     * the fight cannot stall. */
+    FtEncounter pair;
+    const FtEnemyId two[2] = {FT_ENEMY_COLD_BOOTER, FT_ENEMY_COLD_BOOTER};
+    ft_encounter_init(&pair, two, 2, &lo, 5);
+
+    CHECK(!ft_encounter_foe_awake(&pair, 0), "two sleepers are both asleep");
+    pair.foes[0].charge = 0;
+    CHECK(ft_encounter_foe_awake(&pair, 1), "and the survivor wakes");
 }
 
 static void test_fast_turn_order(void) {
@@ -2602,13 +2766,27 @@ static void test_enemy_roster(void) {
         ft_encounter_init(&e, roster->foes, roster->count, &lo, 1);
 
         uint8_t reachable = 0;
+        int wall = -1;
+
         for(uint8_t i = 0; i < e.foe_count; i++) {
+            if(FT_ENEMIES[e.foes[i].id].attrs & FT_ATTR_BULWARK) wall = (int)i;
             if(ft_encounter_can_reach(&e, FT_ACTION_CONTACT, i) ||
                ft_encounter_can_reach(&e, FT_ACTION_BROADCAST, i)) {
                 reachable++;
             }
         }
-        CHECK_EQ(reachable, e.foe_count);
+
+        if(wall >= 0) {
+            /* A bulwark is the only thing you can hit while it stands, which
+             * is the whole mechanic — and it must itself be hittable, or the
+             * fight cannot be finished. */
+            CHECK_EQ(reachable, 1);
+            CHECK(ft_encounter_can_reach(&e, FT_ACTION_CONTACT, (uint8_t)wall) ||
+                      ft_encounter_can_reach(&e, FT_ACTION_BROADCAST, (uint8_t)wall),
+                  "roster %u: the wall itself can be hit", r);
+        } else {
+            CHECK_EQ(reachable, e.foe_count);
+        }
     }
 }
 
@@ -3154,6 +3332,8 @@ int main(void) {
     test_defeat();
     test_save();
     test_save_world();
+    test_bulwark();
+    test_sleeper();
     test_fast_turn_order();
     test_enemy_roster();
     test_guide();

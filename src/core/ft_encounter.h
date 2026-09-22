@@ -168,6 +168,9 @@ const char* ft_action_name(FtAction2 action);
  * the player learns the rule instead of losing the option. */
 bool ft_encounter_action_available(const FtEncounter* e, FtAction2 action);
 
+/* MP this action spends. Only the strong module costs any. */
+uint8_t ft_encounter_action_cost(const FtEncounter* e, FtAction2 action);
+
 /* Why an action is unusable, in at most 20 characters, or NULL if it is fine. */
 const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action);
 
@@ -176,6 +179,10 @@ bool ft_encounter_over(const FtEncounter* e);
 /* ---- Foes ------------------------------------------------------------ */
 
 bool           ft_encounter_foe_alive(const FtEncounter* e, uint8_t i);
+
+/* Is this foe taking turns? A BULWARK never does; a SLEEPER only once it is
+ * the last one standing. The arena marks the ones that are not. */
+bool           ft_encounter_foe_awake(const FtEncounter* e, uint8_t i);
 uint8_t        ft_encounter_living(const FtEncounter* e);
 const FtEnemy* ft_encounter_foe(const FtEncounter* e, uint8_t i);
 
