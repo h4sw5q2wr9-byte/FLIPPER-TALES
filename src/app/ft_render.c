@@ -607,7 +607,11 @@ static void draw_ready_overlay(Canvas* canvas, const FtEncounter* e) {
 
 static void draw_strike_check(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
-    draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 4,
+
+    /* +6, not +4: the glyph cell is six rows deep and its top row was being
+     * painted over by the header rule, so the title read as struck through.
+     * At +6 there is a blank row between the two. */
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 6,
                  ft_encounter_in_ready(e) ? "GET READY" : "TIME YOUR STRIKE");
 
     canvas_draw_frame(canvas, TRACK_X, TRACK_Y, TRACK_W, TRACK_H);
@@ -631,7 +635,7 @@ static void draw_strike_check(Canvas* canvas, const FtEncounter* e) {
         const int32_t at = TRACK_X + ms_to_px(e->action_press_ms, FT_ACTION_WINDOW_MS);
 
         if((e->action_locked_ms / 70u) % 2u) {
-            canvas_draw_box(canvas, at - 1, TRACK_Y - 4, 5, TRACK_H + 8);
+            canvas_draw_box(canvas, at - 1, TRACK_Y - 2, 5, TRACK_H + 4);
         } else {
             draw_cursor(canvas, at);
         }
@@ -659,7 +663,7 @@ static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
     case FT_CLASS_GUARDED:     title = "JAM ONLY - NO CAPTURE"; break;
     default:                   title = "INCOMING"; break;
     }
-    draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 4, title);
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 6, title);
 
     canvas_draw_frame(canvas, TRACK_X, TRACK_Y, TRACK_W, TRACK_H);
 
@@ -701,7 +705,7 @@ static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
         const int32_t at = TRACK_X + ms_to_px(e->guard_press_ms, FT_TELEGRAPH_MS);
 
         if((e->guard_locked_ms / 70u) % 2u) {
-            canvas_draw_box(canvas, at - 1, TRACK_Y - 4, 5, TRACK_H + 8);
+            canvas_draw_box(canvas, at - 1, TRACK_Y - 2, 5, TRACK_H + 4);
         } else {
             draw_cursor(canvas, at);
         }
