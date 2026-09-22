@@ -62,6 +62,10 @@ static const FtEntity CB1_ENTS[] = {
     /* Two tiles from where you wake up, off the line to the door, so you
      * meet them by choice rather than by walking into them. */
     {FT_ENT_NPC, 7, 2, FT_QUEST_CLEAN_RUN},
+
+    /* The first tree, in the first room, right next to the terminal that
+     * teaches saving. Picking it is how you learn picking exists. */
+    {FT_ENT_TREE, 11, 5, FT_ITEM_APPLE},
 };
 
 /* [2] Boot Corridor: the first encounter, placed far enough right that it is
@@ -82,6 +86,7 @@ static const FtExit CB3_EXITS[] = {
 static const FtEntity CB3_ENTS[] = {
     {FT_ENT_FOE, 9, 2, 1},
     {FT_ENT_FOE, 6, 11, 2},
+    {FT_ENT_TREE, 14, 11, FT_ITEM_APPLE},
 };
 
 /* [4] Cold Gate: a group standing in the exit, the way an area ends. */
@@ -91,6 +96,12 @@ static const FtExit CB4_EXITS[] = {
 };
 static const FtEntity CB4_ENTS[] = {
     {FT_ENT_FOE, 13, 8, 3},
+
+    /* Left on the floor of the last prologue room, before the area ends:
+     * somebody was here before the Silence and did not come back for it.
+     * Not inside the locked chamber, which is sealed by design — the
+     * reachability test caught that one. */
+    {FT_ENT_CACHE, 3, 8, FT_ITEM_RATION},
 };
 
 /* ---- Chapter 1: Weldhome ----------------------------------------------
@@ -119,6 +130,12 @@ static const FtExit WH1_EXITS[] = {
 };
 static const FtEntity WH1_ENTS[] = {
     {FT_ENT_NPC, 18, 4, (uint8_t)FT_QUEST_WREN},
+
+    /* A village grows things and keeps a cell spare. This is the stock-up
+     * before the hardest fight in the game, two rooms away. */
+    {FT_ENT_TREE, 3, 6, FT_ITEM_APPLE},
+    {FT_ENT_TREE, 16, 6, FT_ITEM_APPLE},
+    {FT_ENT_CACHE, 9, 2, FT_ITEM_CELL},
 };
 
 /* [12] East Junction. Wren at the far end, behind a wall and two live ones —
@@ -129,6 +146,10 @@ static const FtExit EJ1_EXITS[] = {
 static const FtEntity EJ1_ENTS[] = {
     {FT_ENT_FOE, 14, 4, 12},
     {FT_ENT_WREN, 18, 2, 0},
+
+    /* On the way in, before the wall. Whether you spend it now or save it
+     * for the fight is the first real pocket decision the game asks. */
+    {FT_ENT_CACHE, 2, 5, FT_ITEM_RATION},
 };
 
 
@@ -205,18 +226,18 @@ static const FtEntity DZ1_ENTS[] = {
 };
 
 static const FtRoom FT_ROOMS[] = {
-    {&FT_MAP_CB1, CB1_EXITS, 1, CB1_ENTS, 1},
+    {&FT_MAP_CB1, CB1_EXITS, 1, CB1_ENTS, 2},
     {&FT_MAP_CB2, CB2_EXITS, 2, CB2_ENTS, 1},
-    {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 2},
-    {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 1},
+    {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 3},
+    {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 2},
     {&FT_MAP_SL1, SL1_EXITS, 2, SL1_ENTS, 2},
     {&FT_MAP_CS1, CS1_EXITS, 2, CS1_ENTS, 2},
     {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2},
     {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2},
     {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2},
     {&FT_MAP_AP1, AP1_EXITS, 3, NULL, 0},
-    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 1},
-    {&FT_MAP_EJ1, EJ1_EXITS, 1, EJ1_ENTS, 2},
+    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 4},
+    {&FT_MAP_EJ1, EJ1_EXITS, 1, EJ1_ENTS, 3},
 };
 #define ROOM_COUNT (sizeof(FT_ROOMS) / sizeof(FT_ROOMS[0]))
 
@@ -332,7 +353,11 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
      * permanent. */
     const FtRoom* fresh = ft_room(w->room);
     for(uint8_t i = 0; i < fresh->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
-        if(fresh->ents[i].kind != FT_ENT_FOE) continue;
+        /* Foes and trees both come back; a cache does not. Something that
+         * grows is a reason to walk a cleared room again, and something
+         * somebody left is a reason to have gone there once. */
+        const FtEntKind k = fresh->ents[i].kind;
+        if(k != FT_ENT_FOE && k != FT_ENT_TREE) continue;
 
         const uint16_t bit = cleared_bit(w->room, i);
         if(bit < sizeof(w->cleared) * 8u) {
@@ -436,6 +461,7 @@ void ft_world_init(FtWorld* w) {
     ft_stats_init(&w->stats);
     ft_guide_init(&w->guide);
     ft_quests_init(&w->quests);
+    ft_pockets_init(&w->pockets);
     w->escort = false;
 
     /* World stats are authoritative and carry the loadout's bonuses, because a
@@ -814,9 +840,15 @@ static int npc_at_tile(const FtWorld* w, int32_t tx, int32_t ty) {
     const FtRoom* r = ft_room(w->room);
 
     for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
-        const bool person = (r->ents[i].kind == FT_ENT_NPC) ||
-                            (r->ents[i].kind == FT_ENT_WREN && !w->escort);
-        if(!person) continue;
+        const FtEntKind k = r->ents[i].kind;
+
+        /* Everything you bump into rather than walk through. A tree stops
+         * being solid once it has been picked, so a cleared room does not
+         * keep a stump in the way. */
+        const bool solid = (k == FT_ENT_NPC) ||
+                           (k == FT_ENT_WREN && !w->escort) ||
+                           (k == FT_ENT_TREE && !ft_world_entity_gone(w, i));
+        if(!solid) continue;
         if((int32_t)r->ents[i].tx == tx && (int32_t)r->ents[i].ty == ty) return (int)i;
     }
     return -1;
@@ -862,6 +894,42 @@ int ft_world_npc_ahead(const FtWorld* w) {
 
     const int32_t tx = (int32_t)w->mv.tx + dx, ty = (int32_t)w->mv.ty + dy;
     return npc_at_tile(w, tx, ty);
+}
+
+int ft_world_pick_ahead(const FtWorld* w) {
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+
+    const int32_t tx = (int32_t)w->mv.tx + dx, ty = (int32_t)w->mv.ty + dy;
+    const FtRoom* r = ft_room(w->room);
+
+    for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        const FtEntKind k = r->ents[i].kind;
+        if(k != FT_ENT_TREE && k != FT_ENT_CACHE) continue;
+        if((int32_t)r->ents[i].tx != tx || (int32_t)r->ents[i].ty != ty) continue;
+        if(ft_world_entity_gone(w, i)) continue;
+
+        return (int)i;
+    }
+    return -1;
+}
+
+FtItemId ft_world_pick(FtWorld* w, uint8_t index) {
+    const FtRoom* r = ft_room(w->room);
+    if(index >= r->ent_count || index >= FT_MAX_ROOM_ENTS) return FT_ITEM_COUNT;
+
+    const FtEntKind k = r->ents[index].kind;
+    if(k != FT_ENT_TREE && k != FT_ENT_CACHE) return FT_ITEM_COUNT;
+    if(ft_world_entity_gone(w, index)) return FT_ITEM_COUNT;
+
+    const FtItemId id = (FtItemId)r->ents[index].roster;
+
+    /* Full pockets leave it on the tree. Picking something you cannot carry
+     * and watching it vanish is the worst possible outcome. */
+    if(!ft_pockets_add(&w->pockets, id)) return FT_ITEM_COUNT;
+
+    ft_world_clear_entity(w, index);
+    return id;
 }
 
 int ft_world_wren_ahead(const FtWorld* w) {

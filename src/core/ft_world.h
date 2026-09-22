@@ -10,6 +10,7 @@
 #include "ft_guide.h"
 #include "ft_map.h"
 #include "ft_progress.h"
+#include "ft_item.h"
 #include "ft_quest.h"
 #include "ft_signal.h"
 
@@ -32,7 +33,16 @@ typedef enum {
     /* Wren, waiting at the end of the junction. Her own kind because she is
      * not a quest giver: talking to her is the middle of somebody else's
      * quest, and she leaves with you afterwards. */
-    FT_ENT_WREN
+    FT_ENT_WREN,
+
+    /* Something growing, with something on it. `roster` carries the item.
+     * Picked bare for the visit and back when you return, exactly like the
+     * foes — which is what makes walking a cleared room again worth doing. */
+    FT_ENT_TREE,
+
+    /* Something somebody left. `roster` carries the item. Taken once and
+     * gone for good, because a cache that refills is a vending machine. */
+    FT_ENT_CACHE
 } FtEntKind;
 
 typedef struct {
@@ -169,6 +179,9 @@ typedef struct {
     /* What has been asked of you, and how far through it you are. */
     FtQuests        quests;
 
+    /* What you are carrying. Capped, so topping up is a decision. */
+    FtPockets       pockets;
+
     /* Somebody walking with you.
      *
      * She steps into the tile you just left, every time you leave one, which
@@ -218,6 +231,13 @@ int ft_world_npc_ahead(const FtWorld* w);
 
 /* Same, for the kid waiting at the end of the junction. */
 int ft_world_wren_ahead(const FtWorld* w);
+
+/* A tree or a cache on the tile you face and have not emptied, else -1. */
+int ft_world_pick_ahead(const FtWorld* w);
+
+/* Take what is on it. Returns the item, or FT_ITEM_COUNT when there was
+ * nothing there or nowhere to put it. */
+FtItemId ft_world_pick(FtWorld* w, uint8_t index);
 
 /* Is this exit usable yet? An exit the quests have not opened refuses, and
  * `ft_world_exit_refusal` says what the Courier thinks about that. */

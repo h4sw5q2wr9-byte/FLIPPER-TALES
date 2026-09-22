@@ -71,6 +71,8 @@ int main(void) {
         {"cb1-terminal", 0, &FT_MAP_CB1, 36,  20, FT_FACE_UP,    false, 9000},
         {"cb1-exit",     0, &FT_MAP_CB1, 112, 28, FT_FACE_RIGHT, true,  9000},
         {"cb1-npc",      0, &FT_MAP_CB1, 48,  16, FT_FACE_RIGHT, false, 9000},
+        {"cb1-tree",     0, &FT_MAP_CB1, 80,  40, FT_FACE_RIGHT, false, 9000},
+        {"cb4-cache",    3, &FT_MAP_CB4, 16,  64, FT_FACE_RIGHT, false, 9000},
         /* Chapter 1: the fork, the gate and the junction. */
         {"ap1-fork",     9, &FT_MAP_AP1, 80,  40, FT_FACE_DOWN,  false, 0},
         {"ap1-drop",     9, &FT_MAP_AP1, 80,  56, FT_FACE_DOWN,  false, 9000},

@@ -978,6 +978,10 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
     case FT_ACTION_DEFEND:    return "Guard, heal, +MP";
     case FT_ACTION_FOCUS:     return "Fill SP for DEF.";
     case FT_ACTION_DEFLECT:   return "Free. Blocks bite.";
+    case FT_ACTION_ITEM: {
+        const FtItemId id = ft_encounter_item_at(e);
+        return (id < FT_ITEM_COUNT) ? ft_item_def(id)->what : "Nothing on you.";
+    }
     default:                  return "";
     }
 }
@@ -993,7 +997,22 @@ static void draw_menu(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
 
     const FtAction2 act = (FtAction2)e->menu_index;
+
+    /* The Use row names what it will actually eat, not "Use". A picker with
+     * a second level would be the drill-down menu all over again; the row is
+     * already a left/right ring, so the item just rides in the same box. */
+    char label[20];
     const char* name = ft_action_name(act);
+
+    if(act == FT_ACTION_ITEM) {
+        const FtItemId id = ft_encounter_item_at(e);
+
+        if(id < FT_ITEM_COUNT) {
+            snprintf(label, sizeof(label), "%s x%d", ft_item_def(id)->name,
+                     (int)ft_pockets_count(&e->pockets, id));
+            name = label;
+        }
+    }
 
     const int32_t tw = (int32_t)canvas_string_width(canvas, name);
     const int32_t bw = tw + 10;
@@ -1162,6 +1181,7 @@ void ft_render_pause(
     Canvas* canvas, uint8_t selected, bool tips_on, int16_t orbs, bool in_battle) {
     static const char* const ITEMS[FT_PAUSE_COUNT] = {
         "Resume",
+        "Pockets",
         "Orbs",
         "Quests",
         "Save",
@@ -1331,6 +1351,58 @@ void ft_render_orbs(Canvas* canvas, const FtStats* stats, uint8_t selected) {
     }
 
     draw_centred(canvas, FT_SCREEN_W / 2, 62, "LEFT/RIGHT to move");
+}
+
+void ft_render_pockets(
+    Canvas* canvas, const FtPockets* p, uint8_t selected, const FtStats* stats) {
+    const uint8_t kinds = ft_pockets_kinds(p);
+
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+
+    char head[28];
+    snprintf(head, sizeof(head), "POCKETS  %d/%d", (int)ft_pockets_used(p),
+             FT_POCKET_MAX);
+    draw_centred(canvas, FT_SCREEN_W / 2, 8, head);
+    canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
+
+    if(kinds == 0u) {
+        draw_centred(canvas, FT_SCREEN_W / 2, 30, "Nothing on you.");
+        draw_centred(canvas, FT_SCREEN_W / 2, 44, "Face a tree and");
+        draw_centred(canvas, FT_SCREEN_W / 2, 54, "press OK.");
+        return;
+    }
+
+    for(uint8_t i = 0; i < kinds && i < 4u; i++) {
+        const FtItemId   id = ft_pockets_nth(p, i);
+        const FtItemDef* d = ft_item_def(id);
+        const int32_t    y = 14 + (int32_t)i * 11;
+        const bool       on = (i == selected);
+
+        if(on) {
+            canvas_draw_box(canvas, 2, y, FT_SCREEN_W - 4, 10);
+            canvas_set_color(canvas, ColorWhite);
+        }
+
+        char row[28];
+        snprintf(row, sizeof(row), "%s x%d", d->name, (int)ft_pockets_count(p, id));
+        canvas_draw_str(canvas, 6, y + 8, row);
+
+        const int32_t vw = (int32_t)canvas_string_width(canvas, d->what);
+        canvas_draw_str(canvas, FT_SCREEN_W - 6 - vw, y + 8, d->what);
+
+        if(on) canvas_set_color(canvas, ColorBlack);
+    }
+
+    /* Whether eating it here would do anything, so OK is never a wasted
+     * slot. Full HP with only apples on you is a thing worth being told. */
+    const FtItemId at = ft_pockets_nth(p, (selected < kinds) ? selected : 0u);
+    const bool worth = (at < FT_ITEM_COUNT) &&
+                       ft_item_useful(at, stats->charge, stats->charge_max,
+                                      stats->ram, stats->ram_max);
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 62, worth ? "OK to use" : "Nothing to mend");
 }
 
 void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected) {

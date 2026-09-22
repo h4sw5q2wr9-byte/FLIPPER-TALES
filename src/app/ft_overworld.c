@@ -304,6 +304,19 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
      * sprites at fixed offsets from a leader made a group of three read as
      * one object being dragged about. */
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        /* Things you can take. Gone for the visit once picked, so a cleared
+         * room looks cleared. */
+        if(room->ents[i].kind == FT_ENT_TREE || room->ents[i].kind == FT_ENT_CACHE) {
+            if(ft_world_entity_gone(w, i)) continue;
+
+            draw_foe(canvas,
+                     (room->ents[i].kind == FT_ENT_TREE) ? FT_SPRITE_TREE
+                                                         : FT_SPRITE_CACHE,
+                     (int32_t)room->ents[i].tx * FT_TILE_PX - cam.x,
+                     (int32_t)room->ents[i].ty * FT_TILE_PX - cam.y);
+            continue;
+        }
+
         /* Wren, while she is still waiting to be found. Once she is walking
          * with you she is drawn from the world's escort stepper instead. */
         if(room->ents[i].kind == FT_ENT_WREN) {

@@ -32,6 +32,7 @@
 /* The pause menu, opened with Back. */
 typedef enum {
     FT_PAUSE_RESUME = 0,
+    FT_PAUSE_POCKETS,
     FT_PAUSE_ORBS,
     FT_PAUSE_QUESTS,
     FT_PAUSE_SAVE,
@@ -94,6 +95,10 @@ void ft_render_orbs(Canvas* canvas, const FtStats* stats, uint8_t selected);
 
 /* What has been asked of you, one row each. Read-only. */
 void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected);
+
+/* What you are carrying, and room for how much more. */
+void ft_render_pockets(
+    Canvas* canvas, const FtPockets* p, uint8_t selected, const FtStats* stats);
 
 /* Somebody talking: up to FT_QUEST_LINES lines in a box, and a prompt. */
 void ft_render_talk(Canvas* canvas, const char* who, const FtQuestTalk* t);

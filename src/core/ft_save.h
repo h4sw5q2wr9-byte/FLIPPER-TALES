@@ -14,6 +14,7 @@
 
 #include "ft_data.h"
 #include "ft_guide.h"
+#include "ft_item.h"
 #include "ft_progress.h"
 #include "ft_quest.h"
 #include "ft_signal.h"
@@ -27,7 +28,7 @@
 
 /* Bumped whenever the layout changes. An older or newer file is refused
  * rather than misread: a garbled save is worse than a missing one. */
-#define FT_SAVE_VERSION 6
+#define FT_SAVE_VERSION 7
 
 /* Header (4 magic + 1 version + 1 length) + payload + 4 checksum. Generous,
  * and asserted against the real encoded length by the tests. */
@@ -38,6 +39,7 @@ typedef struct {
     FtLoadout       loadout;
     FtGuide         guide;
     FtQuests        quests;
+    FtPockets       pockets;
 
     /* Where the player stands, and where they come back to when downed. */
     uint8_t room, tx, ty;

@@ -9,6 +9,7 @@
 
 #include "ft_combat.h"
 #include "ft_data.h"
+#include "ft_item.h"
 #include "ft_priority.h"
 #include "ft_progress.h"
 #include "ft_rng.h"
@@ -33,6 +34,7 @@ typedef enum {
     FT_ACTION_DEFEND,        /* brace: shield for the turn, recover RAM */
     FT_ACTION_FOCUS,         /* charge the Signal meter */
     FT_ACTION_DEFLECT,       /* spend a bar to send their next hits back */
+    FT_ACTION_ITEM,          /* eat something out of your pockets */
     FT_ACTION_COUNT
 } FtAction2;
 
@@ -141,6 +143,12 @@ typedef struct {
 
     bool coach;
 
+    /* What you brought with you. Copied in and out like the stats, so a
+     * fight cannot hand you something you did not walk in carrying. */
+    FtPockets pockets;
+    uint8_t   item_index; /* which kind the picker is on */
+    FtItemId  last_item;  /* what was just used, for the popup */
+
     FtRng rng;
 } FtEncounter;
 
@@ -213,6 +221,14 @@ const char* ft_encounter_status_tag(const FtEncounter* e);
 
 /* Player actions this round. A stall halves them. */
 uint8_t ft_encounter_turns_this_round(const FtEncounter* e);
+
+/* ---- Pockets ----------------------------------------------------------- */
+
+/* Move the item picker. Wraps over the kinds actually carried. */
+void ft_encounter_item_move(FtEncounter* e, int8_t delta);
+
+/* The kind the picker is on, or FT_ITEM_COUNT when pockets are empty. */
+FtItemId ft_encounter_item_at(const FtEncounter* e);
 
 /* ---- Guard aftermath --------------------------------------------------- */
 

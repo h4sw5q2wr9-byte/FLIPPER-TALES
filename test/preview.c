@@ -121,6 +121,21 @@ static void build(FtEncounter* e, const Shot* s) {
 
     if(s->variant == 9) e->coach = false;
 
+    /* Variant 12 fills the pockets, so the Use row has something to name. */
+    if(s->variant == 12 || s->variant == 13) {
+        e->coach = false;
+        ft_pockets_add(&e->pockets, FT_ITEM_APPLE);
+        ft_pockets_add(&e->pockets, FT_ITEM_APPLE);
+        ft_pockets_add(&e->pockets, FT_ITEM_CELL);
+        e->menu_index = (uint8_t)FT_ACTION_ITEM;
+        e->item_index = (s->variant == 13) ? 1u : 0u;
+
+        /* Hurt, so the row does not read "Nothing to mend". */
+        e->roll.current = 6;
+        e->roll.target = 6;
+        e->stats.ram = 1;
+    }
+
     /* Variant 10 arms the deflect; 11 arms it with a payload already on, so
      * the two badges are seen stacked. */
     if(s->variant == 10 || s->variant == 11) {
@@ -233,6 +248,9 @@ int main(void) {
         {"status-dot",      FT_ENEMY_MAST_RELAY,   FT_PHASE_MENU,      0,    0, 8, 0, false},
         /* The deflect: the stance on its own, the stance under a payload,
          * and the two readings the bounce can give. */
+        {"use-apple",       FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,      0,    0, 12, 3, false},
+        {"use-cell",        FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,      0,    0, 13, 0, false},
+        {"use-empty",       FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,      0,    5, 9, 0, false},
         {"deflect-armed",   FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,      0,    0, 10, 3, false},
         {"deflect-stacked", FT_ENEMY_MAST_RELAY,   FT_PHASE_MENU,      0,    0, 11, 0, false},
         {"deflect-full",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,   1100,  8, 0, 3, false},
@@ -370,6 +388,45 @@ int main(void) {
         ft_stub_canvas_write_pbm(canvas, "preview/88_orbcap.pbm");
         total_clipped += ft_stub_canvas_clipped(canvas);
         printf("  orbs capped         %s\n",
+               ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
+    }
+
+    {
+        /* Pockets: empty, one row, and full to the cap. */
+        FtPockets pk;
+        FtStats   st;
+        ft_stats_init(&st);
+        st.charge = 4;
+
+        ft_pockets_init(&pk);
+        ft_render_pockets(canvas, &pk, 0, &st);
+        ft_stub_canvas_write_pbm(canvas, "preview/91_pockets-empty.pbm");
+        total_clipped += ft_stub_canvas_clipped(canvas);
+        printf("  pockets empty       %s\n",
+               ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
+
+        for(uint8_t i = 0; i < FT_POCKET_MAX; i++) {
+            ft_pockets_add(&pk, (FtItemId)(i % FT_ITEM_COUNT));
+        }
+        for(uint8_t i = 0; i < ft_pockets_kinds(&pk); i++) {
+            ft_render_pockets(canvas, &pk, i, &st);
+
+            char pp[64];
+            snprintf(pp, sizeof(pp), "preview/92_pockets%u.pbm", i);
+            ft_stub_canvas_write_pbm(canvas, pp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  pockets row %u       %s\n", i, c ? "CLIPPED" : "ok");
+        }
+
+        /* Full health: nothing on you is worth eating. */
+        st.charge = st.charge_max;
+        st.ram = st.ram_max;
+        ft_render_pockets(canvas, &pk, 0, &st);
+        ft_stub_canvas_write_pbm(canvas, "preview/93_pockets-full.pbm");
+        total_clipped += ft_stub_canvas_clipped(canvas);
+        printf("  pockets unhurt      %s\n",
                ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
     }
 

@@ -920,9 +920,9 @@ static void test_encounter(void) {
     CHECK(ft_encounter_incoming(&e) == NULL, "nothing incoming during the menu");
 
     /* One flat ring of every action, wrapping both ways. The menu used to be
-     * two levels with the modules behind a drill-down, which put two of the
-     * five an extra press away and gave the screen two rows of buttons. */
-    CHECK_EQ(FT_ACTION_COUNT, 5);
+     * two levels with the modules behind a drill-down, which put two of them
+     * an extra press away and gave the screen two rows of buttons. */
+    CHECK_EQ(FT_ACTION_COUNT, 6);
     CHECK_EQ(e.menu_index, 0);
 
     ft_encounter_menu_move(&e, -1);
@@ -4512,6 +4512,211 @@ static void test_weldhome(void) {
     CHECK_EQ(ft_quest_state(&reloaded.quests, FT_QUEST_WREN), FT_QUEST_ACTIVE);
 }
 
+/* ---- Pockets ----------------------------------------------------------- */
+
+static void test_items(void) {
+    section("food and pockets");
+
+    FtPockets p;
+    ft_pockets_init(&p);
+    CHECK_EQ(ft_pockets_used(&p), 0);
+    CHECK_EQ(ft_pockets_kinds(&p), 0);
+    CHECK(!ft_pockets_full(&p), "empty is not full");
+    CHECK_EQ(ft_pockets_nth(&p, 0), FT_ITEM_COUNT);
+
+    /* The cap is the whole design: without one, food stops being a decision
+     * and becomes a chore you do before every fight. */
+    for(uint8_t i = 0; i < FT_POCKET_MAX; i++) {
+        CHECK(ft_pockets_add(&p, FT_ITEM_APPLE), "apple %u fits", i);
+    }
+    CHECK(ft_pockets_full(&p), "and then it is full");
+    CHECK(!ft_pockets_add(&p, FT_ITEM_APPLE), "one more is refused");
+    CHECK(!ft_pockets_add(&p, FT_ITEM_RATION), "whatever it is");
+    CHECK_EQ(ft_pockets_used(&p), FT_POCKET_MAX);
+
+    CHECK(ft_pockets_take(&p, FT_ITEM_APPLE), "eating one makes room");
+    CHECK(ft_pockets_add(&p, FT_ITEM_CELL), "for something else");
+    CHECK_EQ(ft_pockets_kinds(&p), 2);
+
+    CHECK(!ft_pockets_take(&p, FT_ITEM_RATION), "you cannot eat what you have not got");
+
+    /* Walking the kinds gives back exactly what is carried, in table order. */
+    CHECK_EQ(ft_pockets_nth(&p, 0), FT_ITEM_APPLE);
+    CHECK_EQ(ft_pockets_nth(&p, 1), FT_ITEM_CELL);
+    CHECK_EQ(ft_pockets_nth(&p, 2), FT_ITEM_COUNT);
+
+    /* Every item says what it is and what it does, inside the row it shares. */
+    for(uint8_t i = 0; i < FT_ITEM_COUNT; i++) {
+        const FtItemDef* d = ft_item_def((FtItemId)i);
+        CHECK(d->name && strlen(d->name) <= 10u, "item %u's name fits: \"%s\"", i,
+              d->name ? d->name : "");
+        CHECK(d->what && strlen(d->what) <= FT_TUTORIAL_MAX_CHARS,
+              "item %u says what it does: \"%s\"", i, d->what ? d->what : "");
+        CHECK(d->heal > 0 || d->ram > 0, "item %u does something", i);
+    }
+
+    /* Eating at full health throws the thing away, and a pocket this small
+     * must never let that be the player's mistake to make. */
+    CHECK(ft_item_useful(FT_ITEM_APPLE, 5, 20, 5, 5), "hurt: an apple helps");
+    CHECK(!ft_item_useful(FT_ITEM_APPLE, 20, 20, 0, 5), "topped up: it does not");
+    CHECK(ft_item_useful(FT_ITEM_CELL, 20, 20, 0, 5), "but a cell still does");
+    CHECK(!ft_item_useful(FT_ITEM_CELL, 5, 20, 5, 5), "and not the other way round");
+
+    /* ---- in a fight ---- */
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    FtEncounter e;
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 4);
+
+    CHECK(ft_encounter_action_block(&e, FT_ACTION_ITEM) != NULL,
+          "empty pockets refuse");
+    CHECK_EQ(ft_encounter_item_at(&e), FT_ITEM_COUNT);
+
+    ft_pockets_add(&e.pockets, FT_ITEM_APPLE);
+    ft_pockets_add(&e.pockets, FT_ITEM_CELL);
+
+    e.roll.current = 4;
+    e.roll.target = 4;
+    e.stats.charge = 4;
+    e.stats.ram = 0;
+
+    CHECK(ft_encounter_action_block(&e, FT_ACTION_ITEM) == NULL, "now it offers");
+    CHECK_EQ(ft_encounter_item_at(&e), FT_ITEM_APPLE);
+
+    /* The picker is its own ring, steered with UP and DOWN so a stray thumb
+     * on the action row never changes which item is about to go. */
+    ft_encounter_item_move(&e, 1);
+    CHECK_EQ(ft_encounter_item_at(&e), FT_ITEM_CELL);
+    ft_encounter_item_move(&e, 1);
+    CHECK_EQ(ft_encounter_item_at(&e), FT_ITEM_APPLE);
+    ft_encounter_item_move(&e, -1);
+    CHECK_EQ(ft_encounter_item_at(&e), FT_ITEM_CELL);
+
+    /* Using one heals, costs the item, and does not cost the sweep. */
+    const int16_t mp_before = e.stats.ram;
+    e.menu_index = (uint8_t)FT_ACTION_ITEM;
+    ft_encounter_press_ok(&e);
+
+    CHECK(e.stats.ram > mp_before, "the cell went in (%d -> %d)", (int)mp_before,
+          (int)e.stats.ram);
+    CHECK_EQ(ft_pockets_count(&e.pockets, FT_ITEM_CELL), 0);
+    CHECK_EQ(e.phase, FT_PHASE_RESULT); /* nothing to time */
+
+    /* And the cursor still points at something that exists. */
+    CHECK_EQ(ft_encounter_item_at(&e), FT_ITEM_APPLE);
+
+    /* Healing goes through the roll, so a lethal hit can be eaten out of. */
+    FtEncounter hurt;
+    ft_encounter_init_single(&hurt, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    ft_pockets_add(&hurt.pockets, FT_ITEM_RATION);
+    hurt.roll.current = 9;
+    hurt.roll.target = 0; /* a brownout: rolling toward death */
+    CHECK(ft_roll_brownout(&hurt.roll), "on the way down");
+
+    hurt.menu_index = (uint8_t)FT_ACTION_ITEM;
+    ft_encounter_press_ok(&hurt);
+    CHECK(!ft_roll_brownout(&hurt.roll), "and out of it again");
+
+    /* ---- out in the world ---- */
+    FtWorld w;
+    ft_world_init(&w);
+    CHECK_EQ(ft_pockets_used(&w.pockets), 0);
+
+    /* Somewhere in the game there is something to pick, and it is reachable. */
+    int trees = 0, caches = 0;
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        const FtRoom* room = ft_room(r);
+        for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+            if(room->ents[i].kind == FT_ENT_TREE) trees++;
+            if(room->ents[i].kind == FT_ENT_CACHE) caches++;
+
+            if(room->ents[i].kind == FT_ENT_TREE ||
+               room->ents[i].kind == FT_ENT_CACHE) {
+                CHECK(room->ents[i].roster < FT_ITEM_COUNT,
+                      "room %u entity %u carries a real item", r, i);
+            }
+        }
+    }
+    CHECK(trees > 0, "there are trees (%d)", trees);
+    CHECK(caches > 0, "and caches (%d)", caches);
+
+    /* Picking one: face it, take it, and it is gone. */
+    const FtRoom* first = ft_room(0);
+    int at = -1;
+    for(uint8_t i = 0; i < first->ent_count; i++) {
+        if(first->ents[i].kind == FT_ENT_TREE) at = (int)i;
+    }
+    CHECK(at >= 0, "the first room has one, so picking is taught early");
+    if(at < 0) return;
+
+    ft_world_enter(&w, 0, (uint8_t)(first->ents[at].tx - 1u), first->ents[at].ty);
+    w.facing = FT_FACE_RIGHT;
+
+    CHECK_EQ(ft_world_pick_ahead(&w), at);
+    CHECK_EQ(ft_world_pick(&w, (uint8_t)at), (FtItemId)first->ents[at].roster);
+    CHECK_EQ(ft_pockets_used(&w.pockets), 1);
+    CHECK_EQ(ft_world_pick_ahead(&w), -1);
+    CHECK(ft_world_entity_gone(&w, (uint8_t)at), "the tree is bare");
+
+    /* A tree comes back when you walk the room again; a cache does not. That
+     * is what makes a cleared room worth walking, and a cache worth finding. */
+    ft_world_enter(&w, 1, 1, 2);
+    ft_world_enter(&w, 0, 3, 4);
+    CHECK(!ft_world_entity_gone(&w, (uint8_t)at), "and back when you return");
+
+    /* Full pockets leave it where it is rather than swallowing it. */
+    FtWorld packed;
+    ft_world_init(&packed);
+    for(uint8_t i = 0; i < FT_POCKET_MAX; i++) {
+        ft_pockets_add(&packed.pockets, FT_ITEM_RATION);
+    }
+    ft_world_enter(&packed, 0, (uint8_t)(first->ents[at].tx - 1u), first->ents[at].ty);
+    packed.facing = FT_FACE_RIGHT;
+
+    CHECK_EQ(ft_world_pick(&packed, (uint8_t)at), FT_ITEM_COUNT);
+    CHECK(!ft_world_entity_gone(&packed, (uint8_t)at),
+          "a tree you cannot carry from stays picked-able");
+
+    /* A tree is something you walk around, and a picked one is not. */
+    FtWorld bump;
+    ft_world_init(&bump);
+    ft_world_enter(&bump, 0, (uint8_t)(first->ents[at].tx - 1u), first->ents[at].ty);
+    bump.facing = FT_FACE_RIGHT;
+
+    for(int t = 0; t < 120; t++) ft_world_update(&bump, 1, 0, 20);
+    CHECK_EQ(bump.mv.tx, (uint8_t)(first->ents[at].tx - 1u));
+
+    ft_world_pick(&bump, (uint8_t)at);
+    for(int t = 0; t < 120; t++) ft_world_update(&bump, 1, 0, 20);
+    CHECK(bump.mv.tx > (uint8_t)(first->ents[at].tx - 1u),
+          "once it is picked you can walk through where it was");
+
+    /* And they ride the save, like everything else the run earned. */
+    FtWorld carry;
+    ft_world_init(&carry);
+    ft_pockets_add(&carry.pockets, FT_ITEM_APPLE);
+    ft_pockets_add(&carry.pockets, FT_ITEM_APPLE);
+    ft_pockets_add(&carry.pockets, FT_ITEM_CELL);
+
+    FtSaveData d;
+    ft_save_from_world(&carry, false, &d);
+
+    uint8_t buf[FT_SAVE_MAX_BYTES];
+    const uint8_t len = ft_save_encode(&d, buf, sizeof(buf));
+    CHECK(len > 0, "the save encodes");
+
+    FtSaveData back;
+    CHECK(ft_save_decode(buf, len, &back), "and decodes");
+
+    FtWorld reloaded;
+    bool coach = true;
+    ft_save_to_world(&back, &reloaded, &coach);
+
+    CHECK_EQ(ft_pockets_count(&reloaded.pockets, FT_ITEM_APPLE), 2);
+    CHECK_EQ(ft_pockets_count(&reloaded.pockets, FT_ITEM_CELL), 1);
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -4553,6 +4758,7 @@ int main(void) {
     test_quests();
     test_npc();
     test_weldhome();
+    test_items();
     test_notice();
     test_guard_aftermath();
     test_deflect();

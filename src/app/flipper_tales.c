@@ -46,6 +46,7 @@ typedef enum {
     FT_MODE_PRACTICE, /* the arena's setup screen */
     FT_MODE_ORBS,     /* placing orbs — from a level-up, or from the menu */
     FT_MODE_QUESTS,   /* what has been asked of you */
+    FT_MODE_POCKETS,  /* what you are carrying */
     FT_MODE_TALK,     /* somebody saying something */
     FT_MODE_CONFIRM,  /* the gate in front of erasing a run */
     FT_MODE_DEBUG,    /* the testing tools, kept out of the player's way */
@@ -88,6 +89,7 @@ typedef struct {
 
     /* Which quest row is highlighted, and whatever was last said. */
     uint8_t     quest_item;
+    uint8_t     pocket_item;
     FtQuestTalk talk;
     const char* talk_who;
 
@@ -175,6 +177,9 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
         ft_render_orbs(canvas, &app->world.stats, app->orb_item);
     } else if(app->mode == FT_MODE_QUESTS) {
         ft_render_quests(canvas, &app->world.quests, app->quest_item);
+    } else if(app->mode == FT_MODE_POCKETS) {
+        ft_render_pockets(canvas, &app->world.pockets, app->pocket_item,
+                          &app->world.stats);
     } else if(app->mode == FT_MODE_TALK) {
         ft_render_talk(canvas, app->talk_who, &app->talk);
     } else if(app->mode == FT_MODE_BATTLE) {
@@ -228,6 +233,7 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
     /* Carry the player across: an encounter builds a level-one character on
      * its own, which is right for a standalone fight and wrong here. */
     app->encounter.stats = app->world.stats;
+    app->encounter.pockets = app->world.pockets;
     ft_roll_init(&app->encounter.roll, app->world.stats.charge);
     app->encounter.coach = app->coach;
 
@@ -254,9 +260,10 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
 }
 
 static void ft_leave_battle_now(FlipperTales* app, bool won) {
-    /* Carry the player back out. */
+    /* Carry the player back out, including whatever they ate. */
     app->world.stats = app->encounter.stats;
     app->world.stats.charge = app->encounter.roll.current;
+    app->world.pockets = app->encounter.pockets;
     app->coach = false;
 
     if(won) {
@@ -484,6 +491,23 @@ static void ft_overworld_ok(FlipperTales* app) {
         return;
     }
 
+    /* Something growing, or something somebody left. */
+    const int pick = ft_world_pick_ahead(&app->world);
+    if(pick >= 0) {
+        if(ft_pockets_full(&app->world.pockets)) {
+            ft_toast(app, "Pockets are full.");
+        } else {
+            const FtItemId got = ft_world_pick(&app->world, (uint8_t)pick);
+
+            if(got < FT_ITEM_COUNT) {
+                char line[24];
+                snprintf(line, sizeof(line), "Took a %s.", ft_item_def(got)->name);
+                ft_toast(app, line);
+            }
+        }
+        return;
+    }
+
     /* The kid at the end of the junction. Talking to her is what frees her,
      * and she walks out with you. */
     const int kid = ft_world_wren_ahead(&app->world);
@@ -643,6 +667,10 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 app->quest_item = 0;
                 app->mode = FT_MODE_QUESTS;
                 break;
+            case FT_PAUSE_POCKETS:
+                app->pocket_item = 0;
+                app->mode = FT_MODE_POCKETS;
+                break;
             case FT_PAUSE_GUIDE:
                 app->guide_item = 0;
                 app->mode = FT_MODE_GUIDE;
@@ -791,6 +819,58 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
         return;
     }
 
+    if(app->mode == FT_MODE_POCKETS) {
+        const uint8_t kinds = ft_pockets_kinds(&app->world.pockets);
+
+        switch(event->key) {
+        case InputKeyUp:
+            if(kinds > 0u) {
+                app->pocket_item =
+                    (uint8_t)((app->pocket_item + kinds - 1u) % kinds);
+            }
+            break;
+        case InputKeyDown:
+            if(kinds > 0u) app->pocket_item = (uint8_t)((app->pocket_item + 1u) % kinds);
+            break;
+        case InputKeyOk: {
+            if(kinds == 0u) break;
+            if(app->pocket_item >= kinds) app->pocket_item = (uint8_t)(kinds - 1u);
+
+            const FtItemId id = ft_pockets_nth(&app->world.pockets, app->pocket_item);
+            if(id >= FT_ITEM_COUNT) break;
+
+            FtStats* st = &app->world.stats;
+
+            /* Eating at full health throws the thing away, and the pocket is
+             * too small for that to be the player's mistake to make. */
+            if(!ft_item_useful(id, st->charge, st->charge_max, st->ram, st->ram_max)) {
+                break;
+            }
+            if(!ft_pockets_take(&app->world.pockets, id)) break;
+
+            const FtItemDef* d = ft_item_def(id);
+
+            st->charge = (int16_t)(st->charge + d->heal);
+            if(st->charge > st->charge_max) st->charge = st->charge_max;
+            st->ram = (int16_t)(st->ram + d->ram);
+            if(st->ram > st->ram_max) st->ram = st->ram_max;
+
+            /* Keep the cursor on something that still exists. */
+            const uint8_t left = ft_pockets_kinds(&app->world.pockets);
+            if(left == 0u) app->pocket_item = 0;
+            else if(app->pocket_item >= left) app->pocket_item = (uint8_t)(left - 1u);
+
+            ft_save_now(app);
+            break;
+        }
+        case InputKeyBack:
+        default:
+            app->mode = FT_MODE_PAUSE;
+            break;
+        }
+        return;
+    }
+
     if(app->mode == FT_MODE_QUESTS) {
         switch(event->key) {
         case InputKeyUp:
@@ -884,9 +964,22 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
      * nothing else. UP and DOWN used to move the cursor as well, which meant
      * a stray thumb changed what you were about to do. */
     case InputKeyUp:
-        if(ft_encounter_over(&app->encounter)) app->show_help = true;
+        if(ft_encounter_over(&app->encounter)) {
+            app->show_help = true;
+        } else if(app->encounter.phase == FT_PHASE_MENU &&
+                  app->encounter.menu_index == (uint8_t)FT_ACTION_ITEM) {
+            /* UP and DOWN do nothing on the action row by design — a stray
+             * thumb must not change what you are about to do. On Use they
+             * pick *which* item, which is a different question. */
+            ft_encounter_item_move(&app->encounter, -1);
+        }
         break;
     case InputKeyDown:
+        if(!ft_encounter_over(&app->encounter) &&
+           app->encounter.phase == FT_PHASE_MENU &&
+           app->encounter.menu_index == (uint8_t)FT_ACTION_ITEM) {
+            ft_encounter_item_move(&app->encounter, 1);
+        }
         break;
     default:
         break;
@@ -911,6 +1004,7 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
     if(app->mode == FT_MODE_PAUSE || app->mode == FT_MODE_PRACTICE) return;
     if(app->mode == FT_MODE_ORBS || app->mode == FT_MODE_CONFIRM) return;
     if(app->mode == FT_MODE_QUESTS || app->mode == FT_MODE_TALK) return;
+    if(app->mode == FT_MODE_POCKETS) return;
     if(app->mode == FT_MODE_DEBUG) return;
     if(app->mode == FT_MODE_GUIDE || app->mode == FT_MODE_GUIDE_ENTRY) return;
 
@@ -996,6 +1090,7 @@ static FlipperTales* ft_alloc(void) {
     app->orbs_from_pause = false;
     app->levelled = false;
     app->quest_item = 0;
+    app->pocket_item = 0;
     app->talk_who = "";
     app->talk.lines = 0;
     app->talk.orbs = 0;

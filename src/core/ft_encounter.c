@@ -96,6 +96,30 @@ int32_t ft_encounter_guard_gap(const FtEncounter* e) {
     return (gap < 0) ? 0 : gap;
 }
 
+void ft_encounter_item_move(FtEncounter* e, int8_t delta) {
+    const uint8_t kinds = ft_pockets_kinds(&e->pockets);
+    if(kinds == 0u) {
+        e->item_index = 0;
+        return;
+    }
+
+    int16_t at = (int16_t)(e->item_index + delta);
+    while(at < 0) at = (int16_t)(at + kinds);
+    while(at >= (int16_t)kinds) at = (int16_t)(at - kinds);
+
+    e->item_index = (uint8_t)at;
+}
+
+FtItemId ft_encounter_item_at(const FtEncounter* e) {
+    const uint8_t kinds = ft_pockets_kinds(&e->pockets);
+    if(kinds == 0u) return FT_ITEM_COUNT;
+
+    /* Clamped rather than trusted: using the last of something shrinks the
+     * list under the cursor, and the picker must not point past the end. */
+    const uint8_t at = (e->item_index < kinds) ? e->item_index : (uint8_t)(kinds - 1u);
+    return ft_pockets_nth(&e->pockets, at);
+}
+
 /* ---- Foes ------------------------------------------------------------ */
 
 bool ft_encounter_foe_alive(const FtEncounter* e, uint8_t i) {
@@ -246,6 +270,10 @@ void ft_encounter_init(
     e->last_deflect_fired = false;
     e->last_deflect_damage = 0;
 
+    ft_pockets_init(&e->pockets);
+    e->item_index = 0;
+    e->last_item = FT_ITEM_COUNT;
+
     e->coach = true;
 
     ft_rng_seed(&e->rng, seed);
@@ -295,7 +323,8 @@ static const FtAttack* action_attack(const FtEncounter* e, FtAction2 action) {
     switch(action) {
     case FT_ACTION_BROADCAST: return &FT_MODULES[FT_MOD_SUBGHZ].attack;
     case FT_ACTION_CONTACT:   return &FT_MODULES[FT_MOD_NFC].attack;
-    case FT_ACTION_DEFLECT:   return NULL;
+    case FT_ACTION_DEFLECT:
+    case FT_ACTION_ITEM:
     default:                  return NULL;
     }
 }
@@ -367,6 +396,21 @@ const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
     }
 
     switch(action) {
+    case FT_ACTION_ITEM: {
+        if(ft_pockets_kinds(&e->pockets) == 0u) return "Pockets empty.";
+
+        const FtItemId id = ft_encounter_item_at(e);
+        if(id >= FT_ITEM_COUNT) return "Pockets empty.";
+
+        /* Eating at full health throws the thing away, and a pocket this
+         * small must never let you waste a slot by pressing OK twice. */
+        if(!ft_item_useful(id, e->roll.current, e->stats.charge_max, e->stats.ram,
+                           e->stats.ram_max)) {
+            return "Nothing to mend.";
+        }
+        return NULL;
+    }
+
     case FT_ACTION_DEFLECT:
         if(e->signal.locked) return "Signal jammed.";
         if(ft_signal_bars(&e->signal) < FT_SIGNAL_COST_BARS) return "Need a full bar.";
@@ -392,6 +436,7 @@ const char* ft_action_name(FtAction2 action) {
     case FT_ACTION_BROADCAST: return "Sub-GHz";
     case FT_ACTION_CONTACT:   return "NFC";
     case FT_ACTION_DEFLECT:   return "Deflect";
+    case FT_ACTION_ITEM:      return "Use";
     case FT_ACTION_DEFEND:    return "Protect";
     case FT_ACTION_FOCUS:     return "Focus";
     default:                  return "?";
@@ -617,6 +662,26 @@ static void resolve_player_action(FtEncounter* e) {
         return;
     }
 
+    if(action == FT_ACTION_ITEM) {
+        const FtItemId id = ft_encounter_item_at(e);
+        if(id >= FT_ITEM_COUNT) return;
+        if(!ft_pockets_take(&e->pockets, id)) return;
+
+        const FtItemDef* d = ft_item_def(id);
+
+        if(d->heal > 0) {
+            ft_roll_heal(&e->roll, d->heal, e->stats.charge_max);
+            e->stats.charge = e->roll.current;
+        }
+        if(d->ram > 0) gain_ram(e, d->ram);
+
+        e->last_item = id;
+
+        /* The cursor keeps pointing at something that exists. */
+        ft_encounter_item_move(e, 0);
+        return;
+    }
+
     const FtAttack* atk = NULL;
 
     if(action == FT_ACTION_BROADCAST) {
@@ -827,8 +892,10 @@ void ft_encounter_press_ok(FtEncounter* e) {
         e->defending = false;
         e->player_turns++;
 
-        /* Defend and Focus have nothing to time, so they skip the sweep. */
-        if(action == FT_ACTION_DEFEND || action == FT_ACTION_FOCUS) {
+        /* Defend, Focus and eating have nothing to time, so they skip the
+         * sweep: the only timing an item has is deciding to use one. */
+        if(action == FT_ACTION_DEFEND || action == FT_ACTION_FOCUS ||
+           action == FT_ACTION_ITEM) {
             resolve_player_action(e);
             enter_phase(e, FT_PHASE_RESULT);
         } else {

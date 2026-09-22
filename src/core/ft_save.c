@@ -60,6 +60,7 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
     put_i16(b, &at, (int16_t)d->guide.seen);
 
     for(uint8_t i = 0; i < FT_QUEST_BYTES; i++) put_u8(b, &at, d->quests.state[i]);
+    for(uint8_t i = 0; i < FT_ITEM_COUNT; i++) put_u8(b, &at, d->pockets.count[i]);
 
     put_u8(b, &at, d->room);
     put_u8(b, &at, d->tx);
@@ -98,6 +99,7 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     d->guide.seen = (uint16_t)get_i16(b, &at);
 
     for(uint8_t i = 0; i < FT_QUEST_BYTES; i++) d->quests.state[i] = get_u8(b, &at);
+    for(uint8_t i = 0; i < FT_ITEM_COUNT; i++) d->pockets.count[i] = get_u8(b, &at);
 
     d->room = get_u8(b, &at);
     d->tx = get_u8(b, &at);
@@ -122,6 +124,7 @@ static uint8_t payload_bytes(void) {
                      + FT_MODULE_COUNT            /* loadout */
                      + 2u                         /* field guide */
                      + FT_QUEST_BYTES             /* quests */
+                     + FT_ITEM_COUNT              /* pockets */
                      + 6u                         /* position and save point */
                      + FT_CLEARED_BYTES + 1u      /* flags */
                      + 3u);                       /* whoever is with you */
@@ -190,6 +193,7 @@ void ft_save_from_world(const FtWorld* w, bool coach, FtSaveData* d) {
     d->loadout = w->loadout;
     d->guide = w->guide;
     d->quests = w->quests;
+    d->pockets = w->pockets;
 
     d->room = w->room;
     d->tx = w->mv.tx;
@@ -214,6 +218,7 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach) {
     w->loadout = d->loadout;
     w->guide = d->guide;
     w->quests = d->quests;
+    w->pockets = d->pockets;
 
     /* Cleared entities are restored *before* entering, because entering is
      * what decides which foes spawn. Loading and then walking into a foe you
