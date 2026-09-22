@@ -138,19 +138,29 @@ D................#
 #
 # The middle tree stands ON the path with its canopy across it, so the first
 # thing you do out here is walk under leaves and watch yourself show through
-# them. The drop south is a framed shaft off the same path: visibly a way, and
-# visibly not one you have a reason to take yet.
-MAPS["ap1"] = ("The Approach", 0, """
+# them.
+#
+# The drop south is a spur off the same path ending in a ladder. It used to be
+# a shaft framed by two columns of wall, which was corridor logic applied
+# outdoors: a walled passage standing up out of a meadow, marking a route
+# nobody needed marking. Out here a track worn through the grass says the same
+# thing and belongs to the place it is in.
+#
+# Neither path edge runs straight for long, and weeds come up through the
+# swept ground (ft_map_scatter). A road ruled across a field with grass butted
+# hard against it does not MEET the grass, it cuts it off; a ragged edge with
+# something growing through it is the join.
+MAPS["ap1"] = ("The Approach", 20, """
 ########################
 #**********************#
 #*lll*************lll**#
 #*lll**lll********lll**#
-#*ltl**lll********ltl**#
+#*ltl**lll***...**ltl**#
 D......ltl.............D
-#*********#H#**********#
-#*lll*****#H#*****lll**#
-#*lll*****#H#*****lll**#
-#*ltl*****#H#*****ltl**#
+#*...******.***...*****#
+#*lll******.******lll**#
+#*lll*****...*****lll**#
+#*ltl*****.H.*****ltl**#
 ###########D############
 """)
 
@@ -163,16 +173,21 @@ D......ltl.............D
 # door in it reads as a crate with a roof on. The way through is a GATE rather
 # than a doorway, so a route held shut against you never looks like one you
 # simply have not tried.
-MAPS["wh1"] = ("Weldhome Gate", 0, """
+#
+# The swept ground is deliberately ragged: wide aprons in front of the doors,
+# a rounded square off to one side, and the road between them. A straight
+# one-tile road with grass butted against it reads as a stripe painted on a
+# field rather than as ground people have walked flat.
+MAPS["wh1"] = ("Weldhome Gate", 20, """
 ########################
 #**rrrr******rrrr******#
 #**rrrr******rrrr******#
 #**hhdh******hhdh******#
-#**....******....******#
+#**.....*****.....*****#
 D......................G
-#**lll****......***lll*#
-#**lll****..T...***lll*#
-#**ltl****......***ltl*#
+#**lll***.......***lll*#
+#**lll***...T...***lll*#
+#**ltl****.....****ltl*#
 #**********************#
 ########################
 """)

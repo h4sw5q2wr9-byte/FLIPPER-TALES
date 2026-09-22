@@ -1226,7 +1226,11 @@ is mid grey — the only fill that is both solid enough to read as leaves from
 across the room and open enough to see a person through.
 
 **A tree is a 3x3 stamp**: a crown of leaves with the trunk at its bottom
-middle. Two other shapes were tried and are worth recording, because both
+middle, and the trunk's own art carries the join — its top two rows are the
+canopy's checker gathering inwards, then the bark narrows to four pixels, then
+it flares where it reaches the ground. Without that the seam between the trunk
+tile and the leaf above it is a straight horizontal line, and the tree reads as
+a post someone parked a bush on. Two other shapes were tried and are worth recording, because both
 looked wrong for reasons that are not obvious on paper — a 3-wide, 2-tall
 slab above a stem read as a table, and putting the trunk in the *centre* of
 the 3x3 (which is the shape that makes the tile-solidity rule cleanest) read
@@ -1259,18 +1263,29 @@ Four rules, none of them new — they are what the genre has always done:
   is bare deck. You can walk on the grass, and that is the point: the path is
   a suggestion, so stepping off it is a decision.
 - **Vegetation comes in patches, never in single tiles.** One grass tile in a
-  floor reads as a stain. A block of them reads as a place things grow. The
-  procedural weed scatter (`ft_map_scatter`) is for *floor*, and outdoor rooms
-  turn it off — a swept path with weeds all over it is not a path.
+  floor reads as a stain. A block of them reads as a place things grow.
+- **A path has to *meet* the grass, not cut it off.** A road ruled straight
+  across a field, with grass butted hard against it, reads as a stripe painted
+  on. Two things fix it, and both are needed: the edge is ragged — the swept
+  ground bulges where a tree or a junction gives it a reason to — and the
+  procedural weed scatter (`ft_map_scatter`) is left ON outdoors so something
+  is coming up through the path at the join.
 - **Buildings have doors in them.** A roof over a wall with no opening is a
   crate with a hat on. Weldhome's two houses face the road across a strip of
   swept ground, which is what makes the road a road.
 - **Nothing stands against the map border.** A canopy that touches the top
   wall merges into it and stops being a tree.
 
+- **Corridor logic does not survive being taken outdoors.** The Approach's way
+  down started as a shaft framed by two columns of wall, which is how you draw
+  a passage inside a hull — outdoors it was a walled corridor standing up out
+  of a meadow, marking a route that needed no marking. It is a track worn
+  through the grass to a ladder now, which says exactly the same thing and
+  belongs to the field it is in.
+
 Room shapes carry the same load they always did. The Approach forks — west,
-east, and a framed shaft south you have no reason to take yet — and the fork
-is legible because the path branches, not because a wall is missing. East
+east, and a track south you have no reason to follow yet — and the fork is
+legible because the path branches, not because a wall is missing. East
 Junction is a bulkhead straight down the middle with one gap punched in the
 bottom of it, which is what makes the thing at the far end a wall rather than
 a crowd: there is no route round it, so the fight *is* the room.

@@ -158,14 +158,20 @@ TILES["gate_side"] = """
 # the centre is a black slab with the crown cut off round it — it was tried,
 # and it read as a barrel. Down here the bark meets the ground on one side and
 # the leaves on the other, which is what a tree looks like.
+#
+# Its own art has to make that meeting happen, because the tile above it is a
+# leaf and the seam between the two is a straight horizontal line. So the top
+# two rows are the canopy's checker, gathering inwards; then the bark narrows
+# to four pixels; then it flares back out where it reaches the ground. Read
+# top to bottom it is leaves, then trunk, then root.
 
 TILES["trunk"] = """
-.######.
+#.#.#.#.
 .#.##.#.
-.######.
-.#.##.#.
-.######.
-.#.##.#.
+..####..
+..####..
+..####..
+..####..
 .######.
 .######.
 """
