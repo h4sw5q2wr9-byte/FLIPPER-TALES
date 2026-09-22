@@ -710,6 +710,21 @@ MP only matters if they intend to lean on NFC. Under the old rule a player who
 put four levels into Cards before finding out what Cards were for carried that
 for the rest of the run.
 
+**Orbs go into HP (+5), MP (+5) or Power (+1 damage).**
+
+Power replaced the whole Cards system. Cards were equippable passives with a
+slot budget — a second progression track on top of levels and orbs, and one
+nobody could name when asked what it did, because there was no way to obtain
+one and no screen to equip one. Deleting it left the player with no way to
+ever hit harder, so the third orb row became a plain number: no inventory, no
+budget, nothing to find or equip.
+
+What went with it: `FtLoadout`, `FtLoadoutEffects`, six module definitions,
+`flash_used`/`flash_max`, the whole install/uninstall API, the practice
+arena's Kit row, and Hard Mode. The balance table did not move by a single
+point, which is the clearest possible evidence that none of it was doing
+anything.
+
 **The orb screen** (`ft_render_orbs`) is reachable two ways: automatically
 when a win leaves orbs in hand, and from the pause menu at any time outside a
 fight. Three rows — HP, MP, Cards — each showing the current maximum and, in
@@ -727,10 +742,11 @@ The rules that make it safe to be reversible:
   promise for the next fight.
 - **Refunding HP never downs you.** Current HP is clamped to the new maximum
   and then floored at 1. Being downed is something a fight does.
-- **Cards refuse a refund that would go negative.** `flash_used` is a budget
-  something is already spending; pulling a slot out from under an installed
-  card would leave `flash_used > flash_max`, which every install check
-  downstream reads as "no room" forever.
+- **Anything that went in comes back out.** Power has no consumer, so a
+  refund can never leave anything in an impossible state. Cards could: they
+  were a budget something else was spending, and pulling a slot out from
+  under an installed card left the budget negative forever. Deleting Cards
+  deleted that whole class of bug.
 - **Not mid-fight.** The pause menu's Orbs row says "not in battle" rather
   than disappearing. Moving a point to survive a hit you have already taken is
   not a build decision.

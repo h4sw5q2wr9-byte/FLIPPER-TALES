@@ -707,9 +707,8 @@ static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
         canvas_draw_line(canvas, TRACK_X + 1, TRACK_Y + TRACK_H - 2, TRACK_X + TRACK_W - 2,
                          TRACK_Y + 1);
     } else {
-        const bool hard = e->fx.hard_mode;
-        const uint32_t jam_ms = ft_jam_window_ms(hard, atk->klass);
-        const uint32_t cap_ms = hard ? FT_CAPTURE_WINDOW_MS / 2u : FT_CAPTURE_WINDOW_MS;
+        const uint32_t jam_ms = ft_jam_window_ms(false, atk->klass);
+        const uint32_t cap_ms = FT_CAPTURE_WINDOW_MS;
 
         const int32_t jam_w = ms_to_px(jam_ms, FT_TELEGRAPH_MS);
         const int32_t cap_w = ms_to_px(cap_ms, FT_TELEGRAPH_MS);
@@ -838,7 +837,7 @@ static void guard_note(const FtEncounter* e, char* out, size_t n) {
         return;
     }
 
-    const int32_t jam = (int32_t)ft_jam_window_ms(e->fx.hard_mode, atk->klass);
+    const int32_t jam = (int32_t)ft_jam_window_ms(false, atk->klass);
 
     /* Inside the window the number is how tight it was; outside it is how
      * much too early, which is the number you can actually act on. */
@@ -1085,7 +1084,7 @@ void ft_render_help(Canvas* canvas, uint8_t page) {
             "Solid = capture (0).",
         },
         {
-            "HP: health. MP: NFC.",
+            "HP. MP pays NFC.",
             "SP arms DEFLECT free.",
             "Then a block takes 0",
             "and bites back.",
@@ -1325,11 +1324,12 @@ void ft_render_orbs(Canvas* canvas, const FtStats* stats, uint8_t selected) {
     draw_centred(canvas, FT_SCREEN_W / 2, 8, head);
     canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
 
-    static const char* const NAMES[FT_UP_COUNT] = {"HP", "MP", "Cards"};
-    static const FtLevelChoice CHOICE[FT_UP_COUNT] = {FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
+    static const char* const NAMES[FT_UP_COUNT] = {"HP", "MP", "Power"};
+    static const FtLevelChoice CHOICE[FT_UP_COUNT] = {FT_UP_CHARGE, FT_UP_RAM,
+                                                      FT_UP_POWER};
 
     const int16_t now[FT_UP_COUNT] = {
-        stats->charge_max, stats->ram_max, stats->flash_max};
+        stats->charge_max, stats->ram_max, stats->power};
 
     for(uint8_t i = 0; i < FT_UP_COUNT; i++) {
         const int32_t y = 14 + (int32_t)i * 12;

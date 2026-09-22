@@ -25,9 +25,6 @@ typedef struct {
 
 
 static void build(FtEncounter* e, const Shot* s) {
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     if(s->extra_foes) {
         const FtEnemyId plain[FT_MAX_ENEMIES] = {
             FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK};
@@ -35,10 +32,9 @@ static void build(FtEncounter* e, const Shot* s) {
             FT_ENEMY_BLANK_WALL, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
 
         ft_encounter_init(
-            e, (s->enemy == FT_ENEMY_BLANK_WALL) ? walled : plain,
-            s->extra_foes, &lo, 42);
+            e, (s->enemy == FT_ENEMY_BLANK_WALL) ? walled : plain, s->extra_foes, 42);
     } else {
-        ft_encounter_init_single(e, s->enemy, &lo, 42);
+        ft_encounter_init_single(e, s->enemy, 42);
     }
 
     e->phase = s->phase;
@@ -288,11 +284,9 @@ int main(void) {
         printf("  guide empty         %s\n",
                ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
 
-        FtLoadout glo;
-        ft_loadout_init(&glo);
         for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
             FtEncounter one;
-            ft_encounter_init_single(&one, (FtEnemyId)i, &glo, 1);
+            ft_encounter_init_single(&one, (FtEnemyId)i, 1);
             ft_guide_note_encounter(&g, &one);
         }
 
@@ -379,7 +373,7 @@ int main(void) {
          * beside each one: the widest this screen can ever be. */
         st.charge_max = FT_CAP_CHARGE;
         st.ram_max = FT_CAP_RAM;
-        st.flash_max = FT_CAP_FLASH;
+        st.power = FT_CAP_POWER;
         st.level = 99;
         st.orbs = 99;
         for(uint8_t i = 0; i < FT_UP_COUNT; i++) st.spent[i] = 99u;
@@ -516,7 +510,6 @@ int main(void) {
             pr.row = r;
             pr.group = (uint8_t)(FT_PRACTICE_GROUPS - 1u);
             pr.level = FT_PRACTICE_MAX_LEVEL;
-            pr.kit = FT_KIT_LOADED;
 
             ft_render_practice(canvas, &pr);
 

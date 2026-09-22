@@ -177,7 +177,6 @@ typedef struct {
     /* What has been met. Carried with the run, saved with it, and reset by
      * a loss like everything else. */
     FtGuide         guide;
-    FtLoadout       loadout;
 
     /* What has been asked of you, and how far through it you are. */
     FtQuests        quests;

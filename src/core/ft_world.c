@@ -466,7 +466,6 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
 void ft_world_init(FtWorld* w) {
     for(size_t i = 0; i < sizeof(w->cleared); i++) w->cleared[i] = 0u;
 
-    ft_loadout_init(&w->loadout);
     ft_stats_init(&w->stats);
     ft_guide_init(&w->guide);
     ft_quests_init(&w->quests);
@@ -474,12 +473,9 @@ void ft_world_init(FtWorld* w) {
     w->visits = 0;
     w->escort = false;
 
-    /* World stats are authoritative and carry the loadout's bonuses, because a
-     * battle copies them in rather than building its own. */
-    const FtLoadoutEffects fx = ft_loadout_effects(&w->loadout);
-    w->stats.charge_max = (int16_t)(w->stats.charge_max + fx.charge_max_bonus);
+    /* World stats are authoritative: a battle copies them in rather than
+     * building its own. */
     w->stats.charge = w->stats.charge_max;
-    w->stats.flash_used = fx.flash_used;
 
     /* The first room's terminal is where a new run starts and, until you save
      * somewhere else, where being downed puts you back. */

@@ -48,14 +48,11 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
     put_i16(b, &at, d->stats.charge_max);
     put_i16(b, &at, d->stats.ram);
     put_i16(b, &at, d->stats.ram_max);
-    put_i16(b, &at, d->stats.flash_used);
-    put_i16(b, &at, d->stats.flash_max);
+    put_i16(b, &at, d->stats.power);
     put_i16(b, &at, d->stats.level);
     put_i16(b, &at, d->stats.xp);
     put_i16(b, &at, d->stats.orbs);
     for(uint8_t i = 0; i < FT_UP_COUNT; i++) put_u8(b, &at, d->stats.spent[i]);
-
-    for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) put_u8(b, &at, d->loadout.stacks[i]);
 
     put_i16(b, &at, (int16_t)d->guide.seen);
 
@@ -88,14 +85,11 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     d->stats.charge_max = get_i16(b, &at);
     d->stats.ram = get_i16(b, &at);
     d->stats.ram_max = get_i16(b, &at);
-    d->stats.flash_used = get_i16(b, &at);
-    d->stats.flash_max = get_i16(b, &at);
+    d->stats.power = get_i16(b, &at);
     d->stats.level = get_i16(b, &at);
     d->stats.xp = get_i16(b, &at);
     d->stats.orbs = get_i16(b, &at);
     for(uint8_t i = 0; i < FT_UP_COUNT; i++) d->stats.spent[i] = get_u8(b, &at);
-
-    for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) d->loadout.stacks[i] = get_u8(b, &at);
 
     d->guide.seen = (uint16_t)get_i16(b, &at);
 
@@ -122,8 +116,7 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
 /* The payload length, which the header carries so a decode can check the file
  * is the size it claims before trusting a byte of it. */
 static uint8_t payload_bytes(void) {
-    return (uint8_t)(9u * 2u + FT_UP_COUNT        /* stats, orbs, where they went */
-                     + FT_MODULE_COUNT            /* loadout */
+    return (uint8_t)(8u * 2u + FT_UP_COUNT        /* stats, orbs, where they went */
                      + 2u                         /* field guide */
                      + FT_QUEST_BYTES             /* quests */
                      + FT_ITEM_COUNT              /* pockets */
@@ -192,7 +185,6 @@ bool ft_save_decode(const uint8_t* in, uint8_t len, FtSaveData* out) {
 
 void ft_save_from_world(const FtWorld* w, bool coach, bool sound, FtSaveData* d) {
     d->stats = w->stats;
-    d->loadout = w->loadout;
     d->guide = w->guide;
     d->quests = w->quests;
     d->pockets = w->pockets;
@@ -218,7 +210,6 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach, bool* sound)
     ft_world_init(w);
 
     w->stats = d->stats;
-    w->loadout = d->loadout;
     w->guide = d->guide;
     w->quests = d->quests;
     w->pockets = d->pockets;

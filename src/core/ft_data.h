@@ -16,61 +16,26 @@ typedef enum {
 typedef struct {
     const char* name;
     FtSlot      slot;
-    uint8_t     flash_cost;
     uint8_t     ram_cost;
-    uint8_t     max_stacks;
     bool        hits_all;
 
-    FtAttack attack; /* meaningful for attack slots only */
-
-    /* Passive contributions, all applied per stack. */
-    int16_t charge_max_bonus;
-    int16_t atk_up;
-    uint8_t jam_bonus_pct;
-    uint8_t deep_focus;
-    bool    hard_mode;
+    FtAttack attack;
 } FtModule;
 
+/* The two attacks you have. There used to be six more — equippable passive
+ * Cards with a slot budget — and no way in the game to obtain any of them.
+ * See FT_START_POWER. */
 typedef enum {
     FT_MOD_SUBGHZ = 0,
-    FT_MOD_AMPLIFY,
     FT_MOD_NFC,
-    FT_MOD_PAYLOAD,
-    FT_MOD_CHARGE_PLUS,
-    FT_MOD_FARADAY,
-    FT_MOD_DEEP_FOCUS,
-    FT_MOD_HARD_MODE,
     FT_MODULE_COUNT
 } FtModuleId;
 
 extern const FtModule FT_MODULES[FT_MODULE_COUNT];
 
-/* RAM cost of using a module at a given stack count: stacking raises both the
- * effect and the cost (DESIGN.md 3). */
-uint8_t ft_module_ram_cost(FtModuleId id, uint8_t stacks);
+/* MP this module costs to use. */
+uint8_t ft_module_ram_cost(FtModuleId id);
 
-/* ---- Loadout --------------------------------------------------------- */
-
-typedef struct {
-    uint8_t stacks[FT_MODULE_COUNT];
-} FtLoadout;
-
-/* Everything the battle code needs to know about what is installed. */
-typedef struct {
-    int16_t flash_used;
-    int16_t charge_max_bonus;
-    int16_t atk_up;
-    uint8_t jam_reduction_pct;
-    uint8_t deep_focus_stacks;
-    bool    hard_mode;
-} FtLoadoutEffects;
-
-void ft_loadout_init(FtLoadout* lo);
-
-/* Install one more copy. Returns false if the module is at max stacks. */
-bool ft_loadout_add(FtLoadout* lo, FtModuleId id);
-
-FtLoadoutEffects ft_loadout_effects(const FtLoadout* lo);
 
 /* ---- Enemies --------------------------------------------------------- */
 

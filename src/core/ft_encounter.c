@@ -195,21 +195,12 @@ bool ft_encounter_over(const FtEncounter* e) {
 /* ---- Setup ----------------------------------------------------------- */
 
 void ft_encounter_init(
-    FtEncounter*     e,
-    const FtEnemyId* foes,
-    uint8_t          count,
-    const FtLoadout* lo,
-    uint32_t         seed) {
+    FtEncounter* e, const FtEnemyId* foes, uint8_t count, uint32_t seed) {
     if(count == 0u) count = 1u;
     if(count > FT_MAX_ENEMIES) count = FT_MAX_ENEMIES;
 
-    e->loadout = *lo;
-    e->fx = ft_loadout_effects(&e->loadout);
-
     ft_stats_init(&e->stats);
-    e->stats.charge_max = (int16_t)(e->stats.charge_max + e->fx.charge_max_bonus);
     e->stats.charge = e->stats.charge_max;
-    e->stats.flash_used = e->fx.flash_used;
 
     ft_roll_init(&e->roll, e->stats.charge);
     ft_signal_init(&e->signal, 1);
@@ -300,10 +291,9 @@ void ft_encounter_enemy_opens(FtEncounter* e) {
     }
 }
 
-void ft_encounter_init_single(
-    FtEncounter* e, FtEnemyId foe, const FtLoadout* lo, uint32_t seed) {
+void ft_encounter_init_single(FtEncounter* e, FtEnemyId foe, uint32_t seed) {
     const FtEnemyId one[1] = {foe};
-    ft_encounter_init(e, one, 1u, lo, seed);
+    ft_encounter_init(e, one, 1u, seed);
 }
 
 /* ---- Actions --------------------------------------------------------- */
@@ -383,7 +373,7 @@ uint8_t ft_encounter_action_cost(const FtEncounter* e, FtAction2 action) {
     (void)e;
     if(action != FT_ACTION_CONTACT) return 0u;
 
-    return ft_module_ram_cost(FT_MOD_NFC, 1u);
+    return ft_module_ram_cost(FT_MOD_NFC);
 }
 
 const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
@@ -622,7 +612,7 @@ static void strike_foe(FtEncounter* e, uint8_t i, const FtAttack* atk, FtRating 
 
     const FtEnemy* proto = &FT_ENEMIES[e->foes[i].id];
     const FtDefender def = {proto->shielded, proto->attrs};
-    const FtHitParams p = {e->fx.atk_up, 0, rating, false, FT_GUARD_NONE, 0};
+    const FtHitParams p = {e->stats.power, 0, rating, false, FT_GUARD_NONE, 0};
 
     const FtHitResult r = ft_resolve_hit(atk, &def, &p);
 
@@ -658,7 +648,7 @@ static void resolve_player_action(FtEncounter* e) {
     }
 
     if(action == FT_ACTION_FOCUS) {
-        ft_signal_add(&e->signal, ft_signal_focus_gain(e->fx.deep_focus_stacks));
+        ft_signal_add(&e->signal, ft_signal_focus_gain(0));
         return;
     }
 
@@ -813,7 +803,7 @@ static void resolve_enemy_action(FtEncounter* e) {
     const int32_t before_impact =
         e->guard_pressed ? (int32_t)FT_TELEGRAPH_MS - (int32_t)e->guard_press_ms : -1;
 
-    e->last_guard = ft_guard_from_timing(before_impact, e->fx.hard_mode, atk->klass);
+    e->last_guard = ft_guard_from_timing(before_impact, false, atk->klass);
     e->last_guard_offset = before_impact;
 
     /* While the stance is up, *any* successful guard stops the hit dead, not
@@ -835,8 +825,7 @@ static void resolve_enemy_action(FtEncounter* e) {
 
     /* Bracing is a real shield, so it can blunt or even deflect a hit. */
     const FtDefender def = {e->defending ? FT_DEFEND_SHIELD : 0, 0};
-    const FtHitParams p = {0, 0, FT_RATING_MISS, false, effective,
-                           e->fx.jam_reduction_pct};
+    const FtHitParams p = {0, 0, FT_RATING_MISS, false, effective, 0};
 
     e->last_enemy_hit = ft_resolve_hit(atk, &def, &p);
 
@@ -846,10 +835,7 @@ static void resolve_enemy_action(FtEncounter* e) {
         e->status[atk->payload] = FT_STATUS_TURNS;
     }
 
-    int16_t damage = e->last_enemy_hit.damage;
-    if(e->fx.hard_mode) damage = (int16_t)(damage * 2);
-
-    ft_roll_apply_damage(&e->roll, damage);
+    ft_roll_apply_damage(&e->roll, e->last_enemy_hit.damage);
     ft_signal_add(&e->signal, FT_SIGNAL_GAIN_ENEMY_TURN);
 
     /* And send it back, if the stance is up and the block was good enough.
@@ -1069,7 +1055,7 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         break;
 
     case FT_PHASE_DRAIN: {
-        const uint32_t interval = ft_roll_interval_ms(0, e->defending, e->fx.hard_mode);
+        const uint32_t interval = ft_roll_interval_ms(0, e->defending, false);
         ft_roll_tick(&e->roll, dt_ms, interval);
 
         e->stats.charge = e->roll.current;

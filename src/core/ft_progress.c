@@ -3,8 +3,7 @@
 void ft_stats_init(FtStats* s) {
     s->charge = s->charge_max = FT_START_CHARGE;
     s->ram = s->ram_max = FT_START_RAM;
-    s->flash_used = 0;
-    s->flash_max = FT_START_FLASH;
+    s->power = FT_START_POWER;
     s->level = 1;
     s->xp = 0;
     s->orbs = 0;
@@ -20,7 +19,7 @@ bool ft_level_choice_available(const FtStats* s, FtLevelChoice choice) {
     switch(choice) {
     case FT_UP_CHARGE: return s->charge_max < FT_CAP_CHARGE;
     case FT_UP_RAM:    return s->ram_max < FT_CAP_RAM;
-    case FT_UP_FLASH:  return s->flash_max < FT_CAP_FLASH;
+    case FT_UP_POWER:  return s->power < FT_CAP_POWER;
     default:           return false;
     }
 }
@@ -38,7 +37,7 @@ int16_t ft_orb_step(FtLevelChoice choice) {
     switch(choice) {
     case FT_UP_CHARGE: return FT_LEVEL_UP_CHARGE;
     case FT_UP_RAM:    return FT_LEVEL_UP_RAM;
-    case FT_UP_FLASH:  return FT_LEVEL_UP_FLASH;
+    case FT_UP_POWER:  return FT_LEVEL_UP_POWER;
     default:           return 0;
     }
 }
@@ -64,9 +63,9 @@ bool ft_orb_spend(FtStats* s, FtLevelChoice choice) {
         s->ram = (int16_t)(s->ram + step);
         if(s->ram > s->ram_max) s->ram = s->ram_max;
         break;
-    case FT_UP_FLASH:
-        s->flash_max = (int16_t)(s->flash_max + step);
-        if(s->flash_max > FT_CAP_FLASH) s->flash_max = FT_CAP_FLASH;
+    case FT_UP_POWER:
+        s->power = (int16_t)(s->power + step);
+        if(s->power > FT_CAP_POWER) s->power = FT_CAP_POWER;
         break;
     default:
         return false;
@@ -79,15 +78,7 @@ bool ft_orb_spend(FtStats* s, FtLevelChoice choice) {
 
 bool ft_orb_can_refund(const FtStats* s, FtLevelChoice choice) {
     if(choice >= FT_UP_COUNT) return false;
-    if(s->spent[choice] == 0u) return false;
-
-    /* Cards are a budget something is already spending. Pulling an orb out
-     * from under an installed card would leave flash_used above flash_max,
-     * and every install check downstream reads that as "no room" forever. */
-    if(choice == FT_UP_FLASH) {
-        if(s->flash_max - ft_orb_step(choice) < s->flash_used) return false;
-    }
-    return true;
+    return s->spent[choice] > 0u;
 }
 
 bool ft_orb_refund(FtStats* s, FtLevelChoice choice) {
@@ -109,9 +100,9 @@ bool ft_orb_refund(FtStats* s, FtLevelChoice choice) {
         if(s->ram_max < FT_START_RAM) s->ram_max = FT_START_RAM;
         if(s->ram > s->ram_max) s->ram = s->ram_max;
         break;
-    case FT_UP_FLASH:
-        s->flash_max = (int16_t)(s->flash_max - step);
-        if(s->flash_max < FT_START_FLASH) s->flash_max = FT_START_FLASH;
+    case FT_UP_POWER:
+        s->power = (int16_t)(s->power - step);
+        if(s->power < FT_START_POWER) s->power = FT_START_POWER;
         break;
     default:
         return false;
@@ -155,18 +146,4 @@ int16_t ft_xp_award(int16_t enemy_level, int16_t player_level, int16_t base_xp) 
     if(award < 1) award = 1;
 
     return (int16_t)award;
-}
-
-bool ft_flash_can_install(const FtStats* s, int16_t cost) {
-    if(cost < 0) return false;
-    return (s->flash_used + cost) <= s->flash_max;
-}
-
-void ft_flash_install(FtStats* s, int16_t cost) {
-    if(cost > 0) s->flash_used += cost;
-}
-
-void ft_flash_uninstall(FtStats* s, int16_t cost) {
-    if(cost > 0) s->flash_used -= cost;
-    if(s->flash_used < 0) s->flash_used = 0;
 }

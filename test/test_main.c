@@ -394,7 +394,7 @@ static void test_progression(void) {
     FtStats s;
     ft_stats_init(&s);
     CHECK_EQ(s.charge_max, FT_START_CHARGE);
-    CHECK_EQ(s.flash_max, FT_START_FLASH);
+    CHECK_EQ(s.power, FT_START_POWER);
     CHECK_EQ(s.level, 1);
 
     /* A level-up raises one stat and fully restores Charge and RAM. */
@@ -405,13 +405,13 @@ static void test_progression(void) {
     CHECK_EQ(s.charge, s.charge_max);
     CHECK_EQ(s.ram, s.ram_max);
 
-    CHECK(level_into(&s, FT_UP_FLASH), "flash upgrade should apply");
-    CHECK_EQ(s.flash_max, FT_START_FLASH + FT_LEVEL_UP_FLASH);
+    CHECK(level_into(&s, FT_UP_POWER), "flash upgrade should apply");
+    CHECK_EQ(s.power, FT_START_POWER + FT_LEVEL_UP_POWER);
 
     /* Capped stats become unavailable as choices. */
-    s.flash_max = FT_CAP_FLASH;
-    CHECK(!ft_level_choice_available(&s, FT_UP_FLASH), "capped Flash is unavailable");
-    CHECK(!level_into(&s, FT_UP_FLASH), "capped Flash cannot be raised");
+    s.power = FT_CAP_POWER;
+    CHECK(!ft_level_choice_available(&s, FT_UP_POWER), "capped Flash is unavailable");
+    CHECK(!level_into(&s, FT_UP_POWER), "capped Flash cannot be raised");
 
     /* Underlevelled enemies taper to nothing. */
     CHECK_EQ(ft_xp_award(5, 3, 30), 30); /* enemy above the player: full */
@@ -436,70 +436,6 @@ static void test_progression(void) {
     p.level = 4;
     CHECK_EQ(ft_xp_gain(&p, 100, 4), 0);
     CHECK_EQ(p.xp, 0);
-}
-
-static void test_flash_budget(void) {
-    section("Flash budget");
-
-    FtStats s;
-    ft_stats_init(&s);
-    s.flash_max = 4;
-
-    CHECK(ft_flash_can_install(&s, 3), "3 fits in 4");
-    ft_flash_install(&s, 3);
-    CHECK_EQ(s.flash_used, 3);
-
-    CHECK(!ft_flash_can_install(&s, 2), "2 more does not fit");
-    CHECK(ft_flash_can_install(&s, 1), "1 more does fit");
-
-    ft_flash_uninstall(&s, 3);
-    CHECK_EQ(s.flash_used, 0);
-
-    /* Uninstalling past zero must not underflow. */
-    ft_flash_uninstall(&s, 99);
-    CHECK_EQ(s.flash_used, 0);
-}
-
-static void test_loadout(void) {
-    section("module loadout (DESIGN 7)");
-
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
-    /* The two base modules are installed and free. */
-    FtLoadoutEffects fx = ft_loadout_effects(&lo);
-    CHECK_EQ(fx.flash_used, 0);
-    CHECK_EQ(fx.jam_reduction_pct, FT_JAM_REDUCTION_PCT);
-    CHECK(!fx.hard_mode, "Hard Mode is opt-in");
-
-    /* Stacking raises both the effect and the Flash spent. */
-    CHECK(ft_loadout_add(&lo, FT_MOD_AMPLIFY), "first Amplify installs");
-    CHECK(ft_loadout_add(&lo, FT_MOD_AMPLIFY), "second Amplify installs");
-    fx = ft_loadout_effects(&lo);
-    CHECK_EQ(fx.atk_up, 4);       /* 2 per stack */
-    CHECK_EQ(fx.flash_used, 4);   /* 2 per stack */
-
-    /* And the RAM cost scales with the stack count. */
-    CHECK_EQ(ft_module_ram_cost(FT_MOD_AMPLIFY, 2), 2);
-    CHECK_EQ(ft_module_ram_cost(FT_MOD_PAYLOAD, 2), 4);
-
-    /* Max stacks is enforced. */
-    CHECK(ft_loadout_add(&lo, FT_MOD_AMPLIFY), "third Amplify installs");
-    CHECK(!ft_loadout_add(&lo, FT_MOD_AMPLIFY), "fourth exceeds max stacks");
-
-    ft_loadout_add(&lo, FT_MOD_FARADAY);
-    ft_loadout_add(&lo, FT_MOD_CHARGE_PLUS);
-    ft_loadout_add(&lo, FT_MOD_DEEP_FOCUS);
-    ft_loadout_add(&lo, FT_MOD_HARD_MODE);
-
-    fx = ft_loadout_effects(&lo);
-    CHECK_EQ(fx.jam_reduction_pct, FT_JAM_REDUCTION_PCT + 10);
-    CHECK_EQ(fx.charge_max_bonus, 5);
-    CHECK_EQ(fx.deep_focus_stacks, 1);
-    CHECK(fx.hard_mode, "Hard Mode should be active once installed");
-
-    /* Deep Focus feeds straight into the Focus gain. */
-    CHECK_EQ(ft_signal_focus_gain(fx.deep_focus_stacks), FT_SIGNAL_GAIN_FOCUS + 5);
 }
 
 static void test_enemy_table(void) {
@@ -789,16 +725,13 @@ static void test_turn_economy(void) {
      * the enemy round, as the reference does for a lone player. */
     CHECK(FT_PLAYER_TURNS_PER_ROUND >= 2, "a lone player acts more than once per round");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* No FAST foe here: the turn economy is the thing under test, and a FAST
      * foe opens the fight before the player ever sees the menu. */
     const FtEnemyId group[3] = {
         FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
 
     FtEncounter e;
-    ft_encounter_init(&e, group, 3, &lo, 5);
+    ft_encounter_init(&e, group, 3, 5);
     CHECK_EQ(e.player_turns, 0);
     CHECK_EQ(e.phase, FT_PHASE_MENU);
 
@@ -824,11 +757,8 @@ static void test_turn_economy(void) {
 static void test_death_timing(void) {
     section("foes die when the attack lands");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 7);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 7);
 
     /* Kill it outright, then check it is still drawn until the strike frame:
      * a foe that drops dead before the attack visibly reaches it looks broken. */
@@ -860,11 +790,8 @@ static void test_death_timing(void) {
 static void test_ready_beat(void) {
     section("ready beat");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 2);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 2);
     e.menu_index = FT_ACTION_CONTACT;
     ft_encounter_press_ok(&e);
     CHECK_EQ(e.phase, FT_PHASE_PLAYER_ACT);
@@ -889,7 +816,7 @@ static void test_ready_beat(void) {
     /* The guard sweep gets the same lead-in, and a press during it is ignored
      * rather than counting as a wildly early guard. */
     FtEncounter g;
-    ft_encounter_init_single(&g, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    ft_encounter_init_single(&g, FT_ENEMY_STRAY_PACKET, 4);
     g.phase = FT_PHASE_TELEGRAPH;
     g.phase_ms = 0;
     CHECK(ft_encounter_in_ready(&g), "guard sweep also starts with a beat");
@@ -899,7 +826,7 @@ static void test_ready_beat(void) {
 
     /* Phases without a timing bar never report a ready beat. */
     FtEncounter m;
-    ft_encounter_init_single(&m, FT_ENEMY_STRAY_PACKET, &lo, 6);
+    ft_encounter_init_single(&m, FT_ENEMY_STRAY_PACKET, 6);
     CHECK(!ft_encounter_in_ready(&m), "the menu is not a ready beat");
     CHECK_EQ(ft_encounter_sweep_window(&m), 0);
 }
@@ -907,11 +834,8 @@ static void test_ready_beat(void) {
 static void test_encounter(void) {
     section("encounter state machine");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 7);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 7);
 
     CHECK_EQ(e.phase, FT_PHASE_MENU);
     CHECK_EQ(e.foes[0].charge, FT_ENEMIES[FT_ENEMY_STRAY_PACKET].charge);
@@ -964,7 +888,7 @@ static void test_encounter(void) {
 
     /* Thinking must never cost Charge: the roll is paused in the menu. */
     FtEncounter idle;
-    ft_encounter_init_single(&idle, FT_ENEMY_STRAY_PACKET, &lo, 7);
+    ft_encounter_init_single(&idle, FT_ENEMY_STRAY_PACKET, 7);
 
     idle.roll.target = 0;
     const int16_t before = idle.roll.current;
@@ -975,14 +899,14 @@ static void test_encounter(void) {
     /* Attributes never take a module off the list: every attack is always
      * selectable, and reach decides who it lands on. */
     FtEncounter beacon;
-    ft_encounter_init_single(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 1);
+    ft_encounter_init_single(&beacon, FT_ENEMY_DRIFT_BEACON, 1);
     CHECK(ft_encounter_action_available(&beacon, FT_ACTION_BROADCAST), "broadcast is offered");
     CHECK(ft_encounter_action_available(&beacon, FT_ACTION_CONTACT), "so is contact");
     CHECK(ft_encounter_action_available(&beacon, FT_ACTION_DEFEND), "Defend is always available");
     CHECK(!ft_encounter_can_reach(&beacon, FT_ACTION_CONTACT, 0), "but contact cannot reach it");
 
     FtEncounter lock;
-    ft_encounter_init_single(&lock, FT_ENEMY_SEALED_LOCK, &lo, 1);
+    ft_encounter_init_single(&lock, FT_ENEMY_SEALED_LOCK, 1);
     CHECK(ft_encounter_action_available(&lock, FT_ACTION_BROADCAST), "broadcast is offered");
     CHECK(!ft_encounter_can_reach(&lock, FT_ACTION_BROADCAST, 0), "but bounces off ENCRYPTED");
     CHECK(ft_encounter_can_reach(&lock, FT_ACTION_CONTACT, 0), "contact opens ENCRYPTED");
@@ -990,7 +914,7 @@ static void test_encounter(void) {
     /* A resource you do not have still stops the press — that is the only
      * thing left that can. */
     FtEncounter empty;
-    ft_encounter_init_single(&empty, FT_ENEMY_STRAY_PACKET, &lo, 1);
+    ft_encounter_init_single(&empty, FT_ENEMY_STRAY_PACKET, 1);
     CHECK(!ft_encounter_action_available(&empty, FT_ACTION_DEFLECT), "no capture, no replay");
     empty.menu_index = FT_ACTION_DEFLECT;
     ft_encounter_press_ok(&empty);
@@ -998,7 +922,7 @@ static void test_encounter(void) {
 
     /* A perfectly timed action command earns the top rating. */
     FtEncounter fight;
-    ft_encounter_init_single(&fight, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&fight, FT_ENEMY_STRAY_PACKET, 3);
     fight.menu_index = FT_ACTION_CONTACT;
     ft_encounter_press_ok(&fight);
     CHECK_EQ(fight.phase, FT_PHASE_PLAYER_ACT);
@@ -1028,7 +952,7 @@ static void test_encounter(void) {
 
     /* Focus feeds the Signal meter without an action command. */
     FtEncounter focus;
-    ft_encounter_init_single(&focus, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&focus, FT_ENEMY_STRAY_PACKET, 5);
     const int16_t sig_before = focus.signal.value;
     focus.menu_index = FT_ACTION_FOCUS;
     ft_encounter_press_ok(&focus);
@@ -1039,12 +963,12 @@ static void test_encounter(void) {
      * full-battle run uses the toughest M1 enemy to guarantee the player is
      * actually attacked. */
     FtEncounter quick;
-    ft_encounter_init_single(&quick, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&quick, FT_ENEMY_STRAY_PACKET, 3);
     CHECK(FT_ENEMIES[FT_ENEMY_STRAY_PACKET].charge <= 8, "tutorial enemy stays one-shottable");
 
     /* A whole battle terminates rather than spinning forever. */
     FtEncounter run;
-    ft_encounter_init_single(&run, FT_ENEMY_SEALED_LOCK, &lo, 11);
+    ft_encounter_init_single(&run, FT_ENEMY_SEALED_LOCK, 11);
     int guard_ticks = 0;
     for(int i = 0; i < 20000 && !ft_encounter_over(&run); i++) {
         if(run.phase == FT_PHASE_MENU) {
@@ -1074,7 +998,7 @@ static void test_encounter(void) {
      * turn — with two player turns per enemy round, a timed contact hit kills
      * it before it ever acts. */
     FtEncounter cap;
-    ft_encounter_init_single(&cap, FT_ENEMY_STRAY_PACKET, &lo, 11);
+    ft_encounter_init_single(&cap, FT_ENEMY_STRAY_PACKET, 11);
     bool faced_attack = false;
     for(int i = 0; i < 20000 && !ft_encounter_over(&cap); i++) {
         if(cap.phase == FT_PHASE_MENU) {
@@ -1095,7 +1019,7 @@ static void test_encounter(void) {
 
     /* An UNDODGEABLE attack can never be captured, however well timed. */
     FtEncounter undo;
-    ft_encounter_init_single(&undo, FT_ENEMY_SEALED_LOCK, &lo, 11);
+    ft_encounter_init_single(&undo, FT_ENEMY_SEALED_LOCK, 11);
     undo.phase = FT_PHASE_TELEGRAPH;
     undo.foes[0].attack_index = 1; /* Seal: UNDODGEABLE */
     undo.guard_pressed = true;
@@ -1108,11 +1032,8 @@ static void test_encounter(void) {
 static void test_tutorial(void) {
     section("contextual coaching");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 3);
 
     /* On by default, and silent the moment it is turned off. */
     CHECK(e.coach, "coaching starts on");
@@ -1125,7 +1046,7 @@ static void test_tutorial(void) {
     /* Only a missing resource refuses an action now, and it still explains
      * itself in the menu's description row. */
     FtEncounter beacon;
-    ft_encounter_init_single(&beacon, FT_ENEMY_DRIFT_BEACON, &lo, 3);
+    ft_encounter_init_single(&beacon, FT_ENEMY_DRIFT_BEACON, 3);
     CHECK(ft_encounter_action_block(&beacon, FT_ACTION_CONTACT) == NULL,
           "an attribute is not a refusal");
     CHECK(ft_encounter_action_block(&beacon, FT_ACTION_BROADCAST) == NULL,
@@ -1150,7 +1071,7 @@ static void test_tutorial(void) {
 
     /* An UNDODGEABLE attack is called out as unguardable. */
     FtEncounter undo;
-    ft_encounter_init_single(&undo, FT_ENEMY_SEALED_LOCK, &lo, 3);
+    ft_encounter_init_single(&undo, FT_ENEMY_SEALED_LOCK, 3);
     undo.phase = FT_PHASE_TELEGRAPH;
     undo.foes[0].attack_index = 1;
     CHECK_EQ(FT_ENEMIES[FT_ENEMY_SEALED_LOCK].attacks[1].klass, FT_CLASS_UNDODGEABLE);
@@ -1185,7 +1106,7 @@ static void test_tutorial(void) {
 
     /* Feedback after a guard distinguishes a jam from a capture. */
     FtEncounter jam;
-    ft_encounter_init_single(&jam, FT_ENEMY_DRIFT_BEACON, &lo, 3);
+    ft_encounter_init_single(&jam, FT_ENEMY_DRIFT_BEACON, 3);
     jam.phase = FT_PHASE_IMPACT;
     jam.last_guard = FT_GUARD_JAM;
     jam.last_enemy_hit.damage = 3;
@@ -1214,7 +1135,7 @@ static void test_tutorial(void) {
 
     /* Outcome screens stay quiet: they have their own copy. */
     FtEncounter done;
-    ft_encounter_init_single(&done, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&done, FT_ENEMY_STRAY_PACKET, 3);
     done.phase = FT_PHASE_WIN;
     CHECK(ft_tutorial_hint(&done) == NULL, "the win screen is not coached");
 
@@ -1227,7 +1148,7 @@ static void test_tutorial(void) {
                 for(int atk = 0; atk < FT_ENEMY_MAX_ATTACKS; atk++) {
                     for(int ready = 0; ready < 2; ready++) {
                         FtEncounter w;
-                        ft_encounter_init_single(&w, (FtEnemyId)enemy, &lo, 1);
+                        ft_encounter_init_single(&w, (FtEnemyId)enemy, 1);
                         w.phase = (FtPhase)phase;
                         w.menu_index = (uint8_t)menu;
                         w.foes[0].attack_index =
@@ -1251,11 +1172,8 @@ static void test_tutorial(void) {
 static void test_anim(void) {
     section("action animation");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 5);
 
     /* Phases without a resolved action never animate. */
     CHECK(!ft_encounter_in_anim(&e), "the menu does not animate");
@@ -1863,11 +1781,8 @@ static void test_foe_ai(void) {
 static void test_hit_fx(void) {
     section("hit flinch");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 4);
 
     /* Nothing outside an impact that actually hurt. */
     CHECK_EQ(ft_encounter_hit_fx(&e).stage, FT_HIT_FX_NONE);
@@ -1914,15 +1829,12 @@ static void test_hit_fx(void) {
 static void test_reach(void) {
     section("reach and retargeting");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* Nothing an enemy *is* can take a module off the list. Every attack is
      * selectable against every board; attributes only move the caret. */
     const FtEnemyId air[FT_MAX_ENEMIES] = {
         FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON};
     FtEncounter flyers;
-    ft_encounter_init(&flyers, air, 3, &lo, 3);
+    ft_encounter_init(&flyers, air, 3, 3);
 
     CHECK(ft_encounter_action_available(&flyers, FT_ACTION_CONTACT),
           "contact stays selectable against a sky full of flyers");
@@ -1930,7 +1842,7 @@ static void test_reach(void) {
           "so does broadcast");
 
     FtEncounter locks;
-    ft_encounter_init_single(&locks, FT_ENEMY_SEALED_LOCK, &lo, 3);
+    ft_encounter_init_single(&locks, FT_ENEMY_SEALED_LOCK, 3);
     CHECK(ft_encounter_action_available(&locks, FT_ACTION_BROADCAST),
           "broadcast stays selectable against encrypted");
 
@@ -1946,7 +1858,7 @@ static void test_reach(void) {
     const FtEnemyId mixed[FT_MAX_ENEMIES] = {
         FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
     FtEncounter e;
-    ft_encounter_init(&e, mixed, 3, &lo, 3);
+    ft_encounter_init(&e, mixed, 3, 3);
 
     CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_CONTACT), 2);
     CHECK_EQ(ft_encounter_effective_target(&e, FT_ACTION_BROADCAST), 0);
@@ -1955,7 +1867,7 @@ static void test_reach(void) {
     const FtEnemyId wrap[FT_MAX_ENEMIES] = {
         FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
     FtEncounter wr;
-    ft_encounter_init(&wr, wrap, 3, &lo, 3);
+    ft_encounter_init(&wr, wrap, 3, 3);
     CHECK_EQ(ft_encounter_effective_target(&wr, FT_ACTION_CONTACT), 0);
 
     /* A dead foe is skipped, so killing the front one moves the aim along
@@ -1973,7 +1885,7 @@ static void test_reach(void) {
     /* And it resolves that way end to end: swinging with contact against two
      * flyers and a grounded foe damages the grounded one. */
     FtEncounter fight;
-    ft_encounter_init(&fight, mixed, 3, &lo, 3);
+    ft_encounter_init(&fight, mixed, 3, 3);
     fight.menu_index = FT_ACTION_CONTACT;
 
     const int16_t before = fight.foes[2].charge;
@@ -1996,7 +1908,6 @@ static void test_practice(void) {
     CHECK_EQ(p.row, FT_PRACTICE_FOES);
     CHECK_EQ(p.group, FT_FOES_RANDOM);
     CHECK_EQ(p.level, 1);
-    CHECK_EQ(p.kit, FT_KIT_BASIC);
 
     /* The cursor wraps both ways and never leaves the list. */
     ft_practice_move(&p, -1);
@@ -2016,7 +1927,7 @@ static void test_practice(void) {
         CHECK(strlen(ft_practice_row_name(r)) <= FT_TUTORIAL_MAX_CHARS,
               "row %u has a short name", r);
 
-        for(int i = 0; i < FT_PRACTICE_GROUPS + FT_KIT_COUNT + 12; i++) {
+        for(int i = 0; i < FT_PRACTICE_GROUPS + 12; i++) {
             p.row = r;
             ft_practice_adjust(&p, 1);
 
@@ -2037,11 +1948,6 @@ static void test_practice(void) {
     ft_practice_adjust(&p, 1);
     CHECK_EQ(p.level, 1);
 
-    p.row = FT_PRACTICE_KIT;
-    p.kit = 0;
-    ft_practice_adjust(&p, -1);
-    CHECK_EQ(p.kit, FT_KIT_COUNT - 1);
-
     p.row = FT_PRACTICE_GROUPS ? FT_PRACTICE_FOES : FT_PRACTICE_FOES;
     p.group = 0;
     ft_practice_adjust(&p, -1);
@@ -2053,7 +1959,6 @@ static void test_practice(void) {
     ft_practice_adjust(&p, 1);
     CHECK_EQ(p.group, before.group);
     CHECK_EQ(p.level, before.level);
-    CHECK_EQ(p.kit, before.kit);
 
     /* Every fixed line-up builds a legal encounter. */
     for(uint8_t g = 1; g < FT_PRACTICE_GROUPS; g++) {
@@ -2124,53 +2029,25 @@ static void test_practice(void) {
           (int)high.stats.charge_max, (int)low.stats.charge_max);
     CHECK(high.stats.ram_max >= low.stats.ram_max, "and no less RAM");
 
-    /* A kit you cannot use is not a kit: the loaded sets can replay at once. */
-    for(uint8_t k = 0; k < FT_KIT_COUNT; k++) {
+    /* The arena hands you a full meter, because it exists to try things and
+     * Deflect is a button that does nothing for four turns otherwise. */
+    {
         FtPractice kp;
         ft_practice_init(&kp, 4u);
         kp.group = 1;
-        kp.kit = k;
 
         FtEncounter ke;
         ft_practice_start(&kp, &ke);
 
-        if(k == FT_KIT_BASIC) {
-            CHECK(!ft_encounter_action_available(&ke, FT_ACTION_DEFLECT),
-                  "the basic kit starts with nothing captured");
-        } else {
-            CHECK(ft_encounter_action_available(&ke, FT_ACTION_DEFLECT),
-                  "kit %u can replay from the first turn", k);
-        }
-
-        /* Hard Mode is never switched on behind your back. */
-        CHECK(!ke.fx.hard_mode, "kit %u leaves Hard Mode alone", k);
-
-        /* And the installed kit is legal: never over the Flash budget. */
-        CHECK(ke.stats.flash_used <= ke.stats.flash_max ||
-                  k != FT_KIT_BASIC,
-              "kit %u fits the budget", k);
+        CHECK(ft_encounter_action_available(&ke, FT_ACTION_DEFLECT),
+              "the arena can deflect from the first turn");
     }
-
-    FtLoadout basic, loaded, maxed;
-    ft_practice_loadout(FT_KIT_BASIC, &basic);
-    ft_practice_loadout(FT_KIT_LOADED, &loaded);
-    ft_practice_loadout(FT_KIT_MAX, &maxed);
-
-    int nb = 0, nl = 0, nm = 0;
-    for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) {
-        nb += basic.stacks[i];
-        nl += loaded.stacks[i];
-        nm += maxed.stacks[i];
-    }
-    CHECK(nl > nb, "Loaded installs more than Basic (%d vs %d)", nl, nb);
-    CHECK(nm >= nl, "Max installs at least as much as Loaded (%d vs %d)", nm, nl);
 
     /* A practice match is playable end to end and terminates. */
     FtPractice play;
     ft_practice_init(&play, 21u);
     play.group = FT_PRACTICE_GROUPS - 1; /* the trio */
     play.level = 6;
-    play.kit = FT_KIT_LOADED;
 
     FtEncounter run;
     ft_practice_start(&play, &run);
@@ -2188,14 +2065,11 @@ static void test_practice(void) {
 static void test_defeat(void) {
     section("foes are seen to die");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     const FtEnemyId three[FT_MAX_ENEMIES] = {
         FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET};
 
     FtEncounter e;
-    ft_encounter_init(&e, three, 3, &lo, 5);
+    ft_encounter_init(&e, three, 3, 5);
 
     /* Standing foes are not falling over. */
     for(uint8_t i = 0; i < 3; i++) {
@@ -2263,7 +2137,7 @@ static void test_defeat(void) {
 
     /* A foe that was already down before this turn does not fall again. */
     FtEncounter old;
-    ft_encounter_init(&old, three, 3, &lo, 5);
+    ft_encounter_init(&old, three, 3, 5);
     old.phase = FT_PHASE_RESULT;
     old.phase_ms = FT_ANIM_MS / 2;
     old.foes[1].charge = 0;
@@ -2283,12 +2157,10 @@ static void fill_save(FtSaveData* d) {
     d->stats.charge_max = 34;
     d->stats.ram = 3;
     d->stats.ram_max = 11;
-    d->stats.flash_used = 5;
-    d->stats.flash_max = 9;
+    d->stats.power = 9;
     d->stats.level = 6;
     d->stats.xp = 73;
 
-    for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) d->loadout.stacks[i] = (uint8_t)(i + 1u);
 
     d->room = 2;
     d->tx = 13;
@@ -2306,14 +2178,10 @@ static bool save_eq(const FtSaveData* a, const FtSaveData* b) {
     if(a->stats.charge_max != b->stats.charge_max) return false;
     if(a->stats.ram != b->stats.ram) return false;
     if(a->stats.ram_max != b->stats.ram_max) return false;
-    if(a->stats.flash_used != b->stats.flash_used) return false;
-    if(a->stats.flash_max != b->stats.flash_max) return false;
+    if(a->stats.power != b->stats.power) return false;
     if(a->stats.level != b->stats.level) return false;
     if(a->stats.xp != b->stats.xp) return false;
 
-    for(uint8_t i = 0; i < FT_MODULE_COUNT; i++) {
-        if(a->loadout.stacks[i] != b->loadout.stacks[i]) return false;
-    }
     if(a->room != b->room || a->tx != b->tx || a->ty != b->ty) return false;
     if(a->save_room != b->save_room) return false;
     if(a->save_tx != b->save_tx || a->save_ty != b->save_ty) return false;
@@ -2402,7 +2270,6 @@ static void test_save_world(void) {
     ft_world_enter(&w, 2, 3, 4);
     ft_world_clear_entity(&w, 0);
     level_into(&w.stats, FT_UP_RAM);
-    ft_loadout_add(&w.loadout, FT_MOD_AMPLIFY);
 
     w.save_room = 2;
     w.save_tx = 3;
@@ -2428,7 +2295,6 @@ static void test_save_world(void) {
     CHECK_EQ(loaded.save_room, 2);
     CHECK_EQ(loaded.stats.ram_max, w.stats.ram_max);
     CHECK_EQ(loaded.stats.level, w.stats.level);
-    CHECK_EQ(loaded.loadout.stacks[FT_MOD_AMPLIFY], 1);
     CHECK(!coach, "the tips setting survives too");
 
     /* Loading walks you into the room, and walking into a room repopulates
@@ -2460,15 +2326,12 @@ static void test_save_world(void) {
 static void test_payloads(void) {
     section("status payloads");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* Every payload in the data must be one the encounter actually applies.
      * All three were declared, ft_resolve_hit even computed payload_applied,
      * and nothing read it: an attack that says it corrupts you and does not
      * is worse than one that never claimed to. */
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 3);
 
     for(uint8_t i = 0; i < FT_PAYLOAD_COUNT; i++) {
         CHECK_EQ(ft_encounter_status(&e, (FtPayload)i), 0);
@@ -2481,7 +2344,7 @@ static void test_payloads(void) {
     CHECK(ft_encounter_status_tag(&e) != NULL, "and a tagged one does");
 
     const int16_t hp0 = e.roll.target;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 3);
     e.status[FT_PAYLOAD_CORRUPT] = 1;
 
     int rounds = 0;
@@ -2499,7 +2362,7 @@ static void test_payloads(void) {
 
     /* Drain: costs MP the same way. */
     FtEncounter dr;
-    ft_encounter_init_single(&dr, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&dr, FT_ENEMY_STRAY_PACKET, 3);
     dr.stats.ram = dr.stats.ram_max;
     dr.status[FT_PAYLOAD_DRAIN] = FT_STATUS_TURNS;
 
@@ -2519,7 +2382,7 @@ static void test_payloads(void) {
     /* Stall: halves the round's actions, which is what "may lose the turn"
      * means on a two-action round. */
     FtEncounter st;
-    ft_encounter_init_single(&st, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&st, FT_ENEMY_STRAY_PACKET, 3);
     CHECK_EQ(ft_encounter_turns_this_round(&st), 2);
 
     st.status[FT_PAYLOAD_STALL] = FT_STATUS_TURNS;
@@ -2541,7 +2404,7 @@ static void test_payloads(void) {
 
     /* End to end: take the surge, and be corrupted by it. */
     FtEncounter fight;
-    ft_encounter_init_single(&fight, FT_ENEMY_MAST_RELAY, &lo, 3);
+    ft_encounter_init_single(&fight, FT_ENEMY_MAST_RELAY, 3);
 
     bool got = false;
     for(int i = 0; i < 120000 && !ft_encounter_over(&fight); i++) {
@@ -2560,24 +2423,21 @@ static void test_payloads(void) {
 
     /* A new fight starts clean, whatever the last one did. */
     FtEncounter fresh;
-    ft_encounter_init_single(&fresh, FT_ENEMY_STRAY_PACKET, &lo, 9);
+    ft_encounter_init_single(&fresh, FT_ENEMY_STRAY_PACKET, 9);
     CHECK(ft_encounter_status_tag(&fresh) == NULL, "statuses do not carry over");
 }
 
 static void test_ambush(void) {
     section("who reached whom");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* Walking into a foe: you open, as always. */
     FtEncounter mine;
-    ft_encounter_init_single(&mine, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&mine, FT_ENEMY_STRAY_PACKET, 3);
     CHECK_EQ(mine.phase, FT_PHASE_MENU);
 
     /* One walking into you: it opens. */
     FtEncounter theirs;
-    ft_encounter_init_single(&theirs, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&theirs, FT_ENEMY_STRAY_PACKET, 3);
     ft_encounter_enemy_opens(&theirs);
     CHECK_EQ(theirs.phase, FT_PHASE_TELEGRAPH);
 
@@ -2591,14 +2451,14 @@ static void test_ambush(void) {
     /* A board whose only foe never takes turns cannot be handed the opening
      * — a bulwark ambush must not stall the fight before it starts. */
     FtEncounter wall;
-    ft_encounter_init_single(&wall, FT_ENEMY_BLANK_WALL, &lo, 3);
+    ft_encounter_init_single(&wall, FT_ENEMY_BLANK_WALL, 3);
     ft_encounter_enemy_opens(&wall);
     CHECK_EQ(wall.phase, FT_PHASE_MENU);
 
     /* Same for a lone sleeper's opposite: a sleeper alone is awake, so it
      * can take the ambush. */
     FtEncounter sleeper;
-    ft_encounter_init_single(&sleeper, FT_ENEMY_COLD_BOOTER, &lo, 3);
+    ft_encounter_init_single(&sleeper, FT_ENEMY_COLD_BOOTER, 3);
     ft_encounter_enemy_opens(&sleeper);
     CHECK_EQ(sleeper.phase, FT_PHASE_TELEGRAPH);
 
@@ -2631,15 +2491,12 @@ static void test_ambush(void) {
 static void test_always_something_to_do(void) {
     section("never stuck");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* MP gates the strong module, so the question this raises is whether a
      * board can ever leave the player with nothing at all to press. It must
      * not: Guard and Focus cost nothing and Guard is what buys MP back. */
     for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
         FtEncounter e;
-        ft_encounter_init_single(&e, (FtEnemyId)i, &lo, 3);
+        ft_encounter_init_single(&e, (FtEnemyId)i, 3);
 
         for(int16_t mp = 0; mp <= 3; mp++) {
             e.stats.ram = mp;
@@ -2661,7 +2518,7 @@ static void test_always_something_to_do(void) {
     /* Out of MP the strong module is refused, and the refusal names the fix
      * rather than just saying no. */
     FtEncounter dry;
-    ft_encounter_init_single(&dry, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&dry, FT_ENEMY_STRAY_PACKET, 3);
     dry.stats.ram = 0;
 
     CHECK(!ft_encounter_action_available(&dry, FT_ACTION_CONTACT),
@@ -2678,7 +2535,7 @@ static void test_always_something_to_do(void) {
 
     /* Spending it actually costs: the number on screen has to move. */
     FtEncounter spend;
-    ft_encounter_init_single(&spend, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_init_single(&spend, FT_ENEMY_STRAY_PACKET, 3);
 
     const int16_t before = spend.stats.ram;
     spend.menu_index = FT_ACTION_CONTACT;
@@ -2696,14 +2553,11 @@ static void test_always_something_to_do(void) {
 static void test_bulwark(void) {
     section("a wall in front");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     const FtEnemyId row[FT_MAX_ENEMIES] = {
         FT_ENEMY_BLANK_WALL, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
 
     FtEncounter e;
-    ft_encounter_init(&e, row, 3, &lo, 5);
+    ft_encounter_init(&e, row, 3, 5);
 
     /* Nothing behind it can be touched, by anything. */
     CHECK(ft_encounter_can_reach(&e, FT_ACTION_CONTACT, 0), "the wall can be hit");
@@ -2735,7 +2589,7 @@ static void test_bulwark(void) {
     CHECK(ft_encounter_foe_awake(&e, 1), "the ones behind it are not");
 
     FtEncounter run;
-    ft_encounter_init(&run, row, 3, &lo, 5);
+    ft_encounter_init(&run, row, 3, 5);
 
     bool wall_acted = false, other_acted = false;
     for(int i = 0; i < 60000 && !ft_encounter_over(&run); i++) {
@@ -2753,7 +2607,7 @@ static void test_bulwark(void) {
 
     /* Once it is down, everything opens up. */
     FtEncounter fell;
-    ft_encounter_init(&fell, row, 3, &lo, 5);
+    ft_encounter_init(&fell, row, 3, 5);
     fell.foes[0].charge = 0;
 
     for(uint8_t i = 1; i < 3u; i++) {
@@ -2767,14 +2621,11 @@ static void test_bulwark(void) {
 static void test_sleeper(void) {
     section("the one that wakes up");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     const FtEnemyId row[FT_MAX_ENEMIES] = {
         FT_ENEMY_STRAY_PACKET, FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_COLD_BOOTER};
 
     FtEncounter e;
-    ft_encounter_init(&e, row, 3, &lo, 5);
+    ft_encounter_init(&e, row, 3, 5);
 
     /* Asleep while anything else lives — but hittable the whole time, so you
      * get to choose whether to deal with it early. */
@@ -2791,7 +2642,7 @@ static void test_sleeper(void) {
 
     /* Awake, it leads with its last attack, which is the big one. */
     FtEncounter solo;
-    ft_encounter_init_single(&solo, FT_ENEMY_COLD_BOOTER, &lo, 5);
+    ft_encounter_init_single(&solo, FT_ENEMY_COLD_BOOTER, 5);
 
     const uint8_t last = (uint8_t)(FT_ENEMIES[FT_ENEMY_COLD_BOOTER].attack_count - 1u);
     const FtAttack* big = &FT_ENEMIES[FT_ENEMY_COLD_BOOTER].attacks[last];
@@ -2820,7 +2671,7 @@ static void test_sleeper(void) {
      * the fight cannot stall. */
     FtEncounter pair;
     const FtEnemyId two[2] = {FT_ENEMY_COLD_BOOTER, FT_ENEMY_COLD_BOOTER};
-    ft_encounter_init(&pair, two, 2, &lo, 5);
+    ft_encounter_init(&pair, two, 2, 5);
 
     CHECK(!ft_encounter_foe_awake(&pair, 0), "two sleepers are both asleep");
     pair.foes[0].charge = 0;
@@ -2829,9 +2680,6 @@ static void test_sleeper(void) {
 
 static void test_fast_turn_order(void) {
     section("FAST acts before you");
-
-    FtLoadout lo;
-    ft_loadout_init(&lo);
 
     /* FAST was a published attribute that nothing read: ft_priority.c computed
      * FT_PRIO_FAST_ENEMY and the encounter never asked, so the Sealed Lock
@@ -2843,7 +2691,7 @@ static void test_fast_turn_order(void) {
      * foes the opening instead took the prologue's last fight from 57% to
      * 32% at low skill, which is not "quick", it is "ambushed". */
     FtEncounter quick;
-    ft_encounter_init_single(&quick, FT_ENEMY_SCRAP_CRAWLER, &lo, 3);
+    ft_encounter_init_single(&quick, FT_ENEMY_SCRAP_CRAWLER, 3);
     CHECK_EQ(quick.phase, FT_PHASE_MENU);
     CHECK(!quick.fast_phase, "the player always opens");
 
@@ -2851,7 +2699,7 @@ static void test_fast_turn_order(void) {
     const FtEnemyId mixed[2] = {FT_ENEMY_STRAY_PACKET, FT_ENEMY_SCRAP_CRAWLER};
 
     FtEncounter e;
-    ft_encounter_init(&e, mixed, 2, &lo, 3);
+    ft_encounter_init(&e, mixed, 2, 3);
 
     /* Neither can die, or the order stops being observable. */
     e.foes[0].charge = 900;
@@ -2902,7 +2750,7 @@ static void test_fast_turn_order(void) {
     const FtEnemyId allfast[2] = {FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_GATE_DRONE};
 
     FtEncounter rush;
-    ft_encounter_init(&rush, allfast, 2, &lo, 3);
+    ft_encounter_init(&rush, allfast, 2, 3);
     CHECK_EQ(rush.phase, FT_PHASE_MENU);
 
     int menus = 0;
@@ -2919,7 +2767,7 @@ static void test_fast_turn_order(void) {
     /* Bracing does not carry across a round: it is cleared before the next
      * set of foes acts, or Defend would cover a hit from two rounds away. */
     FtEncounter brace;
-    ft_encounter_init_single(&brace, FT_ENEMY_SCRAP_CRAWLER, &lo, 3);
+    ft_encounter_init_single(&brace, FT_ENEMY_SCRAP_CRAWLER, 3);
     brace.foes[0].charge = 900;
 
     brace.menu_index = FT_ACTION_DEFEND;
@@ -3000,15 +2848,12 @@ static void test_enemy_roster(void) {
 
     /* Every roster must be fightable: at least one living foe, and at least
      * one that each of the two base modules can reach between them. */
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     for(uint8_t r = 0; r < 16u; r++) {
         const FtRoster* roster = ft_roster(r);
         if(roster->count == 0u) continue;
 
         FtEncounter e;
-        ft_encounter_init(&e, roster->foes, roster->count, &lo, 1);
+        ft_encounter_init(&e, roster->foes, roster->count, 1);
 
         uint8_t reachable = 0;
         int wall = -1;
@@ -3049,14 +2894,11 @@ static void test_guide(void) {
     }
     CHECK_EQ(ft_guide_nth(&g, 0), FT_ENEMY_COUNT);
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* Meeting a group records every foe in it, not just the first. */
     const FtEnemyId pair[2] = {FT_ENEMY_MAST_RELAY, FT_ENEMY_DRIFT_BEACON};
 
     FtEncounter e;
-    ft_encounter_init(&e, pair, 2, &lo, 1);
+    ft_encounter_init(&e, pair, 2, 1);
     ft_guide_note_encounter(&g, &e);
 
     CHECK_EQ(ft_guide_count(&g), 2);
@@ -3079,7 +2921,7 @@ static void test_guide(void) {
 
     for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
         FtEncounter one;
-        ft_encounter_init_single(&one, (FtEnemyId)i, &lo, 1);
+        ft_encounter_init_single(&one, (FtEnemyId)i, 1);
         ft_guide_note_encounter(&all, &one);
     }
     CHECK_EQ(ft_guide_count(&all), FT_ENEMY_COUNT);
@@ -3149,14 +2991,11 @@ static void test_guide(void) {
 static void test_defend_is_worth_it(void) {
     section("bracing is a real choice");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* There was no way to recover Charge in a fight at all, so every fight
      * was attrition and attacking was always right — which is exactly why
      * Protect and Focus never got used. */
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 4);
 
     e.roll.current = 5;
     e.roll.target = 5;
@@ -3172,7 +3011,7 @@ static void test_defend_is_worth_it(void) {
 
     /* It cannot overheal past the maximum. */
     FtEncounter full;
-    ft_encounter_init_single(&full, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    ft_encounter_init_single(&full, FT_ENEMY_STRAY_PACKET, 4);
     full.menu_index = FT_ACTION_DEFEND;
     ft_encounter_press_ok(&full);
     CHECK_EQ(full.roll.current, full.stats.charge_max);
@@ -3193,16 +3032,13 @@ static void test_defend_is_worth_it(void) {
 static void test_losing_costs(void) {
     section("losing costs the run");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* A player who never acts against three of the toughest enemy loses. The
      * point of the test is what that loss is worth. */
     const FtEnemyId trio[FT_MAX_ENEMIES] = {
         FT_ENEMY_SEALED_LOCK, FT_ENEMY_SEALED_LOCK, FT_ENEMY_SEALED_LOCK};
 
     FtEncounter e;
-    ft_encounter_init(&e, trio, 3, &lo, 7);
+    ft_encounter_init(&e, trio, 3, 7);
 
     for(int i = 0; i < 200000 && !ft_encounter_over(&e); i++) {
         if(e.phase == FT_PHASE_MENU) {
@@ -3276,9 +3112,9 @@ static void test_levelup(void) {
     /* A refused choice costs nothing: the level stays owed. */
     FtStats capped;
     ft_stats_init(&capped);
-    capped.flash_max = FT_CAP_FLASH;
+    capped.power = FT_CAP_POWER;
     const int16_t lv = capped.level;
-    CHECK(!level_into(&capped, FT_UP_FLASH), "a capped stat refuses");
+    CHECK(!level_into(&capped, FT_UP_POWER), "a capped stat refuses");
     CHECK_EQ(capped.level, lv);
 
     /* XP banks into levels, and stops at the cap for the chapters done. */
@@ -3308,13 +3144,10 @@ static void test_levelup(void) {
     CHECK_EQ(maxed.xp, 0);
 
     /* A won fight is worth the sum of its foes, tapered individually. */
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     const FtEnemyId trio[FT_MAX_ENEMIES] = {
         FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK};
     FtEncounter e;
-    ft_encounter_init(&e, trio, 3, &lo, 1);
+    ft_encounter_init(&e, trio, 3, 1);
 
     /* Not won yet: nothing owed. */
     CHECK_EQ(ft_encounter_xp(&e), 0);
@@ -3406,14 +3239,11 @@ static void test_scene_wipe(void) {
 static void test_broadcast_sweep(void) {
     section("broadcast reaches foes in order");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     const FtEnemyId group[FT_MAX_ENEMIES] = {
         FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET};
 
     FtEncounter e;
-    ft_encounter_init(&e, group, 3, &lo, 9);
+    ft_encounter_init(&e, group, 3, 9);
 
     /* A single-target attack lands on one frame, on everybody it touches. */
     e.menu_index = FT_ACTION_CONTACT;
@@ -3436,7 +3266,7 @@ static void test_broadcast_sweep(void) {
 
     /* A duel has nothing to sweep across. */
     FtEncounter duel;
-    ft_encounter_init_single(&duel, FT_ENEMY_STRAY_PACKET, &lo, 9);
+    ft_encounter_init_single(&duel, FT_ENEMY_STRAY_PACKET, 9);
     duel.menu_index = FT_ACTION_BROADCAST;
     CHECK_EQ(ft_encounter_foe_hit_at(&duel, 0), FT_ANIM_STRIKE);
 }
@@ -3594,33 +3424,31 @@ static void test_orbs(void) {
     ft_orb_spend(&t, FT_UP_CHARGE);
     ft_orb_spend(&t, FT_UP_CHARGE);
     ft_orb_spend(&t, FT_UP_RAM);
-    ft_orb_spend(&t, FT_UP_FLASH);
+    ft_orb_spend(&t, FT_UP_POWER);
     CHECK_EQ(t.orbs, banked - 4);
 
     while(ft_orb_refund(&t, FT_UP_CHARGE)) {}
     while(ft_orb_refund(&t, FT_UP_RAM)) {}
-    while(ft_orb_refund(&t, FT_UP_FLASH)) {}
+    while(ft_orb_refund(&t, FT_UP_POWER)) {}
 
     CHECK_EQ(t.orbs, banked);
     CHECK_EQ(t.charge_max, FT_START_CHARGE);
     CHECK_EQ(t.ram_max, FT_START_RAM);
-    CHECK_EQ(t.flash_max, FT_START_FLASH);
+    CHECK_EQ(t.power, FT_START_POWER);
 
-    /* Cards are a budget something else is spending. Pulling an orb out from
-     * under an installed card would leave flash_used above flash_max, and
-     * every install check downstream would read that as "no room" forever. */
+    /* Power is a plain number with no consumer, so it comes back out
+     * whenever it went in. Cards used to be a budget something else was
+     * spending, and a refund could leave that budget negative; deleting
+     * Cards deleted the whole class of bug. */
     FtStats c;
     ft_stats_init(&c);
     ft_level_take(&c);
-    CHECK(ft_orb_spend(&c, FT_UP_FLASH), "a card slot is bought");
+    CHECK(ft_orb_spend(&c, FT_UP_POWER), "a point of damage is bought");
+    CHECK_EQ(c.power, FT_START_POWER + FT_LEVEL_UP_POWER);
 
-    ft_flash_install(&c, c.flash_max);
-    CHECK(!ft_orb_can_refund(&c, FT_UP_FLASH), "a full budget refuses the refund");
-    CHECK(!ft_orb_refund(&c, FT_UP_FLASH), "and nothing moves");
-    CHECK(c.flash_used <= c.flash_max, "so the budget never goes negative");
-
-    ft_flash_uninstall(&c, c.flash_max);
-    CHECK(ft_orb_refund(&c, FT_UP_FLASH), "with the cards off, it comes out");
+    CHECK(ft_orb_can_refund(&c, FT_UP_POWER), "and always comes back out");
+    CHECK(ft_orb_refund(&c, FT_UP_POWER), "which it does");
+    CHECK_EQ(c.power, FT_START_POWER);
 
     /* A capped stat refuses, and the orb stays in hand rather than vanishing. */
     FtStats m;
@@ -3637,11 +3465,11 @@ static void test_orbs(void) {
         ft_level_take(&hi);
         ft_orb_spend(&hi, FT_UP_CHARGE);
         ft_orb_spend(&hi, FT_UP_RAM);
-        ft_orb_spend(&hi, FT_UP_FLASH);
+        ft_orb_spend(&hi, FT_UP_POWER);
     }
     CHECK(hi.charge_max <= FT_CAP_CHARGE, "HP stops at its cap");
     CHECK(hi.ram_max <= FT_CAP_RAM, "MP stops at its cap");
-    CHECK(hi.flash_max <= FT_CAP_FLASH, "Cards stop at their cap");
+    CHECK(hi.power <= FT_CAP_POWER, "Cards stop at their cap");
 }
 
 /* ---- Quests ------------------------------------------------------------ */
@@ -3922,12 +3750,9 @@ static void test_notice(void) {
 static void test_guard_aftermath(void) {
     section("where the guard landed");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* A press inside the jam window reports how far before impact it was. */
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 7u);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 7u);
     CHECK_EQ(ft_encounter_guard_offset(&e), -1);
 
     e.phase = FT_PHASE_TELEGRAPH;
@@ -3961,7 +3786,7 @@ static void test_guard_aftermath(void) {
      * distinction is the whole point: "you were early" and "you did nothing"
      * used to look identical. */
     FtEncounter early;
-    ft_encounter_init_single(&early, FT_ENEMY_STRAY_PACKET, &lo, 7u);
+    ft_encounter_init_single(&early, FT_ENEMY_STRAY_PACKET, 7u);
     early.phase = FT_PHASE_TELEGRAPH;
     early.phase_ms = FT_READY_MS;
     ft_encounter_tick(&early, 100);
@@ -3975,7 +3800,7 @@ static void test_guard_aftermath(void) {
 
     /* No press at all stays negative. */
     FtEncounter none;
-    ft_encounter_init_single(&none, FT_ENEMY_STRAY_PACKET, &lo, 7u);
+    ft_encounter_init_single(&none, FT_ENEMY_STRAY_PACKET, 7u);
     none.phase = FT_PHASE_TELEGRAPH;
     none.phase_ms = FT_READY_MS;
     while(none.phase == FT_PHASE_TELEGRAPH) ft_encounter_tick(&none, 20);
@@ -3986,7 +3811,7 @@ static void test_guard_aftermath(void) {
     /* Each new wind-up starts from nothing, so last round's reading is never
      * shown against this round's hit. */
     FtEncounter fresh;
-    ft_encounter_init_single(&fresh, FT_ENEMY_STRAY_PACKET, &lo, 7u);
+    ft_encounter_init_single(&fresh, FT_ENEMY_STRAY_PACKET, 7u);
     fresh.last_guard_offset = 123;
     fresh.guard_pressed = true;
 
@@ -4028,12 +3853,9 @@ static bool telegraph_and_guard(FtEncounter* e, int32_t before_impact) {
 static void test_deflect(void) {
     section("deflect");
 
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     /* Arming costs a bar and the action, and does no damage by itself. */
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 5);
     e.signal.value = FT_SIGNAL_PER_BAR;
 
     const int16_t foe_before = e.foes[0].charge;
@@ -4055,7 +3877,7 @@ static void test_deflect(void) {
 
     /* A perfect block sends the whole attack back. */
     FtEncounter full;
-    ft_encounter_init_single(&full, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&full, FT_ENEMY_STRAY_PACKET, 5);
     full.deflect_armed = true;
     full.phase = FT_PHASE_TELEGRAPH;
     full.phase_ms = 0;
@@ -4072,7 +3894,7 @@ static void test_deflect(void) {
 
     /* A jam sends half of it. */
     FtEncounter half;
-    ft_encounter_init_single(&half, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&half, FT_ENEMY_STRAY_PACKET, 5);
     half.deflect_armed = true;
     half.phase = FT_PHASE_TELEGRAPH;
     half.phase_ms = 0;
@@ -4088,7 +3910,7 @@ static void test_deflect(void) {
 
     /* No guard, no bounce — the bar is simply spent. */
     FtEncounter missed;
-    ft_encounter_init_single(&missed, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&missed, FT_ENEMY_STRAY_PACKET, 5);
     missed.deflect_armed = true;
     missed.phase = FT_PHASE_TELEGRAPH;
     missed.phase_ms = 0;
@@ -4101,7 +3923,7 @@ static void test_deflect(void) {
 
     /* Without the stance, a perfect block is just a perfect block. */
     FtEncounter bare;
-    ft_encounter_init_single(&bare, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&bare, FT_ENEMY_STRAY_PACKET, 5);
     bare.phase = FT_PHASE_TELEGRAPH;
     bare.phase_ms = 0;
 
@@ -4117,7 +3939,7 @@ static void test_deflect(void) {
     const FtEnemyId three[3] = {
         FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET};
     FtEncounter wide;
-    ft_encounter_init(&wide, three, 3u, &lo, 5);
+    ft_encounter_init(&wide, three, 3u, 5);
     wide.deflect_armed = true;
     wide.phase = FT_PHASE_TELEGRAPH;
     wide.acting_foe = 0;
@@ -4135,7 +3957,7 @@ static void test_deflect(void) {
     /* A contact attack goes back to the one that threw it and nobody else. */
     const FtEnemyId pair[2] = {FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_SCRAP_CRAWLER};
     FtEncounter one;
-    ft_encounter_init(&one, pair, 2u, &lo, 5);
+    ft_encounter_init(&one, pair, 2u, 5);
     one.deflect_armed = true;
     one.phase = FT_PHASE_TELEGRAPH;
     one.acting_foe = 1;
@@ -4151,7 +3973,7 @@ static void test_deflect(void) {
     /* A wall in front eats the bounce, which is what a wall is for. */
     const FtEnemyId walled[2] = {FT_ENEMY_BLANK_WALL, FT_ENEMY_SCRAP_CRAWLER};
     FtEncounter shielded;
-    ft_encounter_init(&shielded, walled, 2u, &lo, 5);
+    ft_encounter_init(&shielded, walled, 2u, 5);
     shielded.deflect_armed = true;
     shielded.phase = FT_PHASE_TELEGRAPH;
     shielded.acting_foe = 1;
@@ -4166,7 +3988,7 @@ static void test_deflect(void) {
 
     /* A jammer locks the meter, so the stance is never even on offer. */
     FtEncounter jammed;
-    ft_encounter_init_single(&jammed, FT_ENEMY_MAST_RELAY, &lo, 5);
+    ft_encounter_init_single(&jammed, FT_ENEMY_MAST_RELAY, 5);
     jammed.signal.value = FT_SIGNAL_PER_BAR * 4;
     CHECK(jammed.signal.locked, "a jammer locks the meter");
     CHECK(ft_encounter_action_block(&jammed, FT_ACTION_DEFLECT) != NULL,
@@ -4176,7 +3998,7 @@ static void test_deflect(void) {
      * Any action cost lands in the fights where SP actually fills, which are
      * the close ones, and the simulator measured that as a straight loss. */
     FtEncounter free_act;
-    ft_encounter_init_single(&free_act, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&free_act, FT_ENEMY_STRAY_PACKET, 5);
     free_act.signal.value = FT_SIGNAL_PER_BAR;
 
     const uint16_t turns_before = free_act.player_turns;
@@ -4190,7 +4012,7 @@ static void test_deflect(void) {
     /* And it waits for its counter rather than expiring unused: the bar is
      * never spent on nothing. */
     FtEncounter waits;
-    ft_encounter_init_single(&waits, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&waits, FT_ENEMY_STRAY_PACKET, 5);
     waits.deflect_armed = true;
     waits.phase = FT_PHASE_TELEGRAPH;
     waits.phase_ms = 0;
@@ -4211,7 +4033,7 @@ static void test_deflect(void) {
      * defensive half is what pays for the bar; the bounce alone measured at
      * about three damage, against an action worth six to eight. */
     FtEncounter soft;
-    ft_encounter_init_single(&soft, FT_ENEMY_SCRAP_CRAWLER, &lo, 5);
+    ft_encounter_init_single(&soft, FT_ENEMY_SCRAP_CRAWLER, 5);
     soft.phase = FT_PHASE_TELEGRAPH;
     soft.phase_ms = 0;
     CHECK(telegraph_and_guard(&soft, 120), "a plain jam resolved");
@@ -4220,7 +4042,7 @@ static void test_deflect(void) {
     CHECK(halved > 0, "which still lets something through (%d)", (int)halved);
 
     FtEncounter hard;
-    ft_encounter_init_single(&hard, FT_ENEMY_SCRAP_CRAWLER, &lo, 5);
+    ft_encounter_init_single(&hard, FT_ENEMY_SCRAP_CRAWLER, 5);
     hard.deflect_armed = true;
     hard.phase = FT_PHASE_TELEGRAPH;
     hard.phase_ms = 0;
@@ -4231,7 +4053,7 @@ static void test_deflect(void) {
 
     /* Every reason it can refuse fits one line. */
     FtEncounter say;
-    ft_encounter_init_single(&say, FT_ENEMY_STRAY_PACKET, &lo, 5);
+    ft_encounter_init_single(&say, FT_ENEMY_STRAY_PACKET, 5);
     say.signal.value = 0;
     const char* why = ft_encounter_action_block(&say, FT_ACTION_DEFLECT);
     CHECK(why && strlen(why) <= FT_TUTORIAL_MAX_CHARS, "no bar: \"%s\"", why ? why : "");
@@ -4613,11 +4435,8 @@ static void test_items(void) {
     CHECK(!ft_item_useful(FT_ITEM_CELL, 5, 20, 5, 5), "and not the other way round");
 
     /* ---- in a fight ---- */
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     FtEncounter e;
-    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, 4);
 
     CHECK(ft_encounter_action_block(&e, FT_ACTION_ITEM) != NULL,
           "empty pockets refuse");
@@ -4658,7 +4477,7 @@ static void test_items(void) {
 
     /* Healing goes through the roll, so a lethal hit can be eaten out of. */
     FtEncounter hurt;
-    ft_encounter_init_single(&hurt, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    ft_encounter_init_single(&hurt, FT_ENEMY_STRAY_PACKET, 4);
     ft_pockets_add(&hurt.pockets, FT_ITEM_RATION);
     hurt.roll.current = 9;
     hurt.roll.target = 0; /* a brownout: rolling toward death */
@@ -4977,8 +4796,6 @@ int main(void) {
     test_signal_meter();
     test_priority();
     test_progression();
-    test_flash_budget();
-    test_loadout();
     test_enemy_table();
     test_guard_timing();
     test_rating_timing();

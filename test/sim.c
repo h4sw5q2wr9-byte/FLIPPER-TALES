@@ -48,11 +48,8 @@ static uint32_t press_offset(FtRng* rng, uint32_t window, uint32_t skill_pct, bo
 static bool g_use_deflect = false;
 
 static void play(const FtRoster* roster, uint32_t skill, uint32_t seed, SimResult* out) {
-    FtLoadout lo;
-    ft_loadout_init(&lo);
-
     FtEncounter e;
-    ft_encounter_init(&e, roster->foes, roster->count, &lo, seed);
+    ft_encounter_init(&e, roster->foes, roster->count, seed);
     e.coach = false;
 
     FtRng rng;

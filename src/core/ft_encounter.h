@@ -70,8 +70,6 @@ typedef struct {
     FtStats          stats;
     FtRoll           roll;
     FtSignal         signal;
-    FtLoadout        loadout;
-    FtLoadoutEffects fx;
 
     FtFoe   foes[FT_MAX_ENEMIES];
     uint8_t foe_count;
@@ -156,6 +154,12 @@ typedef struct {
 
 /* Which guard a press this many ms before impact earns.
  *
+ * `hard_mode` is always false at the moment: it was a Card, and the Cards
+ * system is gone. The parameter stays because halving both windows is the
+ * whole of what a difficulty option would need, and both branches are
+ * tested — deleting it would throw away working, covered behaviour to save
+ * one argument.
+ *
  * A GUARDED attack cannot be captured, so its jam window shrinks to what the
  * capture window would have been: losing the reward should cost precision,
  * not just remove an option. */
@@ -169,15 +173,10 @@ FtRating ft_rating_from_timing(int32_t ms_from_perfect);
 
 /* Up to FT_MAX_ENEMIES foes, laid out and resolved left to right. */
 void ft_encounter_init(
-    FtEncounter*     e,
-    const FtEnemyId* foes,
-    uint8_t          count,
-    const FtLoadout* lo,
-    uint32_t         seed);
+    FtEncounter* e, const FtEnemyId* foes, uint8_t count, uint32_t seed);
 
 /* Convenience for a duel. */
-void ft_encounter_init_single(
-    FtEncounter* e, FtEnemyId foe, const FtLoadout* lo, uint32_t seed);
+void ft_encounter_init_single(FtEncounter* e, FtEnemyId foe, uint32_t seed);
 
 /* Hand the opening turn to the foes. Used when one of them reached the
  * player rather than the other way round. */

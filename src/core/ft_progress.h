@@ -7,14 +7,14 @@
 typedef enum {
     FT_UP_CHARGE = 0,
     FT_UP_RAM,
-    FT_UP_FLASH,
+    FT_UP_POWER,
     FT_UP_COUNT
 } FtLevelChoice;
 
 typedef struct {
     int16_t charge, charge_max;
     int16_t ram, ram_max;
-    int16_t flash_used, flash_max;
+    int16_t power; /* flat damage added to every attack */
     int16_t level;
     int16_t xp;
 
@@ -49,9 +49,7 @@ int16_t ft_orb_step(FtLevelChoice choice);
  * mid-run actually heals you by that much. */
 bool ft_orb_spend(FtStats* s, FtLevelChoice choice);
 
-/* Can this orb be taken back out? False when none went in here, or when
- * pulling it would leave less Card space than is currently installed —
- * refunding into a negative budget is the one way this could corrupt a run. */
+/* Can this orb be taken back out? False only when none went in here. */
 bool ft_orb_can_refund(const FtStats* s, FtLevelChoice choice);
 
 /* Take an orb back out. Current HP and MP are clamped to the new maximum. */
@@ -68,10 +66,5 @@ int16_t ft_xp_gain(FtStats* s, int16_t xp, int16_t level_cap);
  * level below, and nothing once it is 3 or more levels under. This is what
  * stops low-level farming. */
 int16_t ft_xp_award(int16_t enemy_level, int16_t player_level, int16_t base_xp);
-
-/* Flash budget: can a module costing this much still be installed? */
-bool ft_flash_can_install(const FtStats* s, int16_t cost);
-void ft_flash_install(FtStats* s, int16_t cost);
-void ft_flash_uninstall(FtStats* s, int16_t cost);
 
 #endif /* FT_PROGRESS_H */

@@ -21,15 +21,25 @@
 
 #define FT_START_CHARGE 14
 #define FT_START_RAM    5
-#define FT_START_FLASH  3
+
+/* Flat damage added to every attack. Starts at nothing: it is the third
+ * thing an orb can buy, and it replaced the Cards system whole.
+ *
+ * Cards were equippable passives with a slot budget — a second progression
+ * track on top of levels and orbs, and one nobody could name when asked what
+ * it did, because there was no way to get one and no screen to equip one.
+ * Deleting it left the player with no way to ever hit harder, so the third
+ * orb row became this: a plain number, no inventory, no budget, nothing to
+ * find or equip. */
+#define FT_START_POWER  0
 
 #define FT_CAP_CHARGE 100
 #define FT_CAP_RAM    100
-#define FT_CAP_FLASH  30
+#define FT_CAP_POWER  20
 
 #define FT_LEVEL_UP_CHARGE 5
 #define FT_LEVEL_UP_RAM    5
-#define FT_LEVEL_UP_FLASH  3
+#define FT_LEVEL_UP_POWER  1
 
 #define FT_XP_PER_LEVEL   100
 #define FT_XP_BATTLE_CAP  100

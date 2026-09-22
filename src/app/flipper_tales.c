@@ -242,9 +242,7 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
     const FtRoom* room = ft_room(app->world.room);
     const FtRoster* roster = ft_roster(room->ents[entity].roster);
 
-    ft_encounter_init(
-        &app->encounter, roster->foes, roster->count, &app->world.loadout,
-        furi_get_tick());
+    ft_encounter_init(&app->encounter, roster->foes, roster->count, furi_get_tick());
 
     /* Carry the player across: an encounter builds a level-one character on
      * its own, which is right for a standalone fight and wrong here. */
@@ -821,7 +819,7 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
 
     if(app->mode == FT_MODE_ORBS) {
         static const FtLevelChoice CHOICE[FT_UP_COUNT] = {
-            FT_UP_CHARGE, FT_UP_RAM, FT_UP_FLASH};
+            FT_UP_CHARGE, FT_UP_RAM, FT_UP_POWER};
 
         switch(event->key) {
         case InputKeyUp:
