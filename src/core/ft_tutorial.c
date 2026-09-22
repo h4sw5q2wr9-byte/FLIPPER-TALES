@@ -8,7 +8,6 @@ const char* ft_tutorial_hint(const FtEncounter* e) {
         /* The description row under the menu already names what each action
          * does and why a refused one is refused, so the coach must not repeat
          * it. It spends its line on the controls instead. */
-        if(e->menu_level == FT_MENU_ATTACK) return "BACK leaves the list";
         return "LEFT/RIGHT, then OK";
 
     case FT_PHASE_PLAYER_ACT:

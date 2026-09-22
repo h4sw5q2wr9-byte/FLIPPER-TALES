@@ -27,23 +27,6 @@ typedef enum {
     FT_PHASE_LOSE
 } FtPhase;
 
-/* The action menu is two levels: a minimal bar of three, and an attack panel
- * listing the modules by full name. Five bare abbreviations in a row read as
- * one cramped string and hid what each actually was. */
-typedef enum {
-    FT_MENU_ROOT = 0,
-    FT_MENU_ATTACK
-} FtMenuLevel;
-
-typedef enum {
-    FT_ROOT_ATTACK = 0,
-    FT_ROOT_DEFEND,
-    FT_ROOT_FOCUS,
-    FT_ROOT_COUNT
-} FtRootItem;
-
-#define FT_ATTACK_COUNT 3
-
 typedef enum {
     FT_ACTION_BROADCAST = 0, /* Sub-GHz: every foe, weaker per hit */
     FT_ACTION_CONTACT,       /* NFC: one foe, strong, halves its shield */
@@ -53,13 +36,19 @@ typedef enum {
     FT_ACTION_COUNT
 } FtAction2;
 
-/* Attack-panel entries, in order. */
-extern const FtAction2 FT_ATTACK_ITEMS[FT_ATTACK_COUNT];
-
 /* Bracing grants a real shield for the turn, not just a slower drain. Without
  * this, Defend is never worth a turn. */
 #define FT_DEFEND_SHIELD 2
 #define FT_DEFEND_RAM    1
+
+/* Bracing also patches you up a little.
+ *
+ * There was no way to recover Charge in a fight at all — not an item, not a
+ * skill, nothing — so every fight was pure attrition and attacking was always
+ * the right answer. "I never use Protect and Focus" is the correct read of a
+ * game where defending only delays the same loss. A small heal makes the turn
+ * a real choice: spend it staying alive, or spend it ending the fight. */
+#define FT_DEFEND_HEAL 2
 
 /* A replayed signal costs this many whole bars. */
 #define FT_SIGNAL_COST_BARS 1
@@ -87,12 +76,10 @@ typedef struct {
     uint8_t foe_count;
     uint8_t acting_foe; /* whose turn it is during TELEGRAPH and IMPACT */
 
-    /* menu_index is the resolved FtAction2 the player is about to take.
-     * menu_level and the two cursors are what the UI is actually showing. */
-    uint8_t     menu_index;
-    FtMenuLevel menu_level;
-    uint8_t     root_index;
-    uint8_t     attack_index;
+    /* The action the player is about to take. One flat cursor: the menu used
+     * to be two levels with the attack modules behind a drill-down, which
+     * hid two of the five actions and gave the screen two rows of buttons. */
+    uint8_t menu_index;
 
     bool defending;
 
@@ -169,12 +156,9 @@ void ft_encounter_press_ok(FtEncounter* e);
 /* Move within the current menu level. */
 void ft_encounter_menu_move(FtEncounter* e, int8_t delta);
 
-/* Open the attack panel, or take the highlighted root action. */
+/* Take the highlighted action. Kept as its own name so the app does not have
+ * to know that confirming is just a press. */
 void ft_encounter_menu_confirm(FtEncounter* e);
-
-/* Close the attack panel. Returns false when already at the root, so the app
- * knows the press should open the pause menu instead. */
-bool ft_encounter_menu_back(FtEncounter* e);
 
 /* Full name of an attack-panel entry, for the panel. */
 const char* ft_action_name(FtAction2 action);

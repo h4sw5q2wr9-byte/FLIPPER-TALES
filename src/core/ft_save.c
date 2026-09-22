@@ -61,6 +61,8 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
     put_u8(b, &at, d->lib.count);
     put_u8(b, &at, d->lib.next);
 
+    put_i16(b, &at, (int16_t)d->guide.seen);
+
     put_u8(b, &at, d->room);
     put_u8(b, &at, d->tx);
     put_u8(b, &at, d->ty);
@@ -95,6 +97,8 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     d->lib.count = get_u8(b, &at);
     d->lib.next = get_u8(b, &at);
 
+    d->guide.seen = (uint16_t)get_i16(b, &at);
+
     d->room = get_u8(b, &at);
     d->tx = get_u8(b, &at);
     d->ty = get_u8(b, &at);
@@ -113,6 +117,7 @@ static uint8_t payload_bytes(void) {
     return (uint8_t)(8u * 2u                      /* stats */
                      + FT_MODULE_COUNT            /* loadout */
                      + FT_SIGLIB_SLOTS * 2u + 2u  /* library */
+                     + 2u                         /* field guide */
                      + 6u                         /* position and save point */
                      + FT_CLEARED_BYTES + 1u);    /* flags */
 }
@@ -179,6 +184,7 @@ void ft_save_from_world(const FtWorld* w, bool coach, FtSaveData* d) {
     d->stats = w->stats;
     d->loadout = w->loadout;
     d->lib = w->lib;
+    d->guide = w->guide;
 
     d->room = w->room;
     d->tx = w->mv.tx;
@@ -198,6 +204,7 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach) {
     w->stats = d->stats;
     w->loadout = d->loadout;
     w->lib = d->lib;
+    w->guide = d->guide;
 
     /* Cleared entities are restored *before* entering, because entering is
      * what decides which foes spawn. Loading and then walking into a foe you

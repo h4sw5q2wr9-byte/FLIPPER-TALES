@@ -271,32 +271,21 @@ capture yet, no bar, meter jammed. The only case reach cannot explain by
 itself is a swing with nothing at all to hit, and the description line says so
 ("None on the floor").
 
-#### The menu is two levels deep
+#### One row, five actions
 
-Five three-letter buttons in one row were unreadable, and there was nothing to
-tell the three attacks apart from the two turn options. The menu is now a root
-bar of three full words — **ATTACK / PROTECT / FOCUS** — and ATTACK opens a
-panel listing the modules by name:
+The action row shows one action at a time — its name in a box, arrows either
+side, and a line underneath saying what it does. LEFT and RIGHT cycle all
+five. Nothing else.
 
-```
-┌─────────────────┐
-│ Sub-GHz         │   ← the panel sits on the player's half only, so the
-│ NFC             │     foes you are aiming at stay visible beside it
-│ Signal          │
-└─────────────────┘
-[ATTACK][PROTECT][FOCUS]
-  All foes, weaker.        ← one description line, fixed in place
-```
+It was a bar of three words with the three attack modules a drill-down behind
+ATTACK. That put two of the five actions an extra press away and left the
+battle screen carrying two rows of competing buttons on top of a status strip
+and a description — four things asking to be read at once on a screen 64
+pixels tall. Reported, twice, as cluttered.
 
-BACK closes the panel without spending a turn; it only reaches the pause menu
-from the root bar.
-
-`menu_index` is no longer a cursor. It is **derived** from `root_index` and
-`attack_index` by `sync_menu_index()`, and still resolves to a single
-`FtAction2` — so every availability, description and resolution rule written
-against it carries over unchanged. The description line reads the derived
-action, which is why it stays in one place at both levels instead of moving
-when the panel opens.
+**UP and DOWN do nothing here.** The row is horizontal, so it is steered
+horizontally: they used to move the cursor as well, which meant a stray thumb
+changed what you were about to do.
 
 ### 4.7b Losing
 
@@ -333,6 +322,19 @@ is "ambushed".
 
 FAST and JAM are on the title bar now. An attribute that changes the fight and
 is not on the screen is a rule the player can only learn by losing to it.
+
+### 4.7d Why Protect was never worth a turn
+
+Bracing now also heals `FT_DEFEND_HEAL` Charge.
+
+There was no way to recover Charge in a fight at all — not an item, not a
+skill, nothing. Every fight was pure attrition, so attacking was always the
+right answer and defending only changed how long the same loss took. "I never
+use Protect and Focus" is the correct read of that game.
+
+A small heal makes the turn a real question: spend it staying alive, or spend
+it ending the fight. It still shields as well, because a heal that only buys
+back what the turn cost is not a choice either.
 
 ### 4.8 Enemy attributes — Milestone 1 subset
 
@@ -647,6 +649,48 @@ width, so a long value printed straight through the label — "Travel" and
 "Boot Corridor" on top of each other. Both were comfortably on screen, so the
 off-panel check passed. The value takes its space first now and the label gets
 what is left, and the row is labelled "Go" so there is space to give.
+
+### 5.6 The field guide
+
+**Pause → Field guide**: one entry per enemy, and nothing is listed until it
+has been met. A guide that ships knowing everything is a manual; this is a
+record of the run, so it is saved with the run and lost with it.
+
+An entry is recorded when a fight *starts*, not when it is won — the thing
+that beat you is exactly the one you want to look up.
+
+Each page carries the sprite (so the page and the thing in the corridor
+match), Charge, the trait tags, a line per trait saying **what it costs you**
+rather than restating its name — "Airborne: NFC misses", "Fast: moves first",
+"Jams the S meter" — and one line per attack: its reach, its power, and what a
+guard can do about it ("Close 6  jam only").
+
+The page is four rows of eight below the header, which is exactly what the
+busiest enemy needs: two traits and two attacks. At nine rows the Sealed Lock
+lost its second attack off the bottom, which is the half of its moveset you
+most need to look up.
+
+`ft_guide.c` is pure core — one bit per enemy, asserted at compile time to fit
+the bitfield — so every line of entry text is width-checked by the tests and
+every page is rendered by the preview.
+
+### 5.7 Chasing
+
+Foes chase on a **flow field**: breadth-first out from the player's tile, so
+every walkable tile knows how far it is, and a chaser walks downhill.
+
+Before this it was a greedy step with a few fallbacks, which is not
+pathfinding — it cannot route around anything longer than itself. Cold
+Storage's sealed cell, the Turnstile's ranks and the Deadzone's voids all
+defeated it: a foe would walk into the wall between you and it until you left.
+The test walks every room, alerts a foe and requires it to actually arrive;
+three rooms failed before the field went in.
+
+One search per room per player tile serves every chaser in it, which is what
+makes it affordable. The buffers are file statics rather than part of
+`FtWorld`: they are scratch, rebuilt whenever used, and `FtWorld` gets copied
+around (saves, tests) where another kilobyte and a half would ride along for
+nothing.
 
 ## 6. Architecture
 

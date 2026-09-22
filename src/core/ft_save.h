@@ -13,6 +13,7 @@
 #define FT_SAVE_H
 
 #include "ft_data.h"
+#include "ft_guide.h"
 #include "ft_progress.h"
 #include "ft_signal.h"
 #include "ft_types.h"
@@ -25,7 +26,7 @@
 
 /* Bumped whenever the layout changes. An older or newer file is refused
  * rather than misread: a garbled save is worse than a missing one. */
-#define FT_SAVE_VERSION 2
+#define FT_SAVE_VERSION 3
 
 /* Header (4 magic + 1 version + 1 length) + payload + 4 checksum. Generous,
  * and asserted against the real encoded length by the tests. */
@@ -35,6 +36,7 @@ typedef struct {
     FtStats         stats;
     FtLoadout       loadout;
     FtSignalLibrary lib;
+    FtGuide         guide;
 
     /* Where the player stands, and where they come back to when downed. */
     uint8_t room, tx, ty;

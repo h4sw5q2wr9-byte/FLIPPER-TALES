@@ -22,7 +22,12 @@ static const FtRoster FT_ROSTERS[] = {
     {2, {FT_ENEMY_RIME_SHELL, FT_ENEMY_STRAY_PACKET, 0}},              /* Cold Storage */
     {2, {FT_ENEMY_GATE_DRONE, FT_ENEMY_SEALED_LOCK, 0}},               /* Turnstile */
     {2, {FT_ENEMY_MAST_RELAY, FT_ENEMY_DRIFT_BEACON, 0}},              /* Signal Hill */
-    {2, {FT_ENEMY_NULL_FIELD, FT_ENEMY_SCRAP_CRAWLER, 0}},             /* Deadzone */
+    /* The Null Field is the whole fight: ENCRYPTED, a jammer, and both its
+     * attacks unguardable-for-capture. Pairing it with a FAST Crawler as
+     * well put the Deadzone at 28% for an average player — two stars, no
+     * room to learn either. A plain Packet gives it a partner without
+     * giving it a second mechanic. */
+    {2, {FT_ENEMY_NULL_FIELD, FT_ENEMY_STRAY_PACKET, 0}},              /* Deadzone */
 };
 #define ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
 
@@ -329,6 +334,7 @@ void ft_world_init(FtWorld* w) {
     ft_loadout_init(&w->loadout);
     ft_stats_init(&w->stats);
     ft_siglib_init(&w->lib);
+    ft_guide_init(&w->guide);
 
     /* World stats are authoritative and carry the loadout's bonuses, because a
      * battle copies them in rather than building its own. */
@@ -369,6 +375,90 @@ static bool foe_spots(const FtWorld* w, const FtFoeWalker* k) {
     return (abs32(dx) + abs32(dy)) <= FT_FOE_ALERT;
 }
 
+/* ---- Chasing ----------------------------------------------------------
+ *
+ * A flow field: breadth-first from the player's tile outward, so every
+ * walkable tile knows how many steps it is from them. A chaser then just
+ * walks downhill.
+ *
+ * The previous version was a greedy step with a few fallbacks, which is not
+ * pathfinding — it cannot route around anything longer than itself. Cold
+ * Storage's sealed cell, the Turnstile's ranks and the Deadzone's voids all
+ * defeated it: a foe would walk into the wall between you and it until you
+ * left. One search per room per player-tile serves every foe in it, which is
+ * why this is affordable at all.
+ *
+ * The buffers are file statics rather than part of FtWorld: they are scratch,
+ * they are rebuilt from scratch every time they are used, and FtWorld gets
+ * copied around (saves, tests) where another kilobyte and a half would be
+ * carried for nothing. */
+#define FT_FLOW_TILES 512
+#define FT_FLOW_FAR   255
+
+static uint8_t  g_flow[FT_FLOW_TILES];
+static uint16_t g_flow_queue[FT_FLOW_TILES];
+static const FtMap* g_flow_map;
+static uint8_t  g_flow_px, g_flow_py;
+static bool     g_flow_valid;
+
+static void flow_build(const FtMap* m, uint8_t px, uint8_t py) {
+    g_flow_valid = false;
+
+    const uint32_t cells = (uint32_t)m->w * m->h;
+    if(cells == 0u || cells > FT_FLOW_TILES) return; /* too big: chase greedily */
+    if(ft_tile_solid(ft_map_tile(m, px, py))) return;
+
+    for(uint32_t i = 0; i < cells; i++) g_flow[i] = FT_FLOW_FAR;
+
+    uint32_t head = 0, tail = 0;
+    const uint32_t start = (uint32_t)py * m->w + px;
+
+    g_flow[start] = 0;
+    g_flow_queue[tail++] = (uint16_t)start;
+
+    static const int8_t STEP[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+    while(head < tail) {
+        const uint32_t cell = g_flow_queue[head++];
+        const int32_t cx = (int32_t)(cell % m->w);
+        const int32_t cy = (int32_t)(cell / m->w);
+        const uint8_t d = g_flow[cell];
+
+        if(d == FT_FLOW_FAR - 1u) continue; /* do not overflow the counter */
+
+        for(uint8_t k = 0; k < 4u; k++) {
+            const int32_t nx = cx + STEP[k][0], ny = cy + STEP[k][1];
+            if(nx < 0 || ny < 0 || nx >= (int32_t)m->w || ny >= (int32_t)m->h) continue;
+
+            const uint32_t n = (uint32_t)ny * m->w + (uint32_t)nx;
+            if(g_flow[n] != FT_FLOW_FAR) continue;
+            if(ft_tile_solid(ft_map_tile(m, nx, ny))) continue;
+
+            g_flow[n] = (uint8_t)(d + 1u);
+            g_flow_queue[tail++] = (uint16_t)n;
+        }
+    }
+
+    g_flow_map = m;
+    g_flow_px = px;
+    g_flow_py = py;
+    g_flow_valid = true;
+}
+
+/* Rebuild only when it would say something different: the player has moved to
+ * another tile, or this is another room. Once per step, not once per frame. */
+static void flow_refresh(const FtMap* m, uint8_t px, uint8_t py) {
+    if(g_flow_valid && g_flow_map == m && g_flow_px == px && g_flow_py == py) return;
+    flow_build(m, px, py);
+}
+
+static uint8_t flow_at(const FtMap* m, int32_t tx, int32_t ty) {
+    if(!g_flow_valid || g_flow_map != m) return FT_FLOW_FAR;
+    if(tx < 0 || ty < 0 || tx >= (int32_t)m->w || ty >= (int32_t)m->h) return FT_FLOW_FAR;
+
+    return g_flow[(uint32_t)ty * m->w + (uint32_t)tx];
+}
+
 /* Is another walker standing on, or stepping into, this tile? Without this
  * three wanderers converge and sit on top of each other, which puts the
  * group straight back to looking like one object. */
@@ -396,26 +486,45 @@ static bool walker_occupied(const FtWorld* w, const FtFoeWalker* self,
 
 static void foe_think(FtWorld* w, FtFoeWalker* k, bool alert, const FtMap* map) {
     FtFoeWalker* f = k;
-    const int32_t dx = (int32_t)w->mv.tx - (int32_t)f->mv.tx;
-    const int32_t dy = (int32_t)w->mv.ty - (int32_t)f->mv.ty;
-
     int8_t sx = 0, sy = 0;
 
     if(alert) {
-        /* Close the larger gap first, so a chase reads as deliberate rather
-         * than as a diagonal stagger. A little jitter keeps several chasers
-         * from stacking into one column. */
-        const bool prefer_x = (abs32(dx) >= abs32(dy));
-        const bool jitter = (foe_rand(f) % 5u) == 0u;
+        /* Downhill on the flow field, with a jitter that lets a walker take
+         * an equal-length neighbour instead: several chasers on one corridor
+         * otherwise queue into a single column. */
+        static const int8_t STEP[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
-        if(prefer_x != jitter) {
-            if(dx) sx = (dx > 0) ? 1 : -1;
-            else if(dy) sy = (dy > 0) ? 1 : -1;
-        } else {
-            if(dy) sy = (dy > 0) ? 1 : -1;
-            else if(dx) sx = (dx > 0) ? 1 : -1;
+        const uint8_t here = flow_at(map, f->mv.tx, f->mv.ty);
+        const uint8_t roll = (uint8_t)(foe_rand(f) & 3u);
+
+        uint8_t best = here;
+        int8_t bx = 0, by = 0;
+
+        for(uint8_t step = 0; step < 4u; step++) {
+            const uint8_t j = (uint8_t)((step + roll) & 3u);
+            const int8_t cx = STEP[j][0], cy = STEP[j][1];
+
+            const int32_t nx = (int32_t)f->mv.tx + cx, ny = (int32_t)f->mv.ty + cy;
+            const uint8_t d = flow_at(map, nx, ny);
+
+            if(d >= best) continue;
+            if(!step_target_free(map, f->mv.tx, f->mv.ty, cx, cy)) continue;
+            if(walker_occupied(w, f, nx, ny)) continue;
+
+            best = d;
+            bx = cx;
+            by = cy;
         }
-    } else {
+
+        if(bx || by) {
+            f->mv.dx = bx;
+            f->mv.dy = by;
+            f->mv.step_ms = 0;
+        }
+        return;
+    }
+
+    {
         const int32_t hx = (int32_t)f->home_tx - (int32_t)f->mv.tx;
         const int32_t hy = (int32_t)f->home_ty - (int32_t)f->mv.ty;
 
@@ -498,6 +607,13 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
             w->foes[i].alert = true;
         }
     }
+
+    /* One search per room per player tile, shared by every chaser in it. */
+    bool chasing = false;
+    for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(w->foes[i].alive && w->foes[i].alert) chasing = true;
+    }
+    if(chasing) flow_refresh(map, w->mv.tx, w->mv.ty);
 
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
         FtFoeState* f = &w->foes[i];

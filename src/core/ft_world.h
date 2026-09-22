@@ -7,6 +7,7 @@
 #define FT_WORLD_H
 
 #include "ft_data.h"
+#include "ft_guide.h"
 #include "ft_map.h"
 #include "ft_progress.h"
 #include "ft_signal.h"
@@ -121,6 +122,10 @@ typedef struct {
     /* Carried between battles, since an encounter starts from scratch. */
     FtStats         stats;
     FtSignalLibrary lib;
+
+    /* What has been met. Carried with the run, saved with it, and reset by
+     * a loss like everything else. */
+    FtGuide         guide;
     FtLoadout       loadout;
 } FtWorld;
 

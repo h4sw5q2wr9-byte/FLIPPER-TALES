@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "ft_encounter.h"
+#include "ft_guide.h"
 #include "ft_practice.h"
 #include "ft_world.h"
 #include "ft_render.h"
@@ -19,28 +20,9 @@ typedef struct {
     uint8_t     menu_index;
     int         variant;
     uint8_t     extra_foes; /* 0 = duel, else a mixed group */
-    bool        panel;      /* true = the Attack module panel is open */
+    bool        panel;      /* kept so the shot table's shape does not move */
 } Shot;
 
-/* The menu is two levels deep now, and menu_index is derived from the two
- * cursors rather than being one of them. Shots name the action they want to
- * show, so the cursors are worked backwards from it. */
-static void aim_menu(FtEncounter* e, uint8_t action, bool panel) {
-    for(uint8_t i = 0; i < FT_ATTACK_COUNT; i++) {
-        if((uint8_t)FT_ATTACK_ITEMS[i] == action) e->attack_index = i;
-    }
-
-    if(panel) {
-        e->menu_level = FT_MENU_ATTACK;
-        e->root_index = FT_ROOT_ATTACK;
-        return;
-    }
-
-    e->menu_level = FT_MENU_ROOT;
-    e->root_index = (action == (uint8_t)FT_ACTION_DEFEND) ? FT_ROOT_DEFEND :
-                    (action == (uint8_t)FT_ACTION_FOCUS)  ? FT_ROOT_FOCUS :
-                                                            FT_ROOT_ATTACK;
-}
 
 static void build(FtEncounter* e, const Shot* s) {
     FtLoadout lo;
@@ -57,7 +39,6 @@ static void build(FtEncounter* e, const Shot* s) {
     e->phase = s->phase;
     e->phase_ms = s->phase_ms;
     e->menu_index = s->menu_index;
-    aim_menu(e, s->menu_index, s->panel);
 
     /* Mid-fight numbers read better than a pristine board. Kept within the
      * real maximum: feeding impossible values hides genuine bar bugs. */
@@ -211,6 +192,42 @@ int main(void) {
         const int c = ft_stub_canvas_clipped(canvas);
         total_clipped += c;
         printf("  pause row %u         %s\n", i, c ? "CLIPPED" : "ok");
+    }
+
+    {
+        /* The field guide: empty, listed, and a page per enemy. */
+        FtGuide g;
+        ft_guide_init(&g);
+
+        ft_render_guide_list(canvas, &g, 0);
+        ft_stub_canvas_write_pbm(canvas, "preview/70_guide-empty.pbm");
+        total_clipped += ft_stub_canvas_clipped(canvas);
+        printf("  guide empty         %s\n",
+               ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
+
+        FtLoadout glo;
+        ft_loadout_init(&glo);
+        for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+            FtEncounter one;
+            ft_encounter_init_single(&one, (FtEnemyId)i, &glo, 1);
+            ft_guide_note_encounter(&g, &one);
+        }
+
+        for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+            ft_render_guide_list(canvas, &g, i);
+            total_clipped += ft_stub_canvas_clipped(canvas);
+
+            ft_render_guide_entry(canvas, (FtEnemyId)i);
+
+            char gp[64];
+            snprintf(gp, sizeof(gp), "preview/71_guide%u.pbm", i);
+            ft_stub_canvas_write_pbm(canvas, gp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  guide %-13s %s\n", FT_ENEMIES[i].name,
+                   c ? "CLIPPED" : "ok");
+        }
     }
 
     {

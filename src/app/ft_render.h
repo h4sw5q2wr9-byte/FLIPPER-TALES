@@ -10,6 +10,7 @@
 #include <gui/gui.h>
 
 #include "../core/ft_encounter.h"
+#include "../core/ft_guide.h"
 #include "../core/ft_practice.h"
 
 #define FT_SCREEN_W 128
@@ -30,6 +31,7 @@
 typedef enum {
     FT_PAUSE_RESUME = 0,
     FT_PAUSE_SAVE,
+    FT_PAUSE_GUIDE,
     FT_PAUSE_HELP,
     FT_PAUSE_TIPS,
     FT_PAUSE_DEBUG,
@@ -66,6 +68,10 @@ typedef enum {
 } FtDebugItem;
 
 void ft_render_debug(Canvas* canvas, uint8_t selected, const char* room_name);
+
+/* The field guide: a list of what has been met, and a page per entry. */
+void ft_render_guide_list(Canvas* canvas, const FtGuide* g, uint8_t selected);
+void ft_render_guide_entry(Canvas* canvas, FtEnemyId id);
 
 /* The practice arena's setup screen. */
 void ft_render_practice(Canvas* canvas, const FtPractice* p);

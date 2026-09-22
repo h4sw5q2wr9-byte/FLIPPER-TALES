@@ -819,98 +819,52 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
     switch(a) {
     case FT_ACTION_BROADCAST: return "All foes, weaker.";
     case FT_ACTION_CONTACT:   return "One foe, strong.";
-    case FT_ACTION_DEFEND:    return "Shield 2, +1 RAM.";
-    case FT_ACTION_FOCUS:     return "Charge the S bar.";
+    case FT_ACTION_DEFEND:    return "Shield, heal, +RAM";
+    case FT_ACTION_FOCUS:     return "Fill the S meter.";
     case FT_ACTION_SIGNAL:    return "Replay a capture.";
     default:                  return "";
     }
 }
 
-/* One line about whatever is highlighted, or what the coach wants to say. It
- * stays in this one place at both menu levels, so going down into the modules
- * moves the cursor without moving the explanation — and the coach no longer
- * needs a framed box floating over the arena to be heard. */
-static void draw_menu_line(Canvas* canvas, const FtEncounter* e) {
-    const char* hint = ft_tutorial_hint(e);
-
-    draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 17,
-                 hint ? hint : action_desc(e, (FtAction2)e->menu_index));
-}
-
-/* The modules, *replacing* the root row rather than floating over the arena.
- * The floating panel covered the fighters you were aiming at and cut the
- * Charge bar in half, which reads as a glitch rather than as a menu. Same
- * band, same shape, one level down. */
-static void draw_attack_row(Canvas* canvas, const FtEncounter* e) {
-    canvas_set_font(canvas, FontSecondary);
-
-    /* A left marker is the whole "you are one level down" cue; a breadcrumb
-     * would cost a row this screen does not have. */
-    canvas_draw_str(canvas, 1, FT_ACTION_Y + 7, "<");
-
-    int32_t x = 8;
-    for(uint8_t i = 0; i < FT_ATTACK_COUNT; i++) {
-        const FtAction2 act = FT_ATTACK_ITEMS[i];
-        const char* name = ft_action_name(act);
-
-        const int32_t tw = (int32_t)canvas_string_width(canvas, name);
-        const int32_t bw = tw + 6;
-        if(x + bw > FT_SCREEN_W) break;
-
-        const bool on = (i == e->attack_index);
-        if(on) {
-            canvas_draw_box(canvas, x, FT_ACTION_Y, (size_t)bw, 10);
-            canvas_set_color(canvas, ColorWhite);
-        }
-
-        canvas_draw_str(canvas, x + 3, FT_ACTION_Y + 7, name);
-
-        /* A strike-through now means only "you cannot afford this": no
-         * capture yet, no bar, jammed. Nothing an enemy *is* can take a
-         * module off the list. */
-        if(!ft_encounter_action_available(e, act)) {
-            canvas_draw_line(canvas, x + 3, FT_ACTION_Y + 4, x + 3 + tw, FT_ACTION_Y + 4);
-        }
-
-        if(on) canvas_set_color(canvas, ColorBlack);
-        x += bw + 2;
-    }
-}
-
-/* The root bar: three items, small. The modules live one level down, so the
- * battle screen is never five abbreviations wide. */
+/* The action row: one action at a time, with its name and what it does.
+ *
+ * It was a bar of three words with the attack modules a drill-down away, so
+ * two of the five actions were an extra press from the player and the screen
+ * carried two rows of competing buttons on top of a status strip and a
+ * description. One row, five actions, LEFT and RIGHT: nothing is hidden and
+ * there is one thing to look at. */
 static void draw_menu(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
 
-    /* One band, two levels. */
-    if(e->menu_level == FT_MENU_ATTACK) {
-        draw_attack_row(canvas, e);
-        draw_menu_line(canvas, e);
-        return;
+    const FtAction2 act = (FtAction2)e->menu_index;
+    const char* name = ft_action_name(act);
+
+    const int32_t tw = (int32_t)canvas_string_width(canvas, name);
+    const int32_t bw = tw + 10;
+    const int32_t bx = (FT_SCREEN_W - bw) / 2;
+
+    canvas_draw_box(canvas, bx, FT_ACTION_Y, (size_t)bw, 10);
+
+    canvas_set_color(canvas, ColorWhite);
+    canvas_draw_str(canvas, bx + 5, FT_ACTION_Y + 7, name);
+    canvas_set_color(canvas, ColorBlack);
+
+    /* Arrows outside the box, so the box stays the thing you read. */
+    canvas_draw_str(canvas, bx - 8, FT_ACTION_Y + 7, "<");
+    canvas_draw_str(canvas, bx + bw + 3, FT_ACTION_Y + 7, ">");
+
+    /* What you cannot afford is struck through where the name is — the only
+     * place left for it now there is no list. */
+    if(!ft_encounter_action_available(e, act)) {
+        canvas_draw_line(
+            canvas, bx + 5, FT_ACTION_Y + 4, bx + 5 + tw, FT_ACTION_Y + 4);
     }
 
-    static const char* const ROOT[FT_ROOT_COUNT] = {"ATTACK", "PROTECT", "FOCUS"};
-    static const int32_t X[FT_ROOT_COUNT] = {2, 46, 92};
-    static const int32_t W[FT_ROOT_COUNT] = {42, 44, 34};
+    /* One line: what the coach wants to say, or what this action does. */
+    const char* hint = ft_tutorial_hint(e);
 
-    /* Only the cursor is boxed. Three framed buttons plus a description plus a
-     * status row is three competing rectangles; the highlight alone says
-     * which one is selected, and the row stops shouting. */
-    for(uint8_t i = 0; i < FT_ROOT_COUNT; i++) {
-        const bool on = (i == e->root_index) && (e->menu_level == FT_MENU_ROOT);
-
-        if(on) {
-            canvas_draw_box(canvas, X[i], FT_ACTION_Y, (size_t)W[i], 10);
-            canvas_set_color(canvas, ColorWhite);
-        }
-
-        const int32_t lw = (int32_t)canvas_string_width(canvas, ROOT[i]);
-        canvas_draw_str(canvas, X[i] + (W[i] - lw) / 2, FT_ACTION_Y + 7, ROOT[i]);
-
-        if(on) canvas_set_color(canvas, ColorBlack);
-    }
-
-    draw_menu_line(canvas, e);
+    draw_centred(canvas, FT_SCREEN_W / 2, FT_ACTION_Y + 17,
+                 hint ? hint : action_desc(e, act));
 }
 
 
@@ -938,8 +892,8 @@ void ft_render_help(Canvas* canvas, uint8_t page) {
     /* Four lines per page, 21 characters each: the panel's width budget. */
     static const char* const BODY[FT_HELP_PAGES][4] = {
         {
-            "LEFT/RIGHT: action.",
-            "UP/DOWN: target.",
+            "LEFT/RIGHT picks an",
+            "action, OK takes it.",
             "The line below says",
             "what each one does.",
         },
@@ -1052,6 +1006,7 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, bool tips_on) {
     static const char* const ITEMS[FT_PAUSE_COUNT] = {
         "Resume",
         "Save",
+        "Field guide",
         "How to play",
         "Tips",
         "Debug",
@@ -1218,6 +1173,86 @@ void ft_render_levelup(
     draw_centred(canvas, FT_SCREEN_W / 2, 62, "OK to take it");
 }
 
+/* The field guide's index. Empty until something has been fought, because a
+ * guide that lists what you have not met is a manual, not a record. */
+void ft_render_guide_list(Canvas* canvas, const FtGuide* g, uint8_t selected) {
+    const uint8_t n = ft_guide_count(g);
+
+    if(n == 0u) {
+        canvas_clear(canvas);
+        canvas_set_color(canvas, ColorBlack);
+        canvas_set_font(canvas, FontSecondary);
+
+        draw_centred(canvas, FT_SCREEN_W / 2, 8, "FIELD GUIDE");
+        canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
+        draw_centred(canvas, FT_SCREEN_W / 2, 32, "Nothing met yet.");
+        draw_centred(canvas, FT_SCREEN_W / 2, 44, "Fight something.");
+        return;
+    }
+
+    /* Names and traits, built into buffers the list can borrow. */
+    static char names[FT_ENEMY_COUNT][20];
+    static char traits[FT_ENEMY_COUNT][14];
+    const char* items[FT_ENEMY_COUNT];
+    const char* values[FT_ENEMY_COUNT];
+
+    for(uint8_t i = 0; i < n; i++) {
+        const FtEnemyId id = ft_guide_nth(g, i);
+
+        snprintf(names[i], sizeof(names[i]), "%s", FT_ENEMIES[id].name);
+        ft_guide_traits(id, traits[i], (uint8_t)sizeof(traits[i]));
+
+        items[i] = names[i];
+        values[i] = NULL; /* the traits need the whole width on the entry page */
+    }
+
+    ft_render_menu_list(canvas, "FIELD GUIDE", items, values, n, selected);
+}
+
+/* One entry: what it is, what its traits cost you, and what it throws. */
+void ft_render_guide_entry(Canvas* canvas, FtEnemyId id) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+
+    if(id >= FT_ENEMY_COUNT) return;
+    const FtEnemy* en = &FT_ENEMIES[id];
+
+    draw_clipped(canvas, 2, 8, en->name, FT_SCREEN_W - 4);
+    canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
+
+    /* The sprite, so the page and the thing in the corridor match. */
+    draw_sprite(canvas, ft_enemy_art(id), FT_SCREEN_W - 18, 14);
+
+    char line[24];
+    snprintf(line, sizeof(line), "CHG %d", (int)en->charge);
+    canvas_draw_str(canvas, 2, 20, line);
+
+    ft_guide_traits(id, line, (uint8_t)sizeof(line));
+    draw_clipped(canvas, 2, 28, line, FT_SCREEN_W - 24);
+
+    /* What those traits actually do, one line each, then the attacks. Four
+     * rows of eight from here, which is exactly what the busiest enemy needs
+     * — two notes and two attacks. At nine the Sealed Lock lost its second
+     * attack off the bottom, which is the half of its moveset you most need
+     * to look up. */
+    int32_t y = 36;
+    for(uint8_t i = 0; i < 2u; i++) {
+        const char* note = ft_guide_note(id, i);
+        if(!note) break;
+
+        draw_clipped(canvas, 2, y, note, FT_SCREEN_W - 4);
+        y += 8;
+    }
+
+    for(uint8_t i = 0; i < FT_ENEMY_MAX_ATTACKS && y <= 62; i++) {
+        if(!ft_guide_attack_line(id, i, line, (uint8_t)sizeof(line))) break;
+
+        draw_clipped(canvas, 2, y, line, FT_SCREEN_W - 4);
+        y += 8;
+    }
+}
+
 /* ---- Entry ----------------------------------------------------------- */
 
 /* The iris: a closing ring of black drawn from the screen edges inward, then
@@ -1307,7 +1342,7 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
     const char* hint = ft_tutorial_hint(e);
 
     if(e->phase == FT_PHASE_MENU) {
-        draw_menu(canvas, e); /* both levels, and its own line */
+        draw_menu(canvas, e); /* one row, and its own line */
     } else if(hint) {
         /* Everywhere else the action row is free, so the coach speaks there. */
         draw_prompt(canvas, hint);

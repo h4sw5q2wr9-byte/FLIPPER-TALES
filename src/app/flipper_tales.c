@@ -46,7 +46,9 @@ typedef enum {
     FT_MODE_PRACTICE, /* the arena's setup screen */
     FT_MODE_LEVELUP,  /* spending the levels a win just paid out */
     FT_MODE_CONFIRM,  /* the gate in front of erasing a run */
-    FT_MODE_DEBUG     /* the testing tools, kept out of the player's way */
+    FT_MODE_DEBUG,    /* the testing tools, kept out of the player's way */
+    FT_MODE_GUIDE,    /* the field guide's index */
+    FT_MODE_GUIDE_ENTRY
 } FtMode;
 
 /* What the wipe is hiding. */
@@ -84,6 +86,9 @@ typedef struct {
     /* The debug menu, and the room its Travel row is pointing at. */
     uint8_t debug_item;
     uint8_t travel_room;
+
+    /* Which field-guide entry is highlighted, and which one is open. */
+    uint8_t guide_item;
 
     /* Which entity started the current battle, so it can be removed on a win. */
     int  battle_entity;
@@ -142,6 +147,11 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
         ft_render_pause(canvas, app->pause_item, app->coach);
     } else if(app->mode == FT_MODE_PRACTICE) {
         ft_render_practice(canvas, &app->practice);
+    } else if(app->mode == FT_MODE_GUIDE) {
+        ft_render_guide_list(canvas, &app->world.guide, app->guide_item);
+    } else if(app->mode == FT_MODE_GUIDE_ENTRY) {
+        ft_render_guide_entry(
+            canvas, ft_guide_nth(&app->world.guide, app->guide_item));
     } else if(app->mode == FT_MODE_DEBUG) {
         ft_render_debug(canvas, app->debug_item,
                         ft_room(app->travel_room)->map->name);
@@ -210,6 +220,10 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
             (int16_t)(app->encounter.foes[0].charge - FT_FIRST_STRIKE_DAMAGE);
         if(app->encounter.foes[0].charge < 1) app->encounter.foes[0].charge = 1;
     }
+
+    /* Met, therefore known. Recorded on the way in rather than on a win:
+     * the thing that beat you is exactly the one you want to look up. */
+    ft_guide_note_encounter(&app->world.guide, &app->encounter);
 
     app->battle_entity = entity;
     app->battle_first_strike = first_strike;
@@ -538,6 +552,10 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 }
                 app->mode = app->paused_from;
                 break;
+            case FT_PAUSE_GUIDE:
+                app->guide_item = 0;
+                app->mode = FT_MODE_GUIDE;
+                break;
             case FT_PAUSE_DEBUG:
                 app->debug_item = 0;
                 app->mode = FT_MODE_DEBUG;
@@ -546,6 +564,7 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 app->confirm_yes = false;
     app->debug_item = 0;
     app->travel_room = 0;
+    app->guide_item = 0;
                 app->mode = FT_MODE_CONFIRM;
                 break;
             case FT_PAUSE_TIPS:
@@ -559,6 +578,33 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
             }
             break;
         default:
+            break;
+        }
+        return;
+    }
+
+    if(app->mode == FT_MODE_GUIDE_ENTRY) {
+        /* Any key out: the page is a page, not a menu. */
+        app->mode = FT_MODE_GUIDE;
+        return;
+    }
+
+    if(app->mode == FT_MODE_GUIDE) {
+        const uint8_t n = ft_guide_count(&app->world.guide);
+
+        switch(event->key) {
+        case InputKeyUp:
+            if(n > 0u) app->guide_item = (uint8_t)((app->guide_item + n - 1u) % n);
+            break;
+        case InputKeyDown:
+            if(n > 0u) app->guide_item = (uint8_t)((app->guide_item + 1u) % n);
+            break;
+        case InputKeyOk:
+            if(n > 0u) app->mode = FT_MODE_GUIDE_ENTRY;
+            break;
+        case InputKeyBack:
+        default:
+            app->mode = FT_MODE_PAUSE;
             break;
         }
         return;
@@ -675,13 +721,9 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
         return;
     }
 
-    /* Back closes the attack panel first, and only then opens the pause menu:
-     * backing out of a submenu should not quit the game. */
+    /* Back opens the pause menu. It used to close the attack panel first,
+     * back when there was one. */
     if(event->key == InputKeyBack) {
-        if(pressed && app->mode == FT_MODE_BATTLE &&
-           ft_encounter_menu_back(&app->encounter)) {
-            return;
-        }
         if(pressed) {
             app->paused_from = app->mode;
             app->pause_item = FT_PAUSE_RESUME;
@@ -713,14 +755,13 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
     case InputKeyRight:
         ft_encounter_menu_move(&app->encounter, 1);
         break;
-    /* UP and DOWN move the cursor too, so the whole menu can be driven on
-     * either axis. They used to pick a target; targeting is automatic now. */
+    /* The action row is horizontal, so it is steered horizontally and
+     * nothing else. UP and DOWN used to move the cursor as well, which meant
+     * a stray thumb changed what you were about to do. */
     case InputKeyUp:
         if(ft_encounter_over(&app->encounter)) app->show_help = true;
-        else ft_encounter_menu_move(&app->encounter, -1);
         break;
     case InputKeyDown:
-        ft_encounter_menu_move(&app->encounter, 1);
         break;
     default:
         break;
@@ -745,6 +786,7 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
     if(app->mode == FT_MODE_PAUSE || app->mode == FT_MODE_PRACTICE) return;
     if(app->mode == FT_MODE_LEVELUP || app->mode == FT_MODE_CONFIRM) return;
     if(app->mode == FT_MODE_DEBUG) return;
+    if(app->mode == FT_MODE_GUIDE || app->mode == FT_MODE_GUIDE_ENTRY) return;
 
     if(app->mode == FT_MODE_BATTLE) {
         ft_encounter_tick(&app->encounter, dt_ms);

@@ -172,9 +172,6 @@ void ft_encounter_init(
     e->phase_ms = 0;
     e->fast_phase = false;
     e->menu_index = 0;
-    e->menu_level = FT_MENU_ROOT;
-    e->root_index = FT_ROOT_ATTACK;
-    e->attack_index = 0;
     e->defending = false;
     e->player_turns = 0;
 
@@ -298,12 +295,6 @@ bool ft_encounter_action_available(const FtEncounter* e, FtAction2 action) {
     return ft_encounter_action_block(e, action) == NULL;
 }
 
-const FtAction2 FT_ATTACK_ITEMS[FT_ATTACK_COUNT] = {
-    FT_ACTION_BROADCAST,
-    FT_ACTION_CONTACT,
-    FT_ACTION_SIGNAL,
-};
-
 const char* ft_action_name(FtAction2 action) {
     switch(action) {
     case FT_ACTION_BROADCAST: return "Sub-GHz";
@@ -317,61 +308,24 @@ const char* ft_action_name(FtAction2 action) {
 
 /* Keep menu_index in step with whatever the cursors are pointing at, so every
  * existing rule (availability, descriptions, resolution) keeps working. */
-static void sync_menu_index(FtEncounter* e) {
-    if(e->menu_level == FT_MENU_ATTACK) {
-        e->menu_index = (uint8_t)FT_ATTACK_ITEMS[e->attack_index % FT_ATTACK_COUNT];
-        return;
-    }
-
-    switch((FtRootItem)e->root_index) {
-    case FT_ROOT_DEFEND: e->menu_index = (uint8_t)FT_ACTION_DEFEND; break;
-    case FT_ROOT_FOCUS:  e->menu_index = (uint8_t)FT_ACTION_FOCUS; break;
-    case FT_ROOT_ATTACK:
-    default:
-        /* Highlighting Attack previews whichever module is selected. */
-        e->menu_index = (uint8_t)FT_ATTACK_ITEMS[e->attack_index % FT_ATTACK_COUNT];
-        break;
-    }
-}
-
+/* The menu is one flat ring of every action.
+ *
+ * It was two levels — a bar of three with the attack modules a drill-down
+ * away — which put two of the five actions behind an extra press and gave
+ * the battle screen two rows of competing buttons. One row, one cursor,
+ * LEFT and RIGHT. */
 void ft_encounter_menu_move(FtEncounter* e, int8_t delta) {
     if(e->phase != FT_PHASE_MENU) return;
 
-    if(e->menu_level == FT_MENU_ATTACK) {
-        int16_t idx = (int16_t)(e->attack_index + delta);
-        while(idx < 0) idx = (int16_t)(idx + FT_ATTACK_COUNT);
-        while(idx >= FT_ATTACK_COUNT) idx = (int16_t)(idx - FT_ATTACK_COUNT);
-        e->attack_index = (uint8_t)idx;
-    } else {
-        int16_t idx = (int16_t)(e->root_index + delta);
-        while(idx < 0) idx = (int16_t)(idx + FT_ROOT_COUNT);
-        while(idx >= FT_ROOT_COUNT) idx = (int16_t)(idx - FT_ROOT_COUNT);
-        e->root_index = (uint8_t)idx;
-    }
+    int16_t idx = (int16_t)(e->menu_index + delta);
+    while(idx < 0) idx = (int16_t)(idx + FT_ACTION_COUNT);
+    while(idx >= FT_ACTION_COUNT) idx = (int16_t)(idx - FT_ACTION_COUNT);
 
-    sync_menu_index(e);
+    e->menu_index = (uint8_t)idx;
 }
 
 void ft_encounter_menu_confirm(FtEncounter* e) {
-    if(e->phase != FT_PHASE_MENU) return;
-
-    /* Attack opens the panel rather than committing; everything else is a
-     * single press as before. */
-    if(e->menu_level == FT_MENU_ROOT && e->root_index == FT_ROOT_ATTACK) {
-        e->menu_level = FT_MENU_ATTACK;
-        sync_menu_index(e);
-        return;
-    }
-
     ft_encounter_press_ok(e);
-}
-
-bool ft_encounter_menu_back(FtEncounter* e) {
-    if(e->menu_level != FT_MENU_ATTACK) return false;
-
-    e->menu_level = FT_MENU_ROOT;
-    sync_menu_index(e);
-    return true;
 }
 
 /* ---- Resolution ------------------------------------------------------ */
@@ -549,6 +503,8 @@ static void resolve_player_action(FtEncounter* e) {
     if(action == FT_ACTION_DEFEND) {
         e->defending = true;
         gain_ram(e, FT_DEFEND_RAM);
+        ft_roll_heal(&e->roll, FT_DEFEND_HEAL, e->stats.charge_max);
+        e->stats.charge = e->roll.current;
         return;
     }
 
@@ -662,7 +618,6 @@ void ft_encounter_press_ok(FtEncounter* e) {
         e->action_press_ms = 0;
         e->action_locked_ms = 0;
         e->defending = false;
-        e->menu_level = FT_MENU_ROOT;
 
         e->player_turns++;
 

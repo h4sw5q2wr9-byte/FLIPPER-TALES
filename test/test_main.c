@@ -6,6 +6,7 @@
 #include "ft_combat.h"
 #include "ft_data.h"
 #include "ft_encounter.h"
+#include "ft_guide.h"
 #include "ft_practice.h"
 #include "ft_save.h"
 #include "ft_priority.h"
@@ -939,48 +940,57 @@ static void test_encounter(void) {
     CHECK(!ft_encounter_over(&e), "a fresh encounter is not over");
     CHECK(ft_encounter_incoming(&e) == NULL, "nothing incoming during the menu");
 
-    /* The root bar is three entries wide and wraps both ways. menu_index is
-     * no longer the cursor: it is the action the cursors currently resolve
-     * to, so every rule written against it still applies. */
+    /* One flat ring of every action, wrapping both ways. The menu used to be
+     * two levels with the modules behind a drill-down, which put two of the
+     * five an extra press away and gave the screen two rows of buttons. */
     CHECK_EQ(FT_ACTION_COUNT, 5);
-    CHECK_EQ(FT_ROOT_COUNT, 3);
-    CHECK_EQ(e.menu_level, FT_MENU_ROOT);
-    CHECK_EQ(e.root_index, FT_ROOT_ATTACK);
-    ft_encounter_menu_move(&e, -1);
-    CHECK_EQ(e.root_index, FT_ROOT_COUNT - 1);
-    CHECK_EQ(e.menu_index, FT_ACTION_FOCUS);
-    ft_encounter_menu_move(&e, 1);
-    CHECK_EQ(e.root_index, FT_ROOT_ATTACK);
-    CHECK_EQ(e.menu_index, (uint8_t)FT_ATTACK_ITEMS[0]);
+    CHECK_EQ(e.menu_index, 0);
 
-    /* Attack drills into the module panel instead of spending the turn. */
+    ft_encounter_menu_move(&e, -1);
+    CHECK_EQ(e.menu_index, FT_ACTION_COUNT - 1);
+    ft_encounter_menu_move(&e, 1);
+    CHECK_EQ(e.menu_index, 0);
+
+    /* Every action is reachable by walking one way, and the walk comes home. */
+    bool seen[FT_ACTION_COUNT];
+    for(uint8_t i = 0; i < FT_ACTION_COUNT; i++) seen[i] = false;
+
+    for(uint8_t i = 0; i < FT_ACTION_COUNT; i++) {
+        seen[e.menu_index] = true;
+        ft_encounter_menu_move(&e, 1);
+    }
+    for(uint8_t i = 0; i < FT_ACTION_COUNT; i++) {
+        CHECK(seen[i], "action %u is on the ring", i);
+    }
+    CHECK_EQ(e.menu_index, 0);
+
+    /* Big deltas wrap rather than running off the end. */
+    ft_encounter_menu_move(&e, 4);
+    CHECK(e.menu_index < FT_ACTION_COUNT, "a big step stays on the ring");
+    ft_encounter_menu_move(&e, -4);
+    CHECK_EQ(e.menu_index, 0);
+
+    /* The cursor only moves in the menu: a stray press mid-sweep must not
+     * change what you already committed to. */
+    e.phase = FT_PHASE_PLAYER_ACT;
+    ft_encounter_menu_move(&e, 1);
+    CHECK_EQ(e.menu_index, 0);
+    e.phase = FT_PHASE_MENU;
+
+    /* Confirming takes the action: there is no level to drill into. */
+    e.menu_index = FT_ACTION_DEFEND;
     ft_encounter_menu_confirm(&e);
-    CHECK_EQ(e.menu_level, FT_MENU_ATTACK);
-    CHECK_EQ(e.phase, FT_PHASE_MENU);
-    ft_encounter_menu_move(&e, -1);
-    CHECK_EQ(e.attack_index, FT_ATTACK_COUNT - 1);
-    CHECK_EQ(e.menu_index, (uint8_t)FT_ATTACK_ITEMS[FT_ATTACK_COUNT - 1]);
-
-    /* Back closes the panel and keeps the module it left selected, so the
-     * root row previews what Attack would fire. */
-    CHECK(ft_encounter_menu_back(&e), "Back leaves the attack panel");
-    CHECK_EQ(e.menu_level, FT_MENU_ROOT);
-    CHECK_EQ(e.menu_index, (uint8_t)FT_ATTACK_ITEMS[FT_ATTACK_COUNT - 1]);
-    CHECK(!ft_encounter_menu_back(&e), "Back at the root is the caller's to handle");
-
-    /* Defend and Focus commit on a single press, as they always did. */
-    ft_encounter_menu_move(&e, 1);
-    CHECK_EQ(e.menu_index, FT_ACTION_DEFEND);
-    e.attack_index = 0;
-    ft_encounter_menu_move(&e, -1);
-    CHECK_EQ(e.menu_index, (uint8_t)FT_ATTACK_ITEMS[0]);
+    CHECK_EQ(e.phase, FT_PHASE_RESULT);
 
     /* Thinking must never cost Charge: the roll is paused in the menu. */
-    e.roll.target = 0;
-    const int16_t before = e.roll.current;
-    ft_encounter_tick(&e, 10000);
-    CHECK_EQ(e.roll.current, before);
-    CHECK_EQ(e.phase, FT_PHASE_MENU);
+    FtEncounter idle;
+    ft_encounter_init_single(&idle, FT_ENEMY_STRAY_PACKET, &lo, 7);
+
+    idle.roll.target = 0;
+    const int16_t before = idle.roll.current;
+    ft_encounter_tick(&idle, 10000);
+    CHECK_EQ(idle.roll.current, before);
+    CHECK_EQ(idle.phase, FT_PHASE_MENU);
 
     /* Attributes never take a module off the list: every attack is always
      * selectable, and reach decides who it lands on. */
@@ -1709,6 +1719,38 @@ static void test_foe_ai(void) {
             CHECK(abs_i32(hx) + abs_i32(hy) <= FT_FOE_LEASH + 1,
                   "walker %u stays in its region", m);
         }
+    }
+
+    /* Chasing gets round things. A single greedy step gave up the moment a
+     * wall was in the way: a foe on the far side of a crate walked into it
+     * forever, and one chasing round a corner stopped at the corner. */
+    for(uint8_t rm = 0; rm < ft_room_count(); rm++) {
+        const FtRoom* rr = ft_room(rm);
+        if(rr->ent_count == 0u) continue;
+
+        FtWorld hunt;
+        ft_world_init(&hunt);
+        ft_world_enter(&hunt, rm, rr->exits[0].tx, rr->exits[0].ty);
+        hunt.foes[0].alert = true;
+
+        const FtFoeWalker* k = &hunt.foes[0].w[0];
+        int32_t best = abs_i32((int32_t)k->mv.tx - (int32_t)hunt.mv.tx) +
+                       abs_i32((int32_t)k->mv.ty - (int32_t)hunt.mv.ty);
+        const int32_t start = best;
+
+        /* The player stands still; the chaser has plenty of time. */
+        for(int t = 0; t < 600; t++) {
+            ft_world_update(&hunt, 0, 0, 20);
+            hunt.foes[0].alert = true;
+
+            const int32_t d = abs_i32((int32_t)k->mv.tx - (int32_t)hunt.mv.tx) +
+                              abs_i32((int32_t)k->mv.ty - (int32_t)hunt.mv.ty);
+            if(d < best) best = d;
+        }
+
+        CHECK(best < start || start <= 1,
+              "room %u: a chaser closes in (%d -> %d)", rm, (int)start, (int)best);
+        CHECK(best <= 2, "room %u: and gets there (%d)", rm, (int)best);
     }
 
     /* Aggro is shared across the room, walkers included. */
@@ -2570,6 +2612,167 @@ static void test_enemy_roster(void) {
     }
 }
 
+static void test_guide(void) {
+    section("field guide");
+
+    FtGuide g;
+    ft_guide_init(&g);
+
+    /* Nothing is listed until it has been met: a guide that ships knowing
+     * everything is a manual, not a record of the run. */
+    CHECK_EQ(ft_guide_count(&g), 0);
+    for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+        CHECK(!ft_guide_knows(&g, (FtEnemyId)i), "enemy %u starts unknown", i);
+    }
+    CHECK_EQ(ft_guide_nth(&g, 0), FT_ENEMY_COUNT);
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* Meeting a group records every foe in it, not just the first. */
+    const FtEnemyId pair[2] = {FT_ENEMY_MAST_RELAY, FT_ENEMY_DRIFT_BEACON};
+
+    FtEncounter e;
+    ft_encounter_init(&e, pair, 2, &lo, 1);
+    ft_guide_note_encounter(&g, &e);
+
+    CHECK_EQ(ft_guide_count(&g), 2);
+    CHECK(ft_guide_knows(&g, FT_ENEMY_MAST_RELAY), "the relay is known");
+    CHECK(ft_guide_knows(&g, FT_ENEMY_DRIFT_BEACON), "and so is the beacon");
+    CHECK(!ft_guide_knows(&g, FT_ENEMY_NULL_FIELD), "the rest are not");
+
+    /* Meeting the same thing twice does not list it twice. */
+    ft_guide_note_encounter(&g, &e);
+    CHECK_EQ(ft_guide_count(&g), 2);
+
+    /* The walk is in table order and covers exactly what is known. */
+    CHECK_EQ(ft_guide_nth(&g, 0), FT_ENEMY_DRIFT_BEACON);
+    CHECK_EQ(ft_guide_nth(&g, 1), FT_ENEMY_MAST_RELAY);
+    CHECK_EQ(ft_guide_nth(&g, 2), FT_ENEMY_COUNT);
+
+    /* Everything meets everything: the guide must hold the whole table. */
+    FtGuide all;
+    ft_guide_init(&all);
+
+    for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+        FtEncounter one;
+        ft_encounter_init_single(&one, (FtEnemyId)i, &lo, 1);
+        ft_guide_note_encounter(&all, &one);
+    }
+    CHECK_EQ(ft_guide_count(&all), FT_ENEMY_COUNT);
+
+    /* Every entry's text fits the panel and says something. */
+    for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+        const FtEnemyId id = (FtEnemyId)i;
+        char buf[24];
+
+        ft_guide_traits(id, buf, (uint8_t)sizeof(buf));
+        CHECK(buf[0] != '\0', "%s has a trait line", FT_ENEMIES[id].name);
+        CHECK(strlen(buf) <= FT_TUTORIAL_MAX_CHARS,
+              "%s's traits fit: \"%s\"", FT_ENEMIES[id].name, buf);
+
+        /* A plain enemy says so rather than showing an empty row. */
+        if(FT_ENEMIES[id].attrs == 0u && FT_ENEMIES[id].shielded == 0) {
+            CHECK(strstr(buf, "no traits") != NULL, "%s reads as plain",
+                  FT_ENEMIES[id].name);
+        }
+
+        /* Every trait it has gets a line explaining what it costs you. */
+        uint8_t notes = 0;
+        for(uint8_t n = 0; n < 8u; n++) {
+            const char* note = ft_guide_note(id, n);
+            if(!note) break;
+
+            notes++;
+            CHECK(strlen(note) <= FT_TUTORIAL_MAX_CHARS,
+                  "%s note %u fits: \"%s\"", FT_ENEMIES[id].name, n, note);
+        }
+        if(FT_ENEMIES[id].attrs != 0u || FT_ENEMIES[id].shielded > 0) {
+            CHECK(notes > 0, "%s explains its traits", FT_ENEMIES[id].name);
+        }
+
+        /* And every attack is described, with none past the last. */
+        uint8_t lines = 0;
+        for(uint8_t n = 0; n < FT_ENEMY_MAX_ATTACKS + 2u; n++) {
+            if(!ft_guide_attack_line(id, n, buf, (uint8_t)sizeof(buf))) break;
+
+            lines++;
+            CHECK(strlen(buf) <= FT_TUTORIAL_MAX_CHARS,
+                  "%s attack %u fits: \"%s\"", FT_ENEMIES[id].name, n, buf);
+        }
+        CHECK_EQ(lines, FT_ENEMIES[id].attack_count);
+    }
+
+    /* A short buffer truncates rather than running off the end. */
+    char tiny[4];
+    ft_guide_traits(FT_ENEMY_NULL_FIELD, tiny, (uint8_t)sizeof(tiny));
+    CHECK(strlen(tiny) < sizeof(tiny), "a short buffer stays terminated");
+
+    /* The guide survives a save, because it is the run's memory. */
+    FtWorld w;
+    ft_world_init(&w);
+    w.guide = all;
+
+    FtSaveData d;
+    ft_save_from_world(&w, false, &d);
+
+    uint8_t buf2[FT_SAVE_MAX_BYTES];
+    const uint8_t len = ft_save_encode(&d, buf2, sizeof(buf2));
+    CHECK(len > 0, "a run with a guide encodes");
+
+    FtSaveData back;
+    CHECK(ft_save_decode(buf2, len, &back), "and decodes");
+    CHECK_EQ(back.guide.seen, all.seen);
+
+    FtWorld loaded;
+    ft_save_to_world(&back, &loaded, NULL);
+    CHECK_EQ(ft_guide_count(&loaded.guide), FT_ENEMY_COUNT);
+}
+
+static void test_defend_is_worth_it(void) {
+    section("bracing is a real choice");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* There was no way to recover Charge in a fight at all, so every fight
+     * was attrition and attacking was always right — which is exactly why
+     * Protect and Focus never got used. */
+    FtEncounter e;
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 4);
+
+    e.roll.current = 5;
+    e.roll.target = 5;
+    e.stats.charge = 5;
+
+    e.menu_index = FT_ACTION_DEFEND;
+    ft_encounter_press_ok(&e);
+
+    CHECK(e.defending, "bracing is on");
+    CHECK_EQ(e.roll.target, 5 + FT_DEFEND_HEAL);
+    CHECK_EQ(e.roll.current, 5 + FT_DEFEND_HEAL);
+    CHECK_EQ(e.stats.charge, e.roll.current);
+
+    /* It cannot overheal past the maximum. */
+    FtEncounter full;
+    ft_encounter_init_single(&full, FT_ENEMY_STRAY_PACKET, &lo, 4);
+    full.menu_index = FT_ACTION_DEFEND;
+    ft_encounter_press_ok(&full);
+    CHECK_EQ(full.roll.current, full.stats.charge_max);
+
+    /* And it still shields: bracing has to blunt the hit as well, or the
+     * heal just buys back what the turn cost you. */
+    CHECK_EQ(FT_DEFEND_SHIELD, 2);
+    const FtAttack* atk = &FT_ENEMIES[FT_ENEMY_STRAY_PACKET].attacks[0];
+    const FtHitParams p = {0, 0, FT_RATING_MISS, false, FT_GUARD_NONE, 0};
+    const FtDefender bare = {0, 0};
+    const FtDefender braced = {FT_DEFEND_SHIELD, 0};
+
+    CHECK(ft_resolve_hit(atk, &braced, &p).damage <
+              ft_resolve_hit(atk, &bare, &p).damage,
+          "and blunts the hit");
+}
+
 static void test_losing_costs(void) {
     section("losing costs the run");
 
@@ -2953,6 +3156,8 @@ int main(void) {
     test_save_world();
     test_fast_turn_order();
     test_enemy_roster();
+    test_guide();
+    test_defend_is_worth_it();
     test_losing_costs();
     test_levelup();
     test_scene_wipe();
