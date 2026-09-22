@@ -62,12 +62,12 @@ preview: $(BIN)/preview
 	@python3 topng.py
 
 # The MCU has no FPU budget, so the core must stay integer-only.
+#
+# This was a grep, and the grep matched prose: three comments were reworded
+# to appease it before anyone noticed the check was editing the docs. The
+# script strips comments and string literals first, so it reads code.
 check-nofloat:
-	@if grep -nE '\b(float|double)\b' $(CORE_DIR)/*.c $(CORE_DIR)/*.h; then \
-		echo "ERROR: floating point found in src/core (see DESIGN.md 2.2)"; \
-		exit 1; \
-	fi
-	@echo "no floating point in src/core"
+	@cd .. && python3 tools/check_nofloat.py
 
 clean:
 	@rm -rf $(BIN) preview

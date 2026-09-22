@@ -13,6 +13,7 @@
 #include "ft_overworld.h"
 #include "../core/ft_practice.h"
 #include "ft_render.h"
+#include "ft_sound.h"
 #include "ft_storage.h"
 
 #define FT_TAG        "FlipperTales"
@@ -78,6 +79,10 @@ typedef struct {
     FtPractice practice;
     bool       in_practice;
 
+    /* One voice, ticked from the game's own update so a fanfare never holds
+     * up a frame. */
+    FtSound sound;
+
     /* Which stat row the orb screen is on, and how it was opened: a level-up
      * hands you straight back to the world, the pause menu back to the menu. */
     uint8_t orb_item;
@@ -102,6 +107,11 @@ typedef struct {
 
     /* Which field-guide entry is highlighted, and which one is open. */
     uint8_t guide_item;
+
+    /* What the battle was doing last frame, so a cue fires on the change
+     * rather than every tick. */
+    FtPhase sound_phase;
+    bool    sound_struck;
 
     /* Which entity started the current battle, so it can be removed on a win. */
     int  battle_entity;
@@ -158,7 +168,7 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
     if(app->show_help) {
         ft_render_help(canvas, app->help_page);
     } else if(app->mode == FT_MODE_PAUSE) {
-        ft_render_pause(canvas, app->pause_item, app->coach,
+        ft_render_pause(canvas, app->pause_item, app->coach, app->sound.on,
                         app->world.stats.orbs,
                         app->paused_from == FT_MODE_BATTLE);
     } else if(app->mode == FT_MODE_PRACTICE) {
@@ -280,6 +290,7 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
             ft_xp_gain(&app->world.stats, xp, ft_level_cap(app->chapters_done));
         for(int16_t i = 0; i < levels; i++) ft_level_take(&app->world.stats);
         app->levelled = (levels > 0);
+        if(app->levelled) ft_sound_play(&app->sound, FT_SFX_LEVEL);
 
         ft_toast(app, "Cleared.");
     } else {
@@ -297,7 +308,7 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
         FtSaveData saved;
 
         if(ft_storage_load(&saved)) {
-            ft_save_to_world(&saved, &app->world, &app->coach);
+            ft_save_to_world(&saved, &app->world, &app->coach, NULL);
             ft_toast(app, "Back to your save.");
         } else {
             /* Never saved: there is no checkpoint to go back to, so the run
@@ -347,6 +358,9 @@ static void ft_begin_battle(FlipperTales* app, int entity, bool first_strike,
     app->pend_entity = entity;
     app->pend_first_strike = first_strike;
     app->pend_ambush = ambush;
+
+    /* Under the closing iris, so the fight is heard coming. */
+    ft_sound_play(&app->sound, FT_SFX_ENCOUNTER);
     ft_start_wipe(app, FT_PEND_BEGIN);
 }
 
@@ -479,7 +493,7 @@ static void ft_save_here(FlipperTales* app) {
  * never a reason to stop the game, only a reason to say so. */
 static bool ft_save_now(FlipperTales* app) {
     FtSaveData data;
-    ft_save_from_world(&app->world, app->coach, &data);
+    ft_save_from_world(&app->world, app->coach, app->sound.on, &data);
     return ft_storage_save(&data);
 }
 
@@ -496,10 +510,13 @@ static void ft_overworld_ok(FlipperTales* app) {
     if(pick >= 0) {
         if(ft_pockets_full(&app->world.pockets)) {
             ft_toast(app, "Pockets are full.");
+            ft_sound_play(&app->sound, FT_SFX_DENY);
         } else {
             const FtItemId got = ft_world_pick(&app->world, (uint8_t)pick);
 
             if(got < FT_ITEM_COUNT) {
+                ft_sound_play(&app->sound, FT_SFX_PICK);
+
                 char line[24];
                 snprintf(line, sizeof(line), "Took a %s.", ft_item_def(got)->name);
                 ft_toast(app, line);
@@ -514,6 +531,7 @@ static void ft_overworld_ok(FlipperTales* app) {
     if(kid >= 0) {
         app->talk = ft_quest_wren_talk(&app->world.quests);
         app->talk_who = app->talk.who;
+        ft_sound_play(&app->sound, FT_SFX_TALK);
 
         if(app->talk.follows) {
             ft_world_escort_start(&app->world);
@@ -533,6 +551,7 @@ static void ft_overworld_ok(FlipperTales* app) {
 
         app->talk = ft_quest_talk(&app->world.quests, id);
         app->talk_who = app->talk.who;
+        ft_sound_play(&app->sound, FT_SFX_TALK);
 
         /* Handing her back is what ends the escort. */
         if(ft_quest_state(&app->world.quests, id) == FT_QUEST_DONE) {
@@ -541,6 +560,7 @@ static void ft_overworld_ok(FlipperTales* app) {
 
         if(app->talk.orbs > 0) {
             app->world.stats.orbs = (int16_t)(app->world.stats.orbs + app->talk.orbs);
+            ft_sound_play(&app->sound, FT_SFX_LEVEL);
 
             /* Paid work is progress worth keeping even if the walk home goes
              * badly, so it is written out before the screen changes. */
@@ -687,6 +707,10 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 app->coach = !app->coach;
                 app->encounter.coach = app->coach;
                 break;
+            case FT_PAUSE_SOUND:
+                ft_sound_set(&app->sound, !app->sound.on);
+                ft_sound_play(&app->sound, FT_SFX_PICK);
+                break;
             case FT_PAUSE_QUIT:
             default:
                 app->running = false;
@@ -796,6 +820,7 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
             /* A capped stat, or an empty hand, simply refuses: there is no
              * way to lose an orb by pressing the wrong row. */
             if(ft_orb_spend(&app->world.stats, CHOICE[app->orb_item])) {
+                ft_sound_play(&app->sound, FT_SFX_LEVEL);
                 ft_save_now(app);
             }
             break;
@@ -804,6 +829,7 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
             /* And back out again, at any time. This is the whole point: a
              * build you are stuck with is one you had to be told about. */
             if(ft_orb_refund(&app->world.stats, CHOICE[app->orb_item])) {
+                ft_sound_play(&app->sound, FT_SFX_DENY);
                 ft_save_now(app);
             }
             break;
@@ -986,9 +1012,67 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
     }
 }
 
+/* What the fight sounds like.
+ *
+ * Driven off phase changes and the animation's own strike frame rather than
+ * from the resolver, so core stays free of the speaker and a cue lands when
+ * the sprite moves rather than when the maths happened. */
+static void ft_battle_sound(FlipperTales* app) {
+    FtEncounter* e = &app->encounter;
+
+    if(e->phase != app->sound_phase) {
+        app->sound_phase = e->phase;
+        app->sound_struck = false;
+
+        switch(e->phase) {
+        case FT_PHASE_RESULT:
+            /* The swing goes out now; what it did lands at the strike frame. */
+            ft_sound_play(&app->sound, FT_SFX_SWING);
+            break;
+        case FT_PHASE_WIN:
+            ft_sound_play(&app->sound, FT_SFX_WIN);
+            break;
+        case FT_PHASE_LOSE:
+            ft_sound_play(&app->sound, FT_SFX_LOSE);
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+
+    /* The frame the attack actually connects. */
+    if(app->sound_struck) return;
+    if(e->phase != FT_PHASE_RESULT && e->phase != FT_PHASE_IMPACT) return;
+    if(ft_encounter_anim_progress(e) < FT_ANIM_STRIKE) return;
+
+    app->sound_struck = true;
+
+    if(e->phase == FT_PHASE_RESULT) {
+        if(e->last_total_damage > 0) ft_sound_play(&app->sound, FT_SFX_HIT);
+        return;
+    }
+
+    /* Their turn. Best news first: a bounce outranks a block, and a block
+     * outranks taking it. */
+    if(e->last_deflect_fired) {
+        ft_sound_play(&app->sound, FT_SFX_DEFLECT);
+    } else if(e->last_enemy_hit.perfect) {
+        ft_sound_play(&app->sound, FT_SFX_PERFECT);
+    } else if(e->last_guard == FT_GUARD_JAM) {
+        ft_sound_play(&app->sound, FT_SFX_JAM);
+    } else if(e->last_enemy_hit.damage > 0) {
+        ft_sound_play(&app->sound, FT_SFX_HURT);
+    }
+}
+
 /* ---- Update ---------------------------------------------------------- */
 
 static void ft_update(FlipperTales* app, uint32_t dt_ms) {
+    /* Before the early returns: a cue must keep playing through the pause
+     * menu, the wipe and every other screen that stops the world. */
+    ft_sound_tick(&app->sound, dt_ms);
+
     if(app->toast_ms > 0) {
         app->toast_ms = (app->toast_ms > dt_ms) ? app->toast_ms - dt_ms : 0u;
     }
@@ -1010,6 +1094,7 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
 
     if(app->mode == FT_MODE_BATTLE) {
         ft_encounter_tick(&app->encounter, dt_ms);
+        ft_battle_sound(app);
         return;
     }
 
@@ -1023,6 +1108,8 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
 
     /* Doors take themselves the moment you finish stepping onto one: having
      * to stop and press to change room turns a corridor into paperwork. */
+    if(app->world.arrived) ft_sound_play(&app->sound, FT_SFX_MOVE);
+
     if(app->world.arrived) {
         const FtExit* exit = ft_world_exit_under(&app->world);
 
@@ -1031,6 +1118,7 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
              * holding. Both say so and leave you standing on the threshold,
              * which is what makes coming back here later mean something. */
             ft_toast(app, ft_world_exit_refusal(exit));
+            ft_sound_play(&app->sound, FT_SFX_DENY);
         } else if(exit) {
             ft_world_enter(&app->world, exit->dest_room, exit->dest_tx, exit->dest_ty);
             return;
@@ -1089,6 +1177,8 @@ static FlipperTales* ft_alloc(void) {
     app->orb_item = 0;
     app->orbs_from_pause = false;
     app->levelled = false;
+    app->sound_phase = FT_PHASE_MENU;
+    app->sound_struck = false;
     app->quest_item = 0;
     app->pocket_item = 0;
     app->talk_who = "";
@@ -1101,6 +1191,7 @@ static FlipperTales* ft_alloc(void) {
     app->toast = NULL;
     app->toast_ms = 0;
     app->coach = true;
+    ft_sound_init(&app->sound, true);
 
     /* Pick the run back up where it was left. A missing, corrupt or
      * wrong-version file just means a new game — never a refusal to start.
@@ -1109,7 +1200,11 @@ static FlipperTales* ft_alloc(void) {
      * save has already seen it. */
     FtSaveData saved;
     const bool resumed = ft_storage_load(&saved);
-    if(resumed) ft_save_to_world(&saved, &app->world, &app->coach);
+    if(resumed) {
+        bool sound_on = true;
+        ft_save_to_world(&saved, &app->world, &app->coach, &sound_on);
+        ft_sound_set(&app->sound, sound_on);
+    }
 
     app->show_help = !resumed;
     app->help_page = 0;
@@ -1121,6 +1216,10 @@ static FlipperTales* ft_alloc(void) {
 }
 
 static void ft_free(FlipperTales* app) {
+    /* Hand the speaker back before anything else: leaving it held would
+     * lock every other app out of it until the Flipper is restarted. */
+    ft_sound_stop(&app->sound);
+
     gui_remove_view_port(app->gui, app->view_port);
     furi_record_close(RECORD_GUI);
     view_port_free(app->view_port);

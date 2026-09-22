@@ -1178,7 +1178,8 @@ void ft_render_menu_list(
 }
 
 void ft_render_pause(
-    Canvas* canvas, uint8_t selected, bool tips_on, int16_t orbs, bool in_battle) {
+    Canvas* canvas, uint8_t selected, bool tips_on, bool sound_on, int16_t orbs,
+    bool in_battle) {
     static const char* const ITEMS[FT_PAUSE_COUNT] = {
         "Resume",
         "Pockets",
@@ -1188,6 +1189,7 @@ void ft_render_pause(
         "Field guide",
         "How to play",
         "Tips",
+        "Sound",
         "Debug",
         "New game",
         "Quit",
@@ -1196,6 +1198,7 @@ void ft_render_pause(
     char orbval[12];
     const char* values[FT_PAUSE_COUNT] = {NULL};
     values[FT_PAUSE_TIPS] = tips_on ? "ON" : "OFF";
+    values[FT_PAUSE_SOUND] = sound_on ? "ON" : "OFF";
 
     /* Rebuilding mid-fight would let a losing turn be undone by moving a
      * point, so the row says why rather than vanishing. */

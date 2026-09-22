@@ -72,6 +72,7 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) put_u8(b, &at, d->cleared[i]);
 
     put_u8(b, &at, d->coach ? 1u : 0u);
+    put_u8(b, &at, d->sound ? 1u : 0u);
 
     put_u8(b, &at, d->escort ? 1u : 0u);
     put_u8(b, &at, d->escort_tx);
@@ -111,6 +112,7 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) d->cleared[i] = get_u8(b, &at);
 
     d->coach = get_u8(b, &at) != 0u;
+    d->sound = get_u8(b, &at) != 0u;
 
     d->escort = get_u8(b, &at) != 0u;
     d->escort_tx = get_u8(b, &at);
@@ -126,7 +128,7 @@ static uint8_t payload_bytes(void) {
                      + FT_QUEST_BYTES             /* quests */
                      + FT_ITEM_COUNT              /* pockets */
                      + 6u                         /* position and save point */
-                     + FT_CLEARED_BYTES + 1u      /* flags */
+                     + FT_CLEARED_BYTES + 2u      /* flags */
                      + 3u);                       /* whoever is with you */
 }
 
@@ -188,7 +190,7 @@ bool ft_save_decode(const uint8_t* in, uint8_t len, FtSaveData* out) {
 
 /* ---- The world, both ways ---------------------------------------------- */
 
-void ft_save_from_world(const FtWorld* w, bool coach, FtSaveData* d) {
+void ft_save_from_world(const FtWorld* w, bool coach, bool sound, FtSaveData* d) {
     d->stats = w->stats;
     d->loadout = w->loadout;
     d->guide = w->guide;
@@ -205,13 +207,14 @@ void ft_save_from_world(const FtWorld* w, bool coach, FtSaveData* d) {
 
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) d->cleared[i] = w->cleared[i];
     d->coach = coach;
+    d->sound = sound;
 
     d->escort = w->escort;
     d->escort_tx = w->escort_mv.tx;
     d->escort_ty = w->escort_mv.ty;
 }
 
-void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach) {
+void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach, bool* sound) {
     ft_world_init(w);
 
     w->stats = d->stats;
@@ -242,4 +245,5 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach) {
     }
 
     if(coach) *coach = d->coach;
+    if(sound) *sound = d->sound;
 }

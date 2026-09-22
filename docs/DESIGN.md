@@ -819,6 +819,71 @@ roster in the game and still clearable. The first draft paired the wall with
 two AIRBORNE foes and read 19/52/78: the wall blocks the broadcast and the
 flyers refuse contact, so the fight had two locks and no key.
 
+### 5.4c Pockets
+
+The only healing used to be a terminal you walked back to and Protect, which
+restores two. That makes every fight a one-way trip and every wrong turn a
+reload.
+
+Three items — Apple (+5 HP), Ration (+12 HP), Cell (+4 MP) — and **six slots
+total**, across every kind. The cap is the design: without one, food stops
+being a decision and becomes a chore you do before every fight.
+
+Two sources, which behave differently on purpose:
+
+- **Trees** grow back when you walk the room again, exactly as the foes do
+  (§5.3). That is what makes re-walking a cleared room worth the trip.
+- **Caches** stay taken. Something somebody left is a reason to have gone
+  somewhere once, not a vending machine.
+
+Face one and press OK. **Full pockets leave it where it is** rather than
+swallowing it — picking something you cannot carry and watching it vanish is
+the worst possible outcome. A tree is solid until it is picked, so a cleared
+room does not keep a stump in the way.
+
+Using one, in a fight, is the sixth action. The row names the actual item and
+its effect ("Apple x2" / "+5 HP") and UP/DOWN choose which — a second menu
+level would be the drill-down all over again, and the action row is already a
+left/right ring. Healing goes through the rolling HP (§4.6), so a lethal hit
+that has not landed yet can be eaten out of. Outside a fight, the pause menu's
+**Pockets** screen does the same job.
+
+Either way **eating at full health is refused**, not allowed: the row reads
+"Nothing to mend" and the press does nothing. Six slots is too few to let a
+stray OK throw one away.
+
+### 5.4d Sound
+
+The Flipper's speaker is a piezo buzzer and the official HAL offers exactly
+one thing: `furi_hal_speaker_start(frequency, volume)`. So the game is a
+chiptune with one voice, and every cue is a list of notes.
+
+WAV playback is possible — community players bit-bang PWM — but it sounds
+thin through a buzzer, needs constant CPU while the game is drawing 30fps,
+and needs a streaming buffer in a FAP that is loaded entirely into RAM. Tones
+are what actually sound like a game here.
+
+The split is the usual one. `src/core/ft_audio.c` holds the cues as data, so
+a test can walk every one of them and check it is audible, short enough, and
+that a perfect block does not sound like a jam. `src/app/ft_sound.c` is the
+only file that touches the speaker.
+
+Two rules the player never sees but would notice immediately if they were
+broken:
+
+- **Nothing blocks.** A cue is started and then advanced from the game's own
+  tick, so a fanfare never holds up a frame. It is ticked before the early
+  returns, so it keeps playing through the pause menu and the wipe.
+- **The speaker is handed back.** It is acquired per cue and released the
+  moment there is nothing playing, and on exit before anything else. Leaving
+  it held would lock every other app out of it until the Flipper restarted.
+
+Cues fire off phase changes and the animation's own strike frame, not from
+the resolver — so core stays free of the speaker, and a hit is heard when the
+sprite moves rather than when the arithmetic happened.
+
+**Sound** is a row in the pause menu and rides the save.
+
 ### 5.5 The debug menu
 
 Everything that exists to test the game rather than to play it lives behind

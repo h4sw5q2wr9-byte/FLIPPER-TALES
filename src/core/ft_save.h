@@ -28,7 +28,7 @@
 
 /* Bumped whenever the layout changes. An older or newer file is refused
  * rather than misread: a garbled save is worse than a missing one. */
-#define FT_SAVE_VERSION 7
+#define FT_SAVE_VERSION 8
 
 /* Header (4 magic + 1 version + 1 length) + payload + 4 checksum. Generous,
  * and asserted against the real encoded length by the tests. */
@@ -47,6 +47,7 @@ typedef struct {
 
     uint8_t cleared[FT_CLEARED_BYTES];
     bool    coach;
+    bool    sound;
 
     /* Whether somebody is walking with you, and where they are standing.
      * Saving at a terminal half way home must not lose her. */
@@ -63,7 +64,7 @@ bool ft_save_decode(const uint8_t* in, uint8_t len, FtSaveData* out);
 
 /* The world and the save, in both directions. Here rather than in the app so
  * the round trip is testable. */
-void ft_save_from_world(const FtWorld* w, bool coach, FtSaveData* d);
-void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach);
+void ft_save_from_world(const FtWorld* w, bool coach, bool sound, FtSaveData* d);
+void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach, bool* sound);
 
 #endif /* FT_SAVE_H */

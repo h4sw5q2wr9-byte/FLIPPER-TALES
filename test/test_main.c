@@ -14,6 +14,7 @@
 #include "ft_map.h"
 #include "ft_rng.h"
 #include "ft_tutorial.h"
+#include "ft_audio.h"
 #include "ft_world.h"
 #include "ft_roll.h"
 #include "ft_signal.h"
@@ -2408,7 +2409,7 @@ static void test_save_world(void) {
     w.save_ty = 4;
 
     FtSaveData d;
-    ft_save_from_world(&w, false, &d);
+    ft_save_from_world(&w, false, true, &d);
 
     uint8_t buf[FT_SAVE_MAX_BYTES];
     const uint8_t len = ft_save_encode(&d, buf, sizeof(buf));
@@ -2419,7 +2420,7 @@ static void test_save_world(void) {
 
     FtWorld loaded;
     bool coach = true;
-    ft_save_to_world(&back, &loaded, &coach);
+    ft_save_to_world(&back, &loaded, &coach, NULL);
 
     CHECK_EQ(loaded.room, 2);
     CHECK_EQ(loaded.mv.tx, 3);
@@ -2449,7 +2450,7 @@ static void test_save_world(void) {
     other.ty = 4;
 
     FtWorld elsewhere;
-    ft_save_to_world(&other, &elsewhere, NULL);
+    ft_save_to_world(&other, &elsewhere, NULL, NULL);
     CHECK_EQ(elsewhere.room, 0);
     CHECK(ft_world_entity_gone(&elsewhere, 0) == false ||
               ft_room(0)->ent_count == 0,
@@ -3130,7 +3131,7 @@ static void test_guide(void) {
     w.guide = all;
 
     FtSaveData d;
-    ft_save_from_world(&w, false, &d);
+    ft_save_from_world(&w, false, true, &d);
 
     uint8_t buf2[FT_SAVE_MAX_BYTES];
     const uint8_t len = ft_save_encode(&d, buf2, sizeof(buf2));
@@ -3141,7 +3142,7 @@ static void test_guide(void) {
     CHECK_EQ(back.guide.seen, all.seen);
 
     FtWorld loaded;
-    ft_save_to_world(&back, &loaded, NULL);
+    ft_save_to_world(&back, &loaded, NULL, NULL);
     CHECK_EQ(ft_guide_count(&loaded.guide), FT_ENEMY_COUNT);
 }
 
@@ -3232,7 +3233,7 @@ static void test_losing_costs(void) {
     w.save_ty = ft_room(1)->exits[0].ty;
 
     FtSaveData checkpoint;
-    ft_save_from_world(&w, false, &checkpoint);
+    ft_save_from_world(&w, false, true, &checkpoint);
 
     const int16_t saved_charge_max = w.stats.charge_max;
 
@@ -3246,7 +3247,7 @@ static void test_losing_costs(void) {
     /* Then go down. Restoring the checkpoint must undo all of it. */
     FtWorld after;
     bool coach = true;
-    ft_save_to_world(&checkpoint, &after, &coach);
+    ft_save_to_world(&checkpoint, &after, &coach, NULL);
 
     CHECK(!ft_world_entity_gone(&after, 0), "the foe is standing again");
     CHECK_EQ(after.stats.charge_max, saved_charge_max);
@@ -4493,7 +4494,7 @@ static void test_weldhome(void) {
     carry.escort_mv.ty = 2;
 
     FtSaveData sd;
-    ft_save_from_world(&carry, false, &sd);
+    ft_save_from_world(&carry, false, true, &sd);
 
     uint8_t bytes[FT_SAVE_MAX_BYTES];
     const uint8_t len = ft_save_encode(&sd, bytes, sizeof(bytes));
@@ -4504,7 +4505,7 @@ static void test_weldhome(void) {
 
     FtWorld reloaded;
     bool coach = true;
-    ft_save_to_world(&back, &reloaded, &coach);
+    ft_save_to_world(&back, &reloaded, &coach, NULL);
 
     CHECK(reloaded.escort, "she is still with you");
     CHECK_EQ(reloaded.escort_mv.tx, 4);
@@ -4700,7 +4701,7 @@ static void test_items(void) {
     ft_pockets_add(&carry.pockets, FT_ITEM_CELL);
 
     FtSaveData d;
-    ft_save_from_world(&carry, false, &d);
+    ft_save_from_world(&carry, false, true, &d);
 
     uint8_t buf[FT_SAVE_MAX_BYTES];
     const uint8_t len = ft_save_encode(&d, buf, sizeof(buf));
@@ -4711,10 +4712,79 @@ static void test_items(void) {
 
     FtWorld reloaded;
     bool coach = true;
-    ft_save_to_world(&back, &reloaded, &coach);
+    ft_save_to_world(&back, &reloaded, &coach, NULL);
 
     CHECK_EQ(ft_pockets_count(&reloaded.pockets, FT_ITEM_APPLE), 2);
     CHECK_EQ(ft_pockets_count(&reloaded.pockets, FT_ITEM_CELL), 1);
+}
+
+/* ---- What it sounds like ----------------------------------------------- */
+
+static void test_audio(void) {
+    section("sound");
+
+    /* Every cue exists, plays something, and is short enough to arrive
+     * before the thing it is describing has finished happening. */
+    for(uint8_t i = 0; i < FT_SFX_COUNT; i++) {
+        uint8_t n = 0;
+        const FtNote* notes = ft_sfx((FtSfxId)i, &n);
+
+        CHECK(notes != NULL, "cue %u exists", i);
+        CHECK(n > 0, "cue %u has notes", i);
+        if(!notes) continue;
+
+        bool any_tone = false;
+        for(uint8_t k = 0; k < n; k++) {
+            CHECK(notes[k].ms > 0, "cue %u note %u lasts (%u ms)", i, k,
+                  notes[k].ms);
+
+            /* A piezo buzzer below about 100 Hz is a click, and above about
+             * 4 kHz it is a whistle nobody wants near their ear. */
+            if(notes[k].hz != FT_NOTE_REST) {
+                any_tone = true;
+                CHECK(notes[k].hz >= 100u && notes[k].hz <= 4000u,
+                      "cue %u note %u is audible (%u Hz)", i, k, notes[k].hz);
+            }
+        }
+        CHECK(any_tone, "cue %u makes a sound rather than a pause", i);
+
+        const uint16_t len = ft_sfx_length_ms((FtSfxId)i);
+        CHECK(len > 0, "cue %u has a length", i);
+        CHECK(len <= 1200u, "cue %u does not outstay its moment (%u ms)", i, len);
+    }
+
+    /* The ones that fire on every step have to be almost nothing: at one per
+     * tile, anything with a tail turns walking into a drone. */
+    CHECK(ft_sfx_length_ms(FT_SFX_MOVE) <= 30u, "a step is a tick (%u ms)",
+          ft_sfx_length_ms(FT_SFX_MOVE));
+
+    /* Winning should sound better than losing, and both should be longer
+     * than a hit: they are the only moments the game gets to be musical. */
+    CHECK(ft_sfx_length_ms(FT_SFX_WIN) > ft_sfx_length_ms(FT_SFX_HIT),
+          "a win is a tune, not a blip");
+    CHECK(ft_sfx_length_ms(FT_SFX_LOSE) > ft_sfx_length_ms(FT_SFX_HURT),
+          "and so is a loss");
+
+    /* A perfect block has to be distinguishable from a jam by ear alone,
+     * because the whole guard system is a thing you learn by feel. */
+    uint8_t jam_n = 0, perfect_n = 0;
+    const FtNote* jam = ft_sfx(FT_SFX_JAM, &jam_n);
+    const FtNote* perfect = ft_sfx(FT_SFX_PERFECT, &perfect_n);
+
+    CHECK(jam && perfect, "both exist");
+    if(jam && perfect) {
+        CHECK(perfect_n != jam_n || perfect[0].hz != jam[0].hz,
+              "and they do not sound the same");
+        CHECK(perfect[perfect_n - 1u].hz > jam[jam_n - 1u].hz,
+              "the better one ends higher (%u vs %u)",
+              perfect[perfect_n - 1u].hz, jam[jam_n - 1u].hz);
+    }
+
+    /* Out of range asks for nothing rather than walking off the table. */
+    uint8_t n = 99;
+    CHECK(ft_sfx(FT_SFX_COUNT, &n) == NULL, "a bad id plays nothing");
+    CHECK_EQ(n, 0);
+    CHECK_EQ(ft_sfx_length_ms(FT_SFX_COUNT), 0);
 }
 
 int main(void) {
@@ -4759,6 +4829,7 @@ int main(void) {
     test_npc();
     test_weldhome();
     test_items();
+    test_audio();
     test_notice();
     test_guard_aftermath();
     test_deflect();

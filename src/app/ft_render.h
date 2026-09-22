@@ -39,6 +39,7 @@ typedef enum {
     FT_PAUSE_GUIDE,
     FT_PAUSE_HELP,
     FT_PAUSE_TIPS,
+    FT_PAUSE_SOUND,
     FT_PAUSE_DEBUG,
     FT_PAUSE_NEWGAME,
     FT_PAUSE_QUIT,
@@ -61,7 +62,8 @@ void ft_render_menu_list(
 /* `orbs` is what is in hand, shown on the Orbs row so the player never has to
  * open the screen to find out there is nothing to place. */
 void ft_render_pause(
-    Canvas* canvas, uint8_t selected, bool tips_on, int16_t orbs, bool in_battle);
+    Canvas* canvas, uint8_t selected, bool tips_on, bool sound_on, int16_t orbs,
+    bool in_battle);
 
 /* Everything that exists to test the game rather than to play it. Kept
  * together behind one door so the pause menu stays the player's. */

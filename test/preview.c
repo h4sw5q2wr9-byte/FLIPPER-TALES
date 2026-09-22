@@ -265,7 +265,8 @@ int main(void) {
     /* The menus are screens too, and they were the two nobody was looking at
      * until a row was added to one of them. */
     for(uint8_t i = 0; i < FT_PAUSE_COUNT; i++) {
-        ft_render_pause(canvas, i, (i % 2) != 0, (i == 0u) ? 0 : 12, (i % 3u) == 0u);
+        ft_render_pause(canvas, i, (i % 2) != 0, (i % 3u) != 0, (i == 0u) ? 0 : 12,
+                        (i % 3u) == 0u);
 
         char pp[64];
         snprintf(pp, sizeof(pp), "preview/80_pause%u.pbm", i);
