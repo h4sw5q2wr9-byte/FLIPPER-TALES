@@ -110,6 +110,10 @@ typedef struct {
      * was landed on without polling every frame. */
     bool arrived;
 
+    /* Set for one update when a foe's step lands on the player. Whoever
+     * moved into whom decides who opens the fight. */
+    bool ambushed;
+
     FtFoeState foes[FT_MAX_ROOM_ENTS];
 
     /* Which entities are gone, one bit per entity per room. */

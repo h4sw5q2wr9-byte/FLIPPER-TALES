@@ -1068,7 +1068,13 @@ static void test_encounter(void) {
     int guard_ticks = 0;
     for(int i = 0; i < 20000 && !ft_encounter_over(&run); i++) {
         if(run.phase == FT_PHASE_MENU) {
-            run.menu_index = FT_ACTION_CONTACT;
+            /* Contact costs MP now, so a player who only ever presses it
+             * runs dry. Bracing is what buys it back — which is the loop the
+             * cost exists to create. */
+            run.menu_index =
+                ft_encounter_action_available(&run, FT_ACTION_CONTACT) ?
+                    (uint8_t)FT_ACTION_CONTACT :
+                    (uint8_t)FT_ACTION_DEFEND;
             ft_encounter_press_ok(&run);
         } else if(
             run.phase == FT_PHASE_TELEGRAPH &&
@@ -2448,6 +2454,242 @@ static void test_save_world(void) {
           "clearing is per room, not global");
 }
 
+static void test_payloads(void) {
+    section("status payloads");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* Every payload in the data must be one the encounter actually applies.
+     * All three were declared, ft_resolve_hit even computed payload_applied,
+     * and nothing read it: an attack that says it corrupts you and does not
+     * is worse than one that never claimed to. */
+    FtEncounter e;
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 3);
+
+    for(uint8_t i = 0; i < FT_PAYLOAD_COUNT; i++) {
+        CHECK_EQ(ft_encounter_status(&e, (FtPayload)i), 0);
+    }
+    CHECK(ft_encounter_status_tag(&e) == NULL, "a clean fighter has no tag");
+    CHECK_EQ(ft_encounter_turns_this_round(&e), FT_PLAYER_TURNS_PER_ROUND);
+
+    /* Corrupt: costs HP at the top of each round, and wears off. */
+    e.status[FT_PAYLOAD_CORRUPT] = FT_STATUS_TURNS;
+    CHECK(ft_encounter_status_tag(&e) != NULL, "and a tagged one does");
+
+    const int16_t hp0 = e.roll.target;
+    ft_encounter_init_single(&e, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    e.status[FT_PAYLOAD_CORRUPT] = 1;
+
+    int rounds = 0;
+    for(int i = 0; i < 60000 && !ft_encounter_over(&e) && rounds < 3; i++) {
+        if(e.phase == FT_PHASE_MENU) {
+            e.menu_index = FT_ACTION_FOCUS;
+            ft_encounter_press_ok(&e);
+            rounds++;
+        }
+        ft_encounter_tick(&e, 10);
+    }
+    CHECK_EQ(ft_encounter_status(&e, FT_PAYLOAD_CORRUPT), 0);
+    CHECK(e.roll.target < hp0, "corrupt took HP (%d -> %d)",
+          (int)hp0, (int)e.roll.target);
+
+    /* Drain: costs MP the same way. */
+    FtEncounter dr;
+    ft_encounter_init_single(&dr, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    dr.stats.ram = dr.stats.ram_max;
+    dr.status[FT_PAYLOAD_DRAIN] = FT_STATUS_TURNS;
+
+    const int16_t mp0 = dr.stats.ram;
+    int dr_rounds = 0;
+    for(int i = 0; i < 60000 && !ft_encounter_over(&dr) && dr_rounds < 4; i++) {
+        if(dr.phase == FT_PHASE_MENU) {
+            dr.menu_index = FT_ACTION_FOCUS;
+            ft_encounter_press_ok(&dr);
+            dr_rounds++;
+        }
+        ft_encounter_tick(&dr, 10);
+    }
+    CHECK(dr.stats.ram < mp0, "drain took MP (%d -> %d)",
+          (int)mp0, (int)dr.stats.ram);
+
+    /* Stall: halves the round's actions, which is what "may lose the turn"
+     * means on a two-action round. */
+    FtEncounter st;
+    ft_encounter_init_single(&st, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    CHECK_EQ(ft_encounter_turns_this_round(&st), 2);
+
+    st.status[FT_PAYLOAD_STALL] = FT_STATUS_TURNS;
+    CHECK_EQ(ft_encounter_turns_this_round(&st), 1);
+
+    /* A guard nullifies the payload entirely — that was already true of
+     * ft_resolve_hit, and it has to stay true now that it means something. */
+    const FtAttack* dot = &FT_ENEMIES[FT_ENEMY_MAST_RELAY].attacks[1];
+    CHECK(dot->payload != FT_PAYLOAD_NONE, "the relay's surge carries one");
+
+    const FtDefender bare = {0, 0};
+    const FtHitParams clean = {0, 0, FT_RATING_MISS, false, FT_GUARD_NONE, 0};
+    const FtHitParams jammed = {0, 0, FT_RATING_MISS, false, FT_GUARD_JAM, 0};
+
+    CHECK(ft_resolve_hit(dot, &bare, &clean).payload_applied,
+          "a clean hit lands it");
+    CHECK(!ft_resolve_hit(dot, &bare, &jammed).payload_applied,
+          "a jam stops it");
+
+    /* End to end: take the surge, and be corrupted by it. */
+    FtEncounter fight;
+    ft_encounter_init_single(&fight, FT_ENEMY_MAST_RELAY, &lo, 3);
+
+    bool got = false;
+    for(int i = 0; i < 120000 && !ft_encounter_over(&fight); i++) {
+        if(fight.phase == FT_PHASE_MENU) {
+            fight.menu_index = FT_ACTION_FOCUS;
+            ft_encounter_press_ok(&fight);
+        }
+        ft_encounter_tick(&fight, 10);
+
+        if(ft_encounter_status_tag(&fight) != NULL) {
+            got = true;
+            break;
+        }
+    }
+    CHECK(got, "an unguarded payload attack leaves a status");
+
+    /* A new fight starts clean, whatever the last one did. */
+    FtEncounter fresh;
+    ft_encounter_init_single(&fresh, FT_ENEMY_STRAY_PACKET, &lo, 9);
+    CHECK(ft_encounter_status_tag(&fresh) == NULL, "statuses do not carry over");
+}
+
+static void test_ambush(void) {
+    section("who reached whom");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* Walking into a foe: you open, as always. */
+    FtEncounter mine;
+    ft_encounter_init_single(&mine, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    CHECK_EQ(mine.phase, FT_PHASE_MENU);
+
+    /* One walking into you: it opens. */
+    FtEncounter theirs;
+    ft_encounter_init_single(&theirs, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    ft_encounter_enemy_opens(&theirs);
+    CHECK_EQ(theirs.phase, FT_PHASE_TELEGRAPH);
+
+    /* And the player still gets their turn straight after. */
+    for(int i = 0; i < 60000 && theirs.phase != FT_PHASE_MENU; i++) {
+        ft_encounter_tick(&theirs, 10);
+        if(ft_encounter_over(&theirs)) break;
+    }
+    CHECK_EQ(theirs.phase, FT_PHASE_MENU);
+
+    /* A board whose only foe never takes turns cannot be handed the opening
+     * — a bulwark ambush must not stall the fight before it starts. */
+    FtEncounter wall;
+    ft_encounter_init_single(&wall, FT_ENEMY_BLANK_WALL, &lo, 3);
+    ft_encounter_enemy_opens(&wall);
+    CHECK_EQ(wall.phase, FT_PHASE_MENU);
+
+    /* Same for a lone sleeper's opposite: a sleeper alone is awake, so it
+     * can take the ambush. */
+    FtEncounter sleeper;
+    ft_encounter_init_single(&sleeper, FT_ENEMY_COLD_BOOTER, &lo, 3);
+    ft_encounter_enemy_opens(&sleeper);
+    CHECK_EQ(sleeper.phase, FT_PHASE_TELEGRAPH);
+
+    /* The world reports it: a foe's step landing on the player is an ambush,
+     * the player's own step onto a foe is not. */
+    const uint8_t ROOM = 1;
+    const FtRoom* room = ft_room(ROOM);
+
+    FtWorld w;
+    ft_world_init(&w);
+    ft_world_enter(&w, ROOM, room->exits[0].tx, room->exits[0].ty);
+    CHECK(!w.ambushed, "a fresh room is not an ambush");
+
+    /* Stand still next to an alerted foe and let it come to you. */
+    w.foes[0].alert = true;
+    bool caught = false;
+    for(int t = 0; t < 4000 && !caught; t++) {
+        ft_world_update(&w, 0, 0, 20);
+        w.foes[0].alert = true;
+        if(w.ambushed) caught = true;
+    }
+    CHECK(caught, "a foe that reaches you is an ambush");
+    CHECK(ft_world_foe_contact(&w) >= 0, "and it is touching you");
+
+    /* The flag is for one update only, like `arrived`. */
+    ft_world_update(&w, 0, 0, 20);
+    CHECK(!w.ambushed, "and the flag does not linger");
+}
+
+static void test_always_something_to_do(void) {
+    section("never stuck");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* MP gates the strong module, so the question this raises is whether a
+     * board can ever leave the player with nothing at all to press. It must
+     * not: Guard and Focus cost nothing and Guard is what buys MP back. */
+    for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+        FtEncounter e;
+        ft_encounter_init_single(&e, (FtEnemyId)i, &lo, 3);
+
+        for(int16_t mp = 0; mp <= 3; mp++) {
+            e.stats.ram = mp;
+
+            uint8_t usable = 0;
+            for(uint8_t a = 0; a < FT_ACTION_COUNT; a++) {
+                if(ft_encounter_action_available(&e, (FtAction2)a)) usable++;
+            }
+            CHECK(usable > 0, "%s at %d MP leaves something to press",
+                  FT_ENEMIES[i].name, (int)mp);
+
+            CHECK(ft_encounter_action_available(&e, FT_ACTION_DEFEND),
+                  "%s: Guard is always there", FT_ENEMIES[i].name);
+            CHECK(ft_encounter_action_available(&e, FT_ACTION_FOCUS),
+                  "%s: so is Focus", FT_ENEMIES[i].name);
+        }
+    }
+
+    /* Out of MP the strong module is refused, and the refusal names the fix
+     * rather than just saying no. */
+    FtEncounter dry;
+    ft_encounter_init_single(&dry, FT_ENEMY_STRAY_PACKET, &lo, 3);
+    dry.stats.ram = 0;
+
+    CHECK(!ft_encounter_action_available(&dry, FT_ACTION_CONTACT),
+          "no MP, no NFC");
+
+    const char* why = ft_encounter_action_block(&dry, FT_ACTION_CONTACT);
+    CHECK(why && strstr(why, "MP"), "and it says what is missing");
+    CHECK(why && strlen(why) <= FT_TUTORIAL_MAX_CHARS, "in one line");
+
+    /* Guarding buys it back, so the loop closes. */
+    dry.menu_index = FT_ACTION_DEFEND;
+    ft_encounter_press_ok(&dry);
+    CHECK(dry.stats.ram > 0, "bracing restores MP");
+
+    /* Spending it actually costs: the number on screen has to move. */
+    FtEncounter spend;
+    ft_encounter_init_single(&spend, FT_ENEMY_STRAY_PACKET, &lo, 3);
+
+    const int16_t before = spend.stats.ram;
+    spend.menu_index = FT_ACTION_CONTACT;
+    ft_encounter_press_ok(&spend);
+    ft_encounter_tick(&spend, FT_READY_MS + FT_ACTION_WINDOW_MS + 10);
+
+    CHECK_EQ(spend.stats.ram, before - (int16_t)ft_encounter_action_cost(
+                                            &spend, FT_ACTION_CONTACT));
+    CHECK(ft_encounter_action_cost(&spend, FT_ACTION_CONTACT) > 0,
+          "and it costs something");
+    CHECK_EQ(ft_encounter_action_cost(&spend, FT_ACTION_BROADCAST), 0);
+    CHECK_EQ(ft_encounter_action_cost(&spend, FT_ACTION_DEFEND), 0);
+}
+
 static void test_bulwark(void) {
     section("a wall in front");
 
@@ -3332,6 +3574,9 @@ int main(void) {
     test_defeat();
     test_save();
     test_save_world();
+    test_payloads();
+    test_ambush();
+    test_always_something_to_do();
     test_bulwark();
     test_sleeper();
     test_fast_turn_order();

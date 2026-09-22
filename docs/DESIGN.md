@@ -379,6 +379,50 @@ and `WALL` / `SLP` on the title bar. A bulwark that looks like any other enemy
 is just an enemy with confusing rules, and a sleeper you cannot tell is asleep
 is a surprise rather than a decision.
 
+### 4.7g Status payloads, which now exist
+
+`CORRUPT`, `DRAIN` and `STALL` were in the data from the first commit and none
+of them did anything. `ft_resolve_hit` even computed `payload_applied` and
+nobody ever read it — so an attack whose whole character was "this one
+corrupts you" hit for its number and left nothing behind.
+
+| Payload | Per round | Tag |
+|---|---|---|
+| `CORRUPT` | `FT_CORRUPT_DAMAGE` off your HP | `DOT` |
+| `DRAIN` | `FT_DRAIN_MP` off your MP | `MP-` |
+| `STALL` | one of your two actions | `SLOW` |
+
+They last `FT_STATUS_TURNS` rounds and bite **once at the top of each player
+round**, not once per action: a per-action drip would charge twice over for no
+reason the player could see. A jam or a capture still nullifies them outright,
+which `ft_resolve_hit` already decided and which matters now that it means
+something.
+
+Only one tag shows at a time, beside the player in the arena — worst first,
+because three at once would need a row the screen does not have. The guide
+lists a payload as its own column on the attack line, since an attack that
+corrupts you is a different problem from one that hits for the same number and
+does not.
+
+Turning them on cost the ladder a few points exactly where it should: the Rime
+Shell's freeze took its fight from 97% to 86% at low skill, and the Mast
+Relay's surge took its from 89% to 69%.
+
+### 4.7h Who reached whom
+
+Attacking a foe in the overworld already gave you a free hit. Now the reverse
+is true: a foe whose **step lands on you** gets the opening turn.
+
+`FtWorld` reports it as `ambushed`, set for one update like `arrived`, and set
+only when a *walker's* step completes on the player's tile — walking into one
+yourself does not count, which is the whole distinction. The app turns that
+into `ft_encounter_enemy_opens()`, which hands the round's first turn to the
+foes, quickest first, exactly as any other round opens.
+
+It falls back safely: a board whose only foe never takes turns — a lone
+bulwark — cannot be handed the opening, so the fight starts normally rather
+than stalling before it begins.
+
 ### 4.8 Enemy attributes — Milestone 1 subset
 
 | Attribute | Effect | Block Tales equivalent |

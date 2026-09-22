@@ -90,6 +90,12 @@ static void build(FtEncounter* e, const Shot* s) {
 
     if(s->variant == 9) e->coach = false;
 
+    /* Variant 8 shows what a payload looks like on the player. */
+    if(s->variant == 8) {
+        e->coach = false;
+        e->status[FT_PAYLOAD_CORRUPT] = FT_STATUS_TURNS;
+    }
+
     /* Variant 7 kills the row, so the defeat fold has something to play. */
     if(s->variant == 7) {
         for(uint8_t i = 0; i < e->foe_count; i++) {
@@ -180,6 +186,7 @@ int main(void) {
         {"foe-null",        FT_ENEMY_NULL_FIELD,    FT_PHASE_MENU,      0,    0, 0, 0, false},
         {"foe-wall",        FT_ENEMY_BLANK_WALL,   FT_PHASE_MENU,      0,    0, 0, 3, false},
         {"foe-booter",      FT_ENEMY_COLD_BOOTER,  FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"status-dot",      FT_ENEMY_MAST_RELAY,   FT_PHASE_MENU,      0,    0, 8, 0, false},
         {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0, 0, false},
         {"lose",            FT_ENEMY_SEALED_LOCK,  FT_PHASE_LOSE,       100,  0, 0, 0, false},
     };

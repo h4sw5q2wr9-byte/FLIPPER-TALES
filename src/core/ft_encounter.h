@@ -83,6 +83,14 @@ typedef struct {
 
     bool defending;
 
+    /* Rounds remaining on each status payload.
+     *
+     * CORRUPT, DRAIN and STALL were in the data from the start and none of
+     * them did anything: ft_resolve_hit even computed payload_applied and
+     * nobody read it. An attack that says it corrupts you and does not is
+     * worse than one that never claimed to. */
+    uint8_t status[FT_PAYLOAD_COUNT];
+
     /* Player actions taken this battle. Foes only act on every other one —
      * see FT_PLAYER_TURNS_PER_ROUND. */
     uint16_t player_turns;
@@ -150,6 +158,10 @@ void ft_encounter_init(
 void ft_encounter_init_single(
     FtEncounter* e, FtEnemyId foe, const FtLoadout* lo, uint32_t seed);
 
+/* Hand the opening turn to the foes. Used when one of them reached the
+ * player rather than the other way round. */
+void ft_encounter_enemy_opens(FtEncounter* e);
+
 void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms);
 void ft_encounter_press_ok(FtEncounter* e);
 
@@ -175,6 +187,19 @@ uint8_t ft_encounter_action_cost(const FtEncounter* e, FtAction2 action);
 const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action);
 
 bool ft_encounter_over(const FtEncounter* e);
+
+/* ---- Status ------------------------------------------------------------ */
+
+/* Rounds left on a payload, 0 when clear. */
+uint8_t ft_encounter_status(const FtEncounter* e, FtPayload p);
+
+/* A short tag for whatever is on the player, or NULL when nothing is. Only
+ * one is shown: three at once would need a row the screen does not have, and
+ * the worst one is the one worth knowing about. */
+const char* ft_encounter_status_tag(const FtEncounter* e);
+
+/* Player actions this round. A stall halves them. */
+uint8_t ft_encounter_turns_this_round(const FtEncounter* e);
 
 /* ---- Foes ------------------------------------------------------------ */
 

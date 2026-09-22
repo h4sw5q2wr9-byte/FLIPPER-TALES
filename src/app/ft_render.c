@@ -475,6 +475,26 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
     draw_player(canvas, px, hero_floor, ft_roll_active(&e->roll));
 
+    /* Whatever is eating you, named over your own head. The three payloads
+     * were in the data from the start and none of them did anything, so
+     * none of them needed showing; now they do. */
+    const char* status = ft_encounter_status_tag(e);
+    if(status) {
+        canvas_set_font(canvas, FontSecondary);
+
+        /* Beside him, inside the arena. Above his head is the title bar,
+         * which is not the arena's to draw in. */
+        const int32_t w = (int32_t)canvas_string_width(canvas, status) + 4;
+        const int32_t sx = px + FT_HERO_W + 1;
+        const int32_t sy = FT_ARENA_Y + 1;
+
+        canvas_set_color(canvas, ColorWhite);
+        canvas_draw_box(canvas, sx, sy, (size_t)w, 9);
+        canvas_set_color(canvas, ColorBlack);
+        canvas_draw_frame(canvas, sx, sy, (size_t)w, 9);
+        canvas_draw_str(canvas, sx + 2, sy + 7, status);
+    }
+
     if(arena_fx.strobe) {
         canvas_set_color(canvas, ColorXOR);
         canvas_draw_box(

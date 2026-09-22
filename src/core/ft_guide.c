@@ -165,10 +165,21 @@ bool ft_guide_attack_line(FtEnemyId id, uint8_t n, char* out, uint8_t cap) {
     append_num(out, cap, atk->base_power);
 
     switch(atk->klass) {
-    case FT_CLASS_UNDODGEABLE: append(out, cap, "  no jam"); break;
-    case FT_CLASS_GUARDED:     append(out, cap, "  jam only"); break;
+    case FT_CLASS_UNDODGEABLE: append(out, cap, " none"); break;
+    case FT_CLASS_GUARDED:     append(out, cap, " jam"); break;
     case FT_CLASS_NORMAL:
-    default:                   append(out, cap, "  jam, keep"); break;
+    default:                   append(out, cap, " keep"); break;
+    }
+
+    /* What it leaves behind, if anything. Worth a column of its own: an
+     * attack that corrupts you is a different problem from one that hits
+     * for the same number and does not. */
+    switch(atk->payload) {
+    case FT_PAYLOAD_CORRUPT: append(out, cap, " DOT"); break;
+    case FT_PAYLOAD_DRAIN:   append(out, cap, " MP-"); break;
+    case FT_PAYLOAD_STALL:   append(out, cap, " SLOW"); break;
+    case FT_PAYLOAD_NONE:
+    default:                 break;
     }
 
     return true;

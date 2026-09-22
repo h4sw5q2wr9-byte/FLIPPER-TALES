@@ -290,6 +290,7 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
     w->walk_ms = 0;
     w->area_ms = 0;
     w->arrived = false;
+    w->ambushed = false;
 
     /* Foes start where the room says, and are alive unless already beaten. */
     const FtRoom* r = ft_room(w->room);
@@ -585,6 +586,7 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
 
     w->area_ms += dt_ms;
     w->arrived = false;
+    w->ambushed = false;
 
     /* --- player --- */
     if(ft_world_moving(w)) {
@@ -649,7 +651,15 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
             FtFoeWalker* k = &f->w[m];
 
             if(k->mv.dx || k->mv.dy) {
-                step_advance(&k->mv, dt_ms, FT_FOE_STEP_MS);
+                /* A walker that finishes its step standing on the player
+                 * reached *you*: it is the aggressor, and it gets the
+                 * opening turn. Walking into one yourself does not count,
+                 * which is the whole distinction. */
+                if(step_advance(&k->mv, dt_ms, FT_FOE_STEP_MS)) {
+                    if(k->mv.tx == w->mv.tx && k->mv.ty == w->mv.ty) {
+                        w->ambushed = true;
+                    }
+                }
                 continue;
             }
 

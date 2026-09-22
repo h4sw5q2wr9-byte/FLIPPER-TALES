@@ -152,6 +152,13 @@ typedef enum {
  * three simply deletes a level-one character before they can respond — the
  * balance simulator measured 0% wins at low skill. The reference solves the
  * same problem the same way: a lone player gets two turns to the enemy's one. */
+/* How long a status payload sticks, in player rounds. */
+#define FT_STATUS_TURNS 3
+
+/* What each one does per round. */
+#define FT_CORRUPT_DAMAGE 1
+#define FT_DRAIN_MP       1
+
 #define FT_PLAYER_TURNS_PER_ROUND 2
 
 /* A "get set" beat before either timing bar starts moving. The bar and its

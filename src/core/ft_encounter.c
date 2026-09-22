@@ -4,6 +4,9 @@
  * because a FAST foe opens the fight rather than waiting for round two. */
 static void advance_foe_turn(FtEncounter* e, uint8_t from);
 
+/* Defined with resolution; the status tick spends MP. */
+static void gain_ram(FtEncounter* e, int16_t amount);
+
 /* ---- Timing ---------------------------------------------------------- */
 
 uint32_t ft_jam_window_ms(bool hard_mode, FtAttackClass klass) {
@@ -113,6 +116,42 @@ static int next_living(const FtEncounter* e, uint8_t from) {
     return -1;
 }
 
+uint8_t ft_encounter_status(const FtEncounter* e, FtPayload p) {
+    if(p >= FT_PAYLOAD_COUNT) return 0u;
+    return e->status[p];
+}
+
+const char* ft_encounter_status_tag(const FtEncounter* e) {
+    /* Worst first: losing turns beats losing MP beats losing a point of HP. */
+    if(e->status[FT_PAYLOAD_STALL]) return "SLOW";
+    if(e->status[FT_PAYLOAD_DRAIN]) return "MP-";
+    if(e->status[FT_PAYLOAD_CORRUPT]) return "DOT";
+    return NULL;
+}
+
+uint8_t ft_encounter_turns_this_round(const FtEncounter* e) {
+    /* A stall costs you one of your two actions, which is the whole of what
+     * "may lose the turn" should mean on a two-action round: predictable,
+     * and expensive enough to be worth guarding against. */
+    return e->status[FT_PAYLOAD_STALL] ? 1u : FT_PLAYER_TURNS_PER_ROUND;
+}
+
+/* Tick the payloads down and charge for them. Called once at the top of each
+ * player round, not once per action: a per-action drip would charge twice
+  * over for no reason the player could see. */
+static void status_round(FtEncounter* e) {
+    if(e->status[FT_PAYLOAD_CORRUPT]) {
+        ft_roll_apply_damage(&e->roll, FT_CORRUPT_DAMAGE);
+    }
+    if(e->status[FT_PAYLOAD_DRAIN]) {
+        gain_ram(e, -(int16_t)FT_DRAIN_MP);
+    }
+
+    for(uint8_t i = 0; i < FT_PAYLOAD_COUNT; i++) {
+        if(e->status[i]) e->status[i]--;
+    }
+}
+
 bool ft_encounter_over(const FtEncounter* e) {
     return e->phase == FT_PHASE_WIN || e->phase == FT_PHASE_LOSE;
 }
@@ -174,6 +213,7 @@ void ft_encounter_init(
     e->menu_index = 0;
     e->defending = false;
     e->player_turns = 0;
+    for(uint8_t i = 0; i < FT_PAYLOAD_COUNT; i++) e->status[i] = 0u;
 
     e->action_pressed = false;
     e->action_press_ms = 0;
@@ -199,6 +239,22 @@ void ft_encounter_init(
      * does not buy them a free hit before the fight has started. Kicking the
      * fast phase off here instead took the prologue's last fight from 57% to
      * 32% at low skill, which is not "quick", it is "ambushed". */
+}
+
+void ft_encounter_enemy_opens(FtEncounter* e) {
+    if(e->phase != FT_PHASE_MENU) return;
+    if(next_living(e, 0) < 0) return;
+
+    /* Whoever is quickest leads the ambush, same as any other round. */
+    e->fast_phase = true;
+    advance_foe_turn(e, 0);
+
+    /* Nothing fast and awake to take it: fall back to the ordinary side of
+     * the round rather than handing the turn back to the player. */
+    if(e->phase == FT_PHASE_MENU) {
+        e->fast_phase = false;
+        advance_foe_turn(e, 0);
+    }
 }
 
 void ft_encounter_init_single(
@@ -645,6 +701,12 @@ static void resolve_enemy_action(FtEncounter* e) {
 
     e->last_enemy_hit = ft_resolve_hit(atk, &def, &p);
 
+    /* A jam or a capture already nullifies it — ft_resolve_hit works that
+     * out — so this only fires on a hit that got through clean. */
+    if(e->last_enemy_hit.payload_applied && atk->payload < FT_PAYLOAD_COUNT) {
+        e->status[atk->payload] = FT_STATUS_TURNS;
+    }
+
     e->last_capture_was_new = false;
     if(e->last_enemy_hit.captured) {
         e->last_capture_was_new = ft_siglib_capture(&e->lib, atk->id);
@@ -769,9 +831,11 @@ static void advance_foe_turn(FtEncounter* e, uint8_t from) {
     e->defending = false;
 
     if(e->fast_phase) {
-        /* The quick ones have had their say; now the player moves. */
+        /* The quick ones have had their say; now the player moves — and
+         * whatever is eating them takes its bite first. */
         e->fast_phase = false;
         e->player_turns = 0;
+        status_round(e);
         enter_phase(e, FT_PHASE_MENU);
         return;
     }
@@ -817,7 +881,7 @@ void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
         if(e->phase_ms >= FT_IMPACT_HOLD_MS) {
             if(ft_encounter_living(e) == 0u) {
                 enter_phase(e, FT_PHASE_WIN);
-            } else if(e->player_turns % FT_PLAYER_TURNS_PER_ROUND != 0u) {
+            } else if(e->player_turns % ft_encounter_turns_this_round(e) != 0u) {
                 /* Still the player's round: straight back to the menu. */
                 e->defending = false;
                 enter_phase(e, FT_PHASE_MENU);

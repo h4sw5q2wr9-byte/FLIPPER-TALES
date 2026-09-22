@@ -104,6 +104,7 @@ typedef struct {
     FtPend   pend;
     int      pend_entity;
     bool     pend_first_strike;
+    bool     pend_ambush;
     bool     pend_won;
 
     /* D-pad is level-triggered: the queue gives presses and releases, and the
@@ -199,7 +200,8 @@ static void ft_toast(FlipperTales* app, const char* text) {
     app->toast_ms = FT_TOAST_MS;
 }
 
-static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike) {
+static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike,
+                                bool ambush) {
     const FtRoom* room = ft_room(app->world.room);
     const FtRoster* roster = ft_roster(room->ents[entity].roster);
 
@@ -224,6 +226,9 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
     /* Met, therefore known. Recorded on the way in rather than on a win:
      * the thing that beat you is exactly the one you want to look up. */
     ft_guide_note_encounter(&app->world.guide, &app->encounter);
+
+    /* Reached you rather than the other way round: they open. */
+    if(ambush) ft_encounter_enemy_opens(&app->encounter);
 
     app->battle_entity = entity;
     app->battle_first_strike = first_strike;
@@ -306,11 +311,13 @@ static void ft_start_wipe(FlipperTales* app, FtPend pend) {
     app->pend = pend;
 }
 
-static void ft_begin_battle(FlipperTales* app, int entity, bool first_strike) {
+static void ft_begin_battle(FlipperTales* app, int entity, bool first_strike,
+                            bool ambush) {
     if(ft_wiping(app)) return;
 
     app->pend_entity = entity;
     app->pend_first_strike = first_strike;
+    app->pend_ambush = ambush;
     ft_start_wipe(app, FT_PEND_BEGIN);
 }
 
@@ -337,7 +344,8 @@ static void ft_wipe_update(FlipperTales* app, uint32_t dt_ms) {
 
         switch(app->pend) {
         case FT_PEND_BEGIN:
-            ft_enter_battle_now(app, app->pend_entity, app->pend_first_strike);
+            ft_enter_battle_now(
+                app, app->pend_entity, app->pend_first_strike, app->pend_ambush);
             break;
         case FT_PEND_END:
             ft_leave_battle_now(app, app->pend_won);
@@ -448,7 +456,7 @@ static void ft_overworld_ok(FlipperTales* app) {
     /* A foe you are facing is struck before it can react. */
     const int ahead = ft_world_foe_ahead(&app->world);
     if(ahead >= 0) {
-        ft_begin_battle(app, ahead, true);
+        ft_begin_battle(app, ahead, true, false);
         return;
     }
 
@@ -814,7 +822,12 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
     /* Walking into a foe — or one walking into you — starts the fight without
      * the free hit. */
     const int touched = ft_world_foe_contact(&app->world);
-    if(touched >= 0) ft_begin_battle(app, touched, false);
+    if(touched >= 0) {
+        const bool ambush = app->world.ambushed;
+
+        if(ambush) ft_toast(app, "Ambushed!");
+        ft_begin_battle(app, touched, false, ambush);
+    }
 }
 
 /* ---- Lifecycle ------------------------------------------------------- */
@@ -843,6 +856,7 @@ static FlipperTales* ft_alloc(void) {
     app->pend = FT_PEND_NONE;
     app->pend_entity = -1;
     app->pend_first_strike = false;
+    app->pend_ambush = false;
     app->pend_won = false;
     app->in_practice = false;
     app->levels_owed = 0;
