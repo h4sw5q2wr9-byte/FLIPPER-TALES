@@ -35,9 +35,12 @@ typedef enum {
      * quest, and she leaves with you afterwards. */
     FT_ENT_WREN,
 
-    /* Something growing, with something on it. `roster` carries the item.
-     * Picked bare for the visit and back when you return, exactly like the
-     * foes — which is what makes walking a cleared room again worth doing. */
+    /* Something growing. `roster` carries the item it bears.
+     *
+     * It is not always bearing: each visit rolls for it (see ft_world_bearing),
+     * so walking past one is a look rather than a guaranteed apple. Picked
+     * bare for the visit and back when you return, exactly like the foes —
+     * which is what makes walking a cleared room again worth doing. */
     FT_ENT_TREE,
 
     /* Something somebody left. `roster` carries the item. Taken once and
@@ -182,6 +185,10 @@ typedef struct {
     /* What you are carrying. Capped, so topping up is a decision. */
     FtPockets       pockets;
 
+    /* How many rooms have been entered this run. Rolls the trees: a tree
+     * that always has an apple on it is a button, not a tree. */
+    uint16_t        visits;
+
     /* Somebody walking with you.
      *
      * She steps into the tile you just left, every time you leave one, which
@@ -234,6 +241,11 @@ int ft_world_wren_ahead(const FtWorld* w);
 
 /* A tree or a cache on the tile you face and have not emptied, else -1. */
 int ft_world_pick_ahead(const FtWorld* w);
+
+/* Is this tree bearing anything this visit? Always true for a cache, which
+ * is a thing somebody left rather than a thing that grows. False once it has
+ * been picked. The renderer asks this too, so a bare tree looks bare. */
+bool ft_world_bearing(const FtWorld* w, uint8_t index);
 
 /* Take what is on it. Returns the item, or FT_ITEM_COUNT when there was
  * nothing there or nowhere to put it. */

@@ -35,6 +35,12 @@
  * which is the difference between a chase and an ambush. */
 #define FT_FOE_NOTICE_MS 500
 
+/* How often a tree is bearing when you walk into the room.
+ *
+ * Not always. A tree that always has an apple on it is a button you press on
+ * the way past; one that sometimes does is a thing you look at. */
+#define FT_TREE_BEARING_PCT 55
+
 /* How far a foe will drift from where it was placed. Without a leash an idle
  * room slowly empties as everything random-walks into a corner. */
 #define FT_FOE_LEASH    4

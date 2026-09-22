@@ -1,6 +1,7 @@
 #include "ft_overworld.h"
 
 #include "ft_enemy_art.h"
+#include "ft_people.h"
 #include "ft_sprites.h"
 #include "ft_tiles.h"
 
@@ -307,11 +308,17 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
         /* Things you can take. Gone for the visit once picked, so a cleared
          * room looks cleared. */
         if(room->ents[i].kind == FT_ENT_TREE || room->ents[i].kind == FT_ENT_CACHE) {
-            if(ft_world_entity_gone(w, i)) continue;
+            /* A cache that has been taken is gone; a tree is still a tree,
+             * it just has nothing on it — and you can see which from across
+             * the room, which is the whole point of walking over. */
+            const bool bearing = ft_world_bearing(w, i);
+
+            if(room->ents[i].kind == FT_ENT_CACHE && !bearing) continue;
 
             draw_foe(canvas,
-                     (room->ents[i].kind == FT_ENT_TREE) ? FT_SPRITE_TREE
-                                                         : FT_SPRITE_CACHE,
+                     (room->ents[i].kind == FT_ENT_CACHE) ? FT_SPRITE_CACHE :
+                     bearing                              ? FT_SPRITE_TREE :
+                                                            FT_SPRITE_TREE_BARE,
                      (int32_t)room->ents[i].tx * FT_TILE_PX - cam.x,
                      (int32_t)room->ents[i].ty * FT_TILE_PX - cam.y);
             continue;
@@ -332,7 +339,7 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
             /* Standing still on their tile, drawn like a foe so the world has
              * one scale. They never move, so there is no stepper to ask. */
             draw_foe(canvas,
-                     FT_SPRITE_NPC,
+                     ft_person_art((FtQuestId)room->ents[i].roster),
                      (int32_t)room->ents[i].tx * FT_TILE_PX - cam.x,
                      (int32_t)room->ents[i].ty * FT_TILE_PX - cam.y);
             continue;

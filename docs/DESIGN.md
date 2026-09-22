@@ -790,6 +790,45 @@ because your reason changed**, which is the cheapest possible way to make a
 place you already walked past mean something later — no new art, no new
 mechanic, and the room is already built.
 
+#### People, and who looks important
+
+Everybody in the overworld is the same parts at 16x16 — a head, a body, two
+legs — so the **silhouette** is the only thing that can tell them apart.
+Two rules do that work:
+
+- **Ordinary people** are short, bare-headed, and start three rows down.
+  They read as "somebody".
+- **Important people** are a head taller and carry something on the
+  silhouette an ordinary one never does: the Keeper has a hood and a coat to
+  the floor, Warden Coll a helmet with a visor slit and shoulder guards.
+
+So you can tell across a room who is worth walking to. It is a rule rather
+than a set of drawings: a new villager copies the short body, a new named
+character copies the tall one and changes the head. `ft_people.h` maps a
+quest to its giver's art, so "important people look important" is one table
+rather than something each caller remembers.
+
+The first pass drew them all as solid fills and every person came out a
+blob. The art rules the enemies already follow — a 2px silhouette, a white
+interior, dark features at least 2x2 inside it — apply to people too.
+
+#### Conversations
+
+A conversation is a list of **beats**, each one somebody saying up to two
+lines, and it may end in a question.
+
+It used to be three lines in a box with the quest's name over them, which is
+a sign, not a conversation: only one person ever spoke and the player never
+answered. Beats alternate, the header names whoever is talking, and **your
+own lines are inverted** so a glance at the shape of the screen says whose
+turn it is before you read the name. Pips along the bottom show how far
+through you are, because a conversation you cannot see the end of is one you
+start mashing through.
+
+**Talking changes nothing.** `ft_quest_talk` is pure; `ft_quest_answer`
+applies. That is what lets a player back out of a question they did not mean
+to open, and it is why Back at any point is simply leaving.
+
 #### Walking somebody home
 
 `FtWorld` carries an `escort` flag and one stepper. She enters the tile you
@@ -835,6 +874,15 @@ Two sources, which behave differently on purpose:
   (§5.3). That is what makes re-walking a cleared room worth the trip.
 - **Caches** stay taken. Something somebody left is a reason to have gone
   somewhere once, not a vending machine.
+
+**A tree is not always bearing.** Each visit rolls for it — a hash of the
+room, the entity and how many rooms you have entered, so it is the same
+answer every time it is asked within a visit, costs no save bytes, and
+changes when you come back. A tree that always has an apple on it is a
+button you press on the way past; one that sometimes does is a thing you
+look at. A bare one is drawn bare, so you can see from across the room
+whether it is worth the walk, and it is still solid, because it is still a
+tree.
 
 Face one and press OK. **Full pockets leave it where it is** rather than
 swallowing it — picking something you cannot carry and watching it vanish is

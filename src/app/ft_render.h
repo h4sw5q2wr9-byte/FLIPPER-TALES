@@ -102,8 +102,11 @@ void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected);
 void ft_render_pockets(
     Canvas* canvas, const FtPockets* p, uint8_t selected, const FtStats* stats);
 
-/* Somebody talking: up to FT_QUEST_LINES lines in a box, and a prompt. */
-void ft_render_talk(Canvas* canvas, const char* who, const FtQuestTalk* t);
+/* One beat of a conversation. The header names whoever is speaking, which is
+ * what makes the back-and-forth visible; `choosing` swaps the OK prompt for
+ * the two answers. */
+void ft_render_talk(
+    Canvas* canvas, const FtTalk* t, uint8_t beat, bool choosing, bool yes);
 
 void ft_render_battle(Canvas* canvas, const FtEncounter* e);
 

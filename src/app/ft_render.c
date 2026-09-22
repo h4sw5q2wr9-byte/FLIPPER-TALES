@@ -1420,22 +1420,70 @@ void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected) {
     ft_render_menu_list(canvas, "QUESTS", names, values, FT_QUEST_COUNT, selected);
 }
 
-void ft_render_talk(Canvas* canvas, const char* who, const FtQuestTalk* t) {
+void ft_render_talk(
+    Canvas* canvas, const FtTalk* t, uint8_t beat, bool choosing, bool yes) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
     canvas_set_font(canvas, FontSecondary);
 
-    draw_centred(canvas, FT_SCREEN_W / 2, 8, who);
-    canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
+    if(t->count == 0u) return;
+    if(beat >= t->count) beat = (uint8_t)(t->count - 1u);
 
-    /* 38 tall, not 34: at 34 the third line's descenders sat on the frame's
-     * bottom edge and the box drew a rule through the last thing said. */
-    canvas_draw_frame(canvas, 2, 14, FT_SCREEN_W - 4, 38);
-    for(uint8_t i = 0; i < t->lines && i < FT_QUEST_LINES; i++) {
-        if(t->line[i]) canvas_draw_str(canvas, 6, 25 + (int32_t)i * 11, t->line[i]);
+    const FtBeat* at = &t->beats[beat];
+    const bool    mine = (at->who == FT_SAY_YOU);
+
+    /* Whoever is talking, named. This is the whole of what makes it read as
+     * two people rather than a sign on a wall. */
+    const char* who = mine ? "You" : t->speaker;
+
+    if(mine) {
+        /* Your own lines are inverted, so a glance at the shape of the
+         * screen tells you whose turn it is without reading the name. */
+        const int32_t w = (int32_t)canvas_string_width(canvas, who) + 6;
+        canvas_draw_box(canvas, FT_SCREEN_W - 2 - w, 1, (size_t)w, 10);
+        canvas_set_color(canvas, ColorWhite);
+        canvas_draw_str(canvas, FT_SCREEN_W - 2 - w + 3, 9, who);
+        canvas_set_color(canvas, ColorBlack);
+    } else {
+        canvas_draw_str(canvas, 2, 9, who);
+    }
+    canvas_draw_line(canvas, 0, 12, FT_SCREEN_W - 1, 12);
+
+    canvas_draw_frame(canvas, 2, 16, FT_SCREEN_W - 4, 30);
+    if(at->a) canvas_draw_str(canvas, 6, 28, at->a);
+    if(at->b) canvas_draw_str(canvas, 6, 40, at->b);
+
+    /* How far through, as pips. A conversation you cannot see the end of is
+     * one you start mashing through. */
+    for(uint8_t i = 0; i < t->count && i < 10u; i++) {
+        const int32_t px = FT_SCREEN_W / 2 - (int32_t)t->count * 2 + (int32_t)i * 4;
+        if(i <= beat) {
+            canvas_draw_box(canvas, px, 50, 3, 3);
+        } else {
+            canvas_draw_frame(canvas, px, 50, 3, 3);
+        }
     }
 
-    draw_centred(canvas, FT_SCREEN_W / 2, 60, "OK");
+    if(choosing) {
+        char left[24], right[24];
+        snprintf(left, sizeof(left), "%s%s%s", yes ? "[" : " ", t->yes ? t->yes : "Yes",
+                 yes ? "]" : " ");
+        snprintf(right, sizeof(right), "%s%s%s", yes ? " " : "[", t->no ? t->no : "No",
+                 yes ? " " : "]");
+
+        const int32_t lw = (int32_t)canvas_string_width(canvas, left);
+        const int32_t rw = (int32_t)canvas_string_width(canvas, right);
+        const int32_t gap = 8;
+        int32_t x = (FT_SCREEN_W - (lw + gap + rw)) / 2;
+        if(x < 2) x = 2;
+
+        canvas_draw_str(canvas, x, 62, left);
+        canvas_draw_str(canvas, x + lw + gap, 62, right);
+        return;
+    }
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 62,
+                 (beat + 1u >= t->count) ? "OK" : "OK >");
 }
 
 /* The field guide's index. Empty until something has been fought, because a

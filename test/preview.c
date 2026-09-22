@@ -450,23 +450,62 @@ int main(void) {
             printf("  quests state %u      %s\n", st, c ? "CLIPPED" : "ok");
         }
 
-        for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+        /* Every beat of the two conversations that matter, plus the choice
+         * each one ends on. This is the screen the player reads most. */
+        static const FtQuestId WHO[2] = {FT_QUEST_CLEAN_RUN, FT_QUEST_WREN};
+
+        for(uint8_t k = 0; k < 2u; k++) {
             FtQuests talker;
             ft_quests_init(&talker);
-            talker.state[0] = st;
 
-            const FtQuestTalk t = ft_quest_talk(&talker, FT_QUEST_CLEAN_RUN);
-            ft_render_talk(canvas, ft_quest_def(FT_QUEST_CLEAN_RUN)->name, &t);
+            const FtTalk t = ft_quest_talk(&talker, WHO[k]);
 
-            char tp[64];
-            snprintf(tp, sizeof(tp), "preview/90_talk%u.pbm", st);
-            ft_stub_canvas_write_pbm(canvas, tp);
+            for(uint8_t b = 0; b < t.count; b++) {
+                ft_render_talk(canvas, &t, b, false, true);
+
+                char tp[64];
+                snprintf(tp, sizeof(tp), "preview/94_talk%u_%u.pbm", k, b);
+                ft_stub_canvas_write_pbm(canvas, tp);
+
+                const int c = ft_stub_canvas_clipped(canvas);
+                total_clipped += c;
+                printf("  talk %u beat %u       %s\n", k, b, c ? "CLIPPED" : "ok");
+            }
+
+            if(t.ask) {
+                for(uint8_t y = 0; y < 2u; y++) {
+                    ft_render_talk(canvas, &t, (uint8_t)(t.count - 1u), true, y != 0u);
+
+                    char cp[64];
+                    snprintf(cp, sizeof(cp), "preview/95_choice%u_%u.pbm", k, y);
+                    ft_stub_canvas_write_pbm(canvas, cp);
+
+                    const int c = ft_stub_canvas_clipped(canvas);
+                    total_clipped += c;
+                    printf("  talk %u choice %u     %s\n", k, y, c ? "CLIPPED" : "ok");
+                }
+            }
+        }
+
+        /* And Wren, who has no choice to offer. */
+        FtQuests kid;
+        ft_quests_init(&kid);
+        ft_quest_answer(&kid, FT_QUEST_WREN, true);
+
+        const FtTalk wt = ft_quest_wren_talk(&kid);
+        for(uint8_t b = 0; b < wt.count; b++) {
+            ft_render_talk(canvas, &wt, b, false, true);
+
+            char wp[64];
+            snprintf(wp, sizeof(wp), "preview/96_wren%u.pbm", b);
+            ft_stub_canvas_write_pbm(canvas, wp);
 
             const int c = ft_stub_canvas_clipped(canvas);
             total_clipped += c;
-            printf("  talk state %u        %s\n", st, c ? "CLIPPED" : "ok");
+            printf("  wren beat %u         %s\n", b, c ? "CLIPPED" : "ok");
         }
     }
+
 
     {
         /* Every row of the arena, and the widest value each one can show. */

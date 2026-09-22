@@ -68,19 +68,62 @@ void ft_quest_enter_room(FtQuests* q, uint8_t room);
 /* A fight started. Fails every live quest that asked you not to. */
 void ft_quest_battle(FtQuests* q);
 
-/* Talking to a giver. The state moves on, and what was said comes back as up
- * to three lines of at most 20 characters each. */
-#define FT_QUEST_LINES 3
+/* ---- Conversations ------------------------------------------------------
+ *
+ * A conversation is a list of beats, each one somebody saying up to two
+ * lines, and it may end in a question.
+ *
+ * It used to be three lines in a box with the quest's name over them, which
+ * is a sign, not a conversation: only one person ever spoke and the player
+ * never said anything back. Beats alternate, the header names whoever is
+ * talking, and the one that matters ends on a choice. */
+
+typedef enum {
+    FT_SAY_THEM = 0, /* whoever you are talking to */
+    FT_SAY_YOU       /* the Courier */
+} FtSayWho;
 
 typedef struct {
-    const char* who;  /* whoever is speaking, for the box's title */
-    const char* line[FT_QUEST_LINES];
-    uint8_t     lines;
-    int16_t     orbs;      /* paid out by this conversation, usually 0 */
-    bool        follows;   /* somebody just started walking with you */
-} FtQuestTalk;
+    FtSayWho    who;
+    const char* a;   /* at most 20 characters */
+    const char* b;   /* a second line, or NULL */
+} FtBeat;
 
-FtQuestTalk ft_quest_talk(FtQuests* q, FtQuestId id);
+#define FT_TALK_MAX_BEATS 8
+
+typedef struct {
+    const char*   speaker; /* their name, for the header */
+    const FtBeat* beats;
+    uint8_t       count;
+
+    /* True when the last beat is a question. The app shows the two answers
+     * and hands the result back to ft_quest_answer. */
+    bool        ask;
+    const char* yes;
+    const char* no;
+} FtTalk;
+
+/* What this quest's giver says right now. Pure: talking does not change
+ * anything until the conversation is finished, which is what lets a player
+ * back out of a question they did not mean to open. */
+FtTalk ft_quest_talk(const FtQuests* q, FtQuestId id);
+
+/* Talking to Wren herself, once the junction is clear. Her own function
+ * because she is not the giver: the quest is Coll's, and Wren is the middle
+ * of it. */
+FtTalk ft_quest_wren_talk(const FtQuests* q);
+
+/* What a finished conversation did. */
+typedef struct {
+    int16_t orbs;    /* paid out, usually 0 */
+    bool    follows; /* somebody just started walking with you */
+    bool    ended;   /* the quest is now done */
+} FtQuestOutcome;
+
+/* Apply the outcome of a finished conversation. `yes` is only read by a
+ * talk that asked; a refusal leaves everything exactly as it was. */
+FtQuestOutcome ft_quest_answer(FtQuests* q, FtQuestId id, bool yes);
+FtQuestOutcome ft_quest_wren_answer(FtQuests* q);
 
 /* What the Courier says to themselves at a way they have no reason to take.
  * The world asks this before refusing a gated exit. */
@@ -96,11 +139,6 @@ void ft_quest_advance(FtQuests* q, FtQuestId id, FtQuestState to);
 
 /* The quest this room's giver carries, or -1 when nobody here has one. */
 int ft_quest_for_room(uint8_t room);
-
-/* Talking to Wren herself, once the junction is clear. Her own function
- * because she is not the giver: the quest is Coll's, and Wren is the middle
- * of it. Sets READY and asks to be walked home. */
-FtQuestTalk ft_quest_wren_talk(FtQuests* q);
 
 /* One short word of status for the quest list, never NULL. */
 const char* ft_quest_status_line(const FtQuests* q, FtQuestId id);

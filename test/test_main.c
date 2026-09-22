@@ -3669,15 +3669,25 @@ static void test_quests(void) {
     }
     CHECK(has_npc, "the room that gives it has somebody in it");
 
-    /* Talking takes it. */
-    FtQuestTalk t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
-    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
-    CHECK_EQ(t.orbs, 0);
+    /* Talking changes nothing on its own — which is what lets a player back
+     * out of a question they did not mean to open. */
+    FtTalk t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
+    CHECK(t.ask, "the offer is a question");
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_UNKNOWN);
 
-    /* Talking again says something, and does not re-take it. */
-    t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
+    /* Saying no leaves it exactly as it was. */
+    CHECK_EQ(ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, false).orbs, 0);
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_UNKNOWN);
+
+    /* Saying yes takes it. */
+    ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, true);
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
-    CHECK_EQ(t.orbs, 0);
+
+    /* And talking again does not re-take it. */
+    t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
+    CHECK(!t.ask, "an accepted quest stops asking");
+    ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, true);
+    CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
 
     /* Rooms that are not the goal change nothing. */
     for(uint8_t r = 0; r < ft_room_count(); r++) {
@@ -3691,58 +3701,90 @@ static void test_quests(void) {
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_READY);
 
     /* Collecting pays exactly once. */
-    t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
-    CHECK_EQ(t.orbs, d->reward_orbs);
+    CHECK_EQ(ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, true).orbs, d->reward_orbs);
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_DONE);
 
-    t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
-    CHECK_EQ(t.orbs, 0);
+    CHECK_EQ(ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, true).orbs, 0);
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_DONE);
 
     /* Fighting fails it, whether it was under way or already armed. */
     FtQuests f;
     ft_quests_init(&f);
-    ft_quest_talk(&f, FT_QUEST_CLEAN_RUN);
+    ft_quest_answer(&f, FT_QUEST_CLEAN_RUN, true);
     ft_quest_battle(&f);
     CHECK_EQ(ft_quest_state(&f, FT_QUEST_CLEAN_RUN), FT_QUEST_FAILED);
 
     FtQuests g;
     ft_quests_init(&g);
-    ft_quest_talk(&g, FT_QUEST_CLEAN_RUN);
+    ft_quest_answer(&g, FT_QUEST_CLEAN_RUN, true);
     ft_quest_enter_room(&g, d->goal_room);
     ft_quest_battle(&g);
     CHECK_EQ(ft_quest_state(&g, FT_QUEST_CLEAN_RUN), FT_QUEST_FAILED);
 
     /* A failed run does not pay, and can be taken again. */
-    t = ft_quest_talk(&g, FT_QUEST_CLEAN_RUN);
-    CHECK_EQ(t.orbs, 0);
+    CHECK_EQ(ft_quest_answer(&g, FT_QUEST_CLEAN_RUN, true).orbs, 0);
     CHECK_EQ(ft_quest_state(&g, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
 
     /* A finished quest is not undone by fighting afterwards. */
     FtQuests done;
     ft_quests_init(&done);
-    ft_quest_talk(&done, FT_QUEST_CLEAN_RUN);
+    ft_quest_answer(&done, FT_QUEST_CLEAN_RUN, true);
     ft_quest_enter_room(&done, d->goal_room);
-    ft_quest_talk(&done, FT_QUEST_CLEAN_RUN);
+    ft_quest_answer(&done, FT_QUEST_CLEAN_RUN, true);
     ft_quest_battle(&done);
     CHECK_EQ(ft_quest_state(&done, FT_QUEST_CLEAN_RUN), FT_QUEST_DONE);
 
-    /* Every line anybody says fits the panel, in every state. */
-    for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
-        FtQuests say;
-        ft_quests_init(&say);
-        say.state[FT_QUEST_CLEAN_RUN] = st;
+    /* Every line anybody says fits the panel, in every state, and every
+     * conversation has both people in it. */
+    for(uint8_t qi = 0; qi < FT_QUEST_COUNT; qi++) {
+        for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+            FtQuests say;
+            ft_quests_init(&say);
+            say.state[qi] = st;
 
-        const FtQuestTalk line = ft_quest_talk(&say, FT_QUEST_CLEAN_RUN);
-        CHECK(line.lines > 0 && line.lines <= FT_QUEST_LINES,
-              "state %u says between one and %d lines", st, FT_QUEST_LINES);
+            const FtTalk c = ft_quest_talk(&say, (FtQuestId)qi);
+            CHECK(c.count > 0 && c.count <= FT_TALK_MAX_BEATS,
+                  "quest %u state %u has beats (%u)", qi, st, c.count);
+            CHECK(c.speaker && c.speaker[0], "quest %u state %u names a speaker",
+                  qi, st);
+            CHECK(c.speaker && strlen(c.speaker) <= FT_TUTORIAL_MAX_CHARS,
+                  "quest %u state %u's name fits: \"%s\"", qi, st, c.speaker);
 
-        for(uint8_t i = 0; i < line.lines; i++) {
-            CHECK(line.line[i] != NULL, "state %u line %u exists", st, i);
-            CHECK(line.line[i] && strlen(line.line[i]) <= FT_TUTORIAL_MAX_CHARS,
-                  "state %u line %u fits: \"%s\"", st, i,
-                  line.line[i] ? line.line[i] : "");
+            for(uint8_t i = 0; i < c.count; i++) {
+                CHECK(c.beats[i].a != NULL, "quest %u state %u beat %u speaks",
+                      qi, st, i);
+                CHECK(c.beats[i].a && strlen(c.beats[i].a) <= FT_TUTORIAL_MAX_CHARS,
+                      "quest %u state %u beat %u line a fits: \"%s\"", qi, st, i,
+                      c.beats[i].a ? c.beats[i].a : "");
+                if(c.beats[i].b) {
+                    CHECK(strlen(c.beats[i].b) <= FT_TUTORIAL_MAX_CHARS,
+                          "quest %u state %u beat %u line b fits: \"%s\"", qi, st,
+                          i, c.beats[i].b);
+                }
+            }
+
+            if(c.ask) {
+                CHECK(c.yes && c.no, "quest %u state %u offers two answers", qi, st);
+                CHECK(c.yes && strlen(c.yes) <= 10u, "and the yes fits: \"%s\"",
+                      c.yes);
+                CHECK(c.no && strlen(c.no) <= 10u, "and the no fits: \"%s\"", c.no);
+            }
         }
+    }
+
+    /* The offer is a conversation, not a sign: the player answers in it. */
+    {
+        FtQuests fresh;
+        ft_quests_init(&fresh);
+
+        const FtTalk c = ft_quest_talk(&fresh, FT_QUEST_CLEAN_RUN);
+        bool you = false, them = false;
+        for(uint8_t i = 0; i < c.count; i++) {
+            if(c.beats[i].who == FT_SAY_YOU) you = true;
+            if(c.beats[i].who == FT_SAY_THEM) them = true;
+        }
+        CHECK(you && them, "both people speak in the offer");
+        CHECK(c.ask, "and it ends on a question");
     }
 
     for(uint8_t i = 0; i < FT_QUEST_COUNT; i++) {
@@ -3756,7 +3798,7 @@ static void test_quests(void) {
     ft_world_init(&w);
     CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_CLEAN_RUN), FT_QUEST_UNKNOWN);
 
-    ft_quest_talk(&w.quests, FT_QUEST_CLEAN_RUN);
+    ft_quest_answer(&w.quests, FT_QUEST_CLEAN_RUN, true);
     ft_world_enter(&w, d->goal_room, 1, 2);
     CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_CLEAN_RUN), FT_QUEST_READY);
 }
@@ -4351,7 +4393,7 @@ static void test_weldhome(void) {
 
     /* It is not locked with a key: nothing in the world changed, only the
      * reason. Take the quest and the same exit works. */
-    ft_quest_talk(&w.quests, FT_QUEST_WREN);
+    ft_quest_answer(&w.quests, FT_QUEST_WREN, true);
     CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_WREN), FT_QUEST_ACTIVE);
     CHECK(ft_world_exit_open(&w, drop), "the drop opens once she asks");
 
@@ -4369,11 +4411,11 @@ static void test_weldhome(void) {
     if(!gate) return;
 
     CHECK(!ft_world_exit_open(&g, gate), "but not yet");
-    ft_quest_talk(&g.quests, FT_QUEST_WREN);
+    ft_quest_answer(&g.quests, FT_QUEST_WREN, true);
     CHECK(!ft_world_exit_open(&g, gate), "and not just for asking");
     ft_quest_advance(&g.quests, FT_QUEST_WREN, FT_QUEST_READY);
     CHECK(!ft_world_exit_open(&g, gate), "nor for finding her");
-    ft_quest_talk(&g.quests, FT_QUEST_WREN);
+    ft_quest_answer(&g.quests, FT_QUEST_WREN, true);
     CHECK_EQ(ft_quest_state(&g.quests, FT_QUEST_WREN), FT_QUEST_DONE);
     CHECK(ft_world_exit_open(&g, gate), "only for bringing her back");
 
@@ -4406,16 +4448,19 @@ static void test_weldhome(void) {
     /* --- freeing her --- */
     FtWorld j;
     ft_world_init(&j);
-    ft_quest_talk(&j.quests, FT_QUEST_WREN); /* take it */
+    ft_quest_answer(&j.quests, FT_QUEST_WREN, true); /* take it */
     ft_world_enter(&j, JUNCTION, 1, 1);
 
     CHECK(!j.escort, "nobody with you yet");
 
-    const FtQuestTalk hers = ft_quest_wren_talk(&j.quests);
-    CHECK(hers.follows, "she comes out with you");
+    const FtTalk hers = ft_quest_wren_talk(&j.quests);
+    CHECK(hers.speaker && strcmp(hers.speaker, "Warden Coll") != 0,
+          "she speaks for herself");
+    CHECK_EQ(ft_quest_state(&j.quests, FT_QUEST_WREN), FT_QUEST_ACTIVE);
+
+    const FtQuestOutcome out = ft_quest_wren_answer(&j.quests);
+    CHECK(out.follows, "she comes out with you");
     CHECK_EQ(ft_quest_state(&j.quests, FT_QUEST_WREN), FT_QUEST_READY);
-    CHECK(hers.who && strcmp(hers.who, "Warden Coll") != 0,
-          "and she speaks for herself");
 
     ft_world_escort_start(&j);
     CHECK(j.escort, "walking with you");
@@ -4452,51 +4497,46 @@ static void test_weldhome(void) {
 
     /* --- handing her back --- */
     ft_world_enter(&j, GATE, 1, 3);
-    const FtQuestTalk done = ft_quest_talk(&j.quests, FT_QUEST_WREN);
+    const FtQuestOutcome done = ft_quest_answer(&j.quests, FT_QUEST_WREN, true);
     CHECK_EQ(ft_quest_state(&j.quests, FT_QUEST_WREN), FT_QUEST_DONE);
     CHECK(done.orbs > 0, "which pays");
 
     ft_world_escort_stop(&j);
     CHECK(!j.escort, "and she goes inside");
 
-    /* Every line anybody says in this chain fits the box. */
+    /* Wren's own lines fit too, in every state she can be talked to in. */
     for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
-        FtQuests q;
-        ft_quests_init(&q);
-        q.state[FT_QUEST_WREN] = st;
-
-        const FtQuestTalk t = ft_quest_talk(&q, FT_QUEST_WREN);
-        CHECK(t.who && strlen(t.who) <= FT_TUTORIAL_MAX_CHARS,
-              "state %u names its speaker: \"%s\"", st, t.who ? t.who : "");
-
-        for(uint8_t i = 0; i < t.lines; i++) {
-            CHECK(t.line[i] && strlen(t.line[i]) <= FT_TUTORIAL_MAX_CHARS,
-                  "Coll state %u line %u fits: \"%s\"", st, i,
-                  t.line[i] ? t.line[i] : "");
-        }
-
         FtQuests k;
         ft_quests_init(&k);
         k.state[FT_QUEST_WREN] = st;
 
-        const FtQuestTalk kt = ft_quest_wren_talk(&k);
-        for(uint8_t i = 0; i < kt.lines; i++) {
-            CHECK(kt.line[i] && strlen(kt.line[i]) <= FT_TUTORIAL_MAX_CHARS,
-                  "Wren state %u line %u fits: \"%s\"", st, i,
-                  kt.line[i] ? kt.line[i] : "");
+        const FtTalk kt = ft_quest_wren_talk(&k);
+        CHECK(kt.count > 0, "Wren state %u says something", st);
+        CHECK(kt.speaker && strlen(kt.speaker) <= FT_TUTORIAL_MAX_CHARS,
+              "and is named: \"%s\"", kt.speaker ? kt.speaker : "");
+
+        for(uint8_t i = 0; i < kt.count; i++) {
+            CHECK(kt.beats[i].a && strlen(kt.beats[i].a) <= FT_TUTORIAL_MAX_CHARS,
+                  "Wren state %u beat %u fits: \"%s\"", st, i,
+                  kt.beats[i].a ? kt.beats[i].a : "");
         }
+
+        /* Only the right state frees her. */
+        const FtQuestOutcome o = ft_quest_wren_answer(&k);
+        CHECK(o.follows == (st == (uint8_t)FT_QUEST_ACTIVE),
+              "state %u frees her only when Coll has asked", st);
     }
 
-    /* Only the right state frees her: she does not walk off with somebody
-     * who has not been asked to fetch her. */
+    /* She does not walk off with somebody who has not been asked to fetch
+     * her. */
     FtQuests cold;
     ft_quests_init(&cold);
-    CHECK(!ft_quest_wren_talk(&cold).follows, "she stays put before Coll asks");
+    CHECK(!ft_quest_wren_answer(&cold).follows, "she stays put before Coll asks");
 
     /* She survives a save, because a terminal half way home is a terminal. */
     FtWorld carry;
     ft_world_init(&carry);
-    ft_quest_talk(&carry.quests, FT_QUEST_WREN);
+    ft_quest_answer(&carry.quests, FT_QUEST_WREN, true);
     ft_world_enter(&carry, APPROACH, 5, 2);
     ft_world_escort_start(&carry);
     carry.escort_mv.tx = 4;
@@ -4660,7 +4700,17 @@ static void test_items(void) {
     CHECK(at >= 0, "the first room has one, so picking is taught early");
     if(at < 0) return;
 
-    ft_world_enter(&w, 0, (uint8_t)(first->ents[at].tx - 1u), first->ents[at].ty);
+    /* A tree is not always bearing, so walk in and out until it is — which
+     * is also a check that it *does* bear within a handful of visits, rather
+     * than being decoration you can never pick. */
+    int tries = 0;
+    do {
+        ft_world_enter(&w, 1, 1, 2);
+        ft_world_enter(&w, 0, (uint8_t)(first->ents[at].tx - 1u), first->ents[at].ty);
+        tries++;
+    } while(!ft_world_bearing(&w, (uint8_t)at) && tries < 30);
+
+    CHECK(tries < 30, "a tree bears within a few visits (%d)", tries);
     w.facing = FT_FACE_RIGHT;
 
     CHECK_EQ(ft_world_pick_ahead(&w), at);
@@ -4675,18 +4725,44 @@ static void test_items(void) {
     ft_world_enter(&w, 0, 3, 4);
     CHECK(!ft_world_entity_gone(&w, (uint8_t)at), "and back when you return");
 
+    /* Bearing is a roll, not a switch: over enough visits it is sometimes
+     * there and sometimes not. A tree that always has an apple on it is a
+     * button you press on the way past. */
+    int bore = 0, bare = 0;
+    for(int v = 0; v < 40; v++) {
+        ft_world_enter(&w, 1, 1, 2);
+        ft_world_enter(&w, 0, 3, 4);
+        if(ft_world_bearing(&w, (uint8_t)at)) bore++;
+        else bare++;
+    }
+    CHECK(bore > 0, "sometimes there is something on it (%d/40)", bore);
+    CHECK(bare > 0, "and sometimes there is not (%d/40)", bare);
+
+    /* And the same visit always gives the same answer, or the sprite would
+     * flicker between bare and bearing every frame. */
+    const bool once = ft_world_bearing(&w, (uint8_t)at);
+    for(int k = 0; k < 5; k++) {
+        CHECK(ft_world_bearing(&w, (uint8_t)at) == once, "and does not flicker");
+    }
+
     /* Full pockets leave it where it is rather than swallowing it. */
     FtWorld packed;
     ft_world_init(&packed);
     for(uint8_t i = 0; i < FT_POCKET_MAX; i++) {
         ft_pockets_add(&packed.pockets, FT_ITEM_RATION);
     }
-    ft_world_enter(&packed, 0, (uint8_t)(first->ents[at].tx - 1u), first->ents[at].ty);
+    int ptries = 0;
+    do {
+        ft_world_enter(&packed, 1, 1, 2);
+        ft_world_enter(&packed, 0, (uint8_t)(first->ents[at].tx - 1u),
+                       first->ents[at].ty);
+        ptries++;
+    } while(!ft_world_bearing(&packed, (uint8_t)at) && ptries < 30);
     packed.facing = FT_FACE_RIGHT;
 
     CHECK_EQ(ft_world_pick(&packed, (uint8_t)at), FT_ITEM_COUNT);
-    CHECK(!ft_world_entity_gone(&packed, (uint8_t)at),
-          "a tree you cannot carry from stays picked-able");
+    CHECK(ft_world_bearing(&packed, (uint8_t)at),
+          "a tree you cannot carry from keeps its fruit");
 
     /* A tree is something you walk around, and a picked one is not. */
     FtWorld bump;
@@ -4694,10 +4770,12 @@ static void test_items(void) {
     ft_world_enter(&bump, 0, (uint8_t)(first->ents[at].tx - 1u), first->ents[at].ty);
     bump.facing = FT_FACE_RIGHT;
 
+    /* A tree blocks whether or not it is bearing: it is still a tree. */
+
     for(int t = 0; t < 120; t++) ft_world_update(&bump, 1, 0, 20);
     CHECK_EQ(bump.mv.tx, (uint8_t)(first->ents[at].tx - 1u));
 
-    ft_world_pick(&bump, (uint8_t)at);
+    ft_world_clear_entity(&bump, (uint8_t)at);
     for(int t = 0; t < 120; t++) ft_world_update(&bump, 1, 0, 20);
     CHECK(bump.mv.tx > (uint8_t)(first->ents[at].tx - 1u),
           "once it is picked you can walk through where it was");

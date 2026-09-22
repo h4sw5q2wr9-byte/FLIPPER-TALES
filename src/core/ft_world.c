@@ -350,6 +350,7 @@ static const int8_t SPREAD[][2] = {
 
 void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
     w->room = (room < ft_room_count()) ? room : 0u;
+    w->visits++;
 
     /* Walking into a room repopulates it.
      *
@@ -470,6 +471,7 @@ void ft_world_init(FtWorld* w) {
     ft_guide_init(&w->guide);
     ft_quests_init(&w->quests);
     ft_pockets_init(&w->pockets);
+    w->visits = 0;
     w->escort = false;
 
     /* World stats are authoritative and carry the loadout's bonuses, because a
@@ -904,6 +906,31 @@ int ft_world_npc_ahead(const FtWorld* w) {
     return npc_at_tile(w, tx, ty);
 }
 
+/* Whether a given tree is bearing on a given visit.
+ *
+ * A hash rather than a stored bit: it is the same answer every time it is
+ * asked within a visit, it needs no save bytes, and it changes when you come
+ * back. FNV-1a over the three things that identify this tree, this time. */
+bool ft_world_bearing(const FtWorld* w, uint8_t index) {
+    const FtRoom* r = ft_room(w->room);
+    if(index >= r->ent_count || index >= FT_MAX_ROOM_ENTS) return false;
+
+    /* Already taken this visit. */
+    if(ft_world_entity_gone(w, index)) return false;
+
+    /* Somebody left a cache; it is there or it is not. */
+    if(r->ents[index].kind == FT_ENT_CACHE) return true;
+    if(r->ents[index].kind != FT_ENT_TREE) return false;
+
+    uint32_t h = 2166136261u;
+    h = (h ^ w->room) * 16777619u;
+    h = (h ^ index) * 16777619u;
+    h = (h ^ (w->visits & 0xFFu)) * 16777619u;
+    h = (h ^ ((w->visits >> 8) & 0xFFu)) * 16777619u;
+
+    return (h % 100u) < FT_TREE_BEARING_PCT;
+}
+
 int ft_world_pick_ahead(const FtWorld* w) {
     int32_t dx, dy;
     facing_delta(w->facing, &dx, &dy);
@@ -915,7 +942,7 @@ int ft_world_pick_ahead(const FtWorld* w) {
         const FtEntKind k = r->ents[i].kind;
         if(k != FT_ENT_TREE && k != FT_ENT_CACHE) continue;
         if((int32_t)r->ents[i].tx != tx || (int32_t)r->ents[i].ty != ty) continue;
-        if(ft_world_entity_gone(w, i)) continue;
+        if(!ft_world_bearing(w, i)) continue;
 
         return (int)i;
     }
@@ -928,7 +955,7 @@ FtItemId ft_world_pick(FtWorld* w, uint8_t index) {
 
     const FtEntKind k = r->ents[index].kind;
     if(k != FT_ENT_TREE && k != FT_ENT_CACHE) return FT_ITEM_COUNT;
-    if(ft_world_entity_gone(w, index)) return FT_ITEM_COUNT;
+    if(!ft_world_bearing(w, index)) return FT_ITEM_COUNT;
 
     const FtItemId id = (FtItemId)r->ents[index].roster;
 

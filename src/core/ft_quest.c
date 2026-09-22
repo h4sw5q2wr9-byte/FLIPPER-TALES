@@ -90,132 +90,197 @@ int ft_quest_for_room(uint8_t room) {
     return -1;
 }
 
-/* Lines are at most 20 characters — the panel's width budget. A test walks
- * every branch of this function and measures them. */
-static FtQuestTalk say3(const char* a, const char* b, const char* c, int16_t orbs) {
-    FtQuestTalk t;
-    t.who = "";
-    t.follows = false;
-    t.line[0] = a;
-    t.line[1] = b;
-    t.line[2] = c;
-    t.lines = (uint8_t)(c ? 3u : (b ? 2u : 1u));
-    t.orbs = orbs;
-    return t;
-}
 
-/* Wren, once she is out. She is the only thing in this game that is not
- * either a machine or afraid of you, which is the whole point of her. */
-static FtQuestTalk wren_line(const char* a, const char* b, const char* c) {
-    FtQuestTalk t = say3(a, b, c, 0);
-    t.who = "Wren";
-    return t;
-}
+/* ---- What people say ---------------------------------------------------
+ *
+ * Every line is at most 20 characters — the panel's width budget — and a
+ * test walks every branch of every conversation and measures them.
+ *
+ * Beats alternate on purpose. The old version was three lines in a box with
+ * the quest's name over them, so only one person ever spoke and the player
+ * never answered; these read as two people talking, and the one that
+ * matters ends on a question. */
 
-static FtQuestTalk clean_run_talk(FtQuests* q) {
-    const FtQuestId id = FT_QUEST_CLEAN_RUN;
-    FtQuestTalk t;
+#define TALK(spk, arr) {spk, arr, (uint8_t)(sizeof(arr) / sizeof((arr)[0])), \
+                        false, NULL, NULL}
+#define ASK(spk, arr, y, n) {spk, arr, (uint8_t)(sizeof(arr) / sizeof((arr)[0])), \
+                             true, y, n}
 
-    switch(ft_quest_state(q, id)) {
-    case FT_QUEST_UNKNOWN:
-        set_state(q, id, FT_QUEST_ACTIVE);
-        t = say3("Touch the Cold Gate", "and come back here.",
-                 "No fights. 2 orbs.", 0);
-        break;
+/* ---- The Keeper, in Cold Boot ---- */
 
-    case FT_QUEST_ACTIVE:
-        t = say3("Still no fights?", "Good. The gate is", "four rooms east.", 0);
-        break;
+static const char* KEEPER = "The Keeper";
 
-    case FT_QUEST_FAILED:
-        /* Failing re-offers rather than closing the door: the quest is a
-         * route to practise, and one that can only be failed once is a
-         * punishment for trying it early. */
-        set_state(q, id, FT_QUEST_ACTIVE);
-        t = say3("You fought one.", "Start over: gate,", "back, no fights.", 0);
-        break;
+static const FtBeat KEEPER_OFFER[] = {
+    {FT_SAY_THEM, "You're awake.", NULL},
+    {FT_SAY_THEM, "Took its time.", NULL},
+    {FT_SAY_YOU,  "Where is this?", NULL},
+    {FT_SAY_THEM, "Cold Boot. The end", "of a dead line."},
+    {FT_SAY_THEM, "Do one thing for me.", NULL},
+    {FT_SAY_THEM, "Touch the Cold Gate,", "come back. No fights"},
+};
 
-    case FT_QUEST_READY:
-        set_state(q, id, FT_QUEST_DONE);
-        t = say3("Clean the whole way.", "Take these.", "+2 orbs",
-                 FT_QUESTS[id].reward_orbs);
-        break;
+static const FtBeat KEEPER_ON[] = {
+    {FT_SAY_THEM, "Still no fights?", NULL},
+    {FT_SAY_YOU,  "Still walking.", NULL},
+    {FT_SAY_THEM, "Gate's four rooms", "east. Go on."},
+};
 
+static const FtBeat KEEPER_FAILED[] = {
+    {FT_SAY_THEM, "You fought one.", NULL},
+    {FT_SAY_YOU,  "It found me.", NULL},
+    {FT_SAY_THEM, "Then start again.", NULL},
+};
+
+static const FtBeat KEEPER_PAID[] = {
+    {FT_SAY_THEM, "Clean the whole way.", NULL},
+    {FT_SAY_YOU,  "Nothing touched me.", NULL},
+    {FT_SAY_THEM, "Two orbs. Take them.", NULL},
+};
+
+static const FtBeat KEEPER_DONE[] = {
+    {FT_SAY_THEM, "Nothing else today.", NULL},
+};
+
+/* ---- Warden Coll, at Weldhome's gate ---- */
+
+static const char* COLL = "Warden Coll";
+
+static const FtBeat COLL_OFFER[] = {
+    {FT_SAY_THEM, "Gate's shut.", NULL},
+    {FT_SAY_YOU,  "I'm passing through.", NULL},
+    {FT_SAY_THEM, "You move like them.", "Like what takes us."},
+    {FT_SAY_YOU,  "I'm not one of them.", NULL},
+    {FT_SAY_THEM, "Prove it. A kid went", "east two days back."},
+    {FT_SAY_THEM, "Bring Wren home and", "the gate opens."},
+};
+
+static const FtBeat COLL_ON[] = {
+    {FT_SAY_THEM, "Down the shaft, then", "east. She knew."},
+    {FT_SAY_YOU,  "I'll find her.", NULL},
+};
+
+static const FtBeat COLL_FAILED[] = {
+    {FT_SAY_THEM, "Still a kid out", "there, unit."},
+    {FT_SAY_YOU,  "I know.", NULL},
+};
+
+static const FtBeat COLL_PAID[] = {
+    {FT_SAY_THEM, "Wren. Get inside.", NULL},
+    {FT_SAY_YOU,  "She isn't hurt.", NULL},
+    {FT_SAY_THEM, "Gate's open, unit.", NULL},
+    {FT_SAY_THEM, "You're not the first", "one through here."},
+    {FT_SAY_YOU,  "...Who was?", NULL},
+    {FT_SAY_THEM, "Ask me when you've", "seen the spans.", },
+};
+
+static const FtBeat COLL_DONE[] = {
+    {FT_SAY_THEM, "Gate's open.", NULL},
+    {FT_SAY_THEM, "Mind the spans.", NULL},
+};
+
+/* ---- Wren, at the end of the junction ---- */
+
+static const char* WREN = "Wren";
+
+static const FtBeat WREN_FOUND[] = {
+    {FT_SAY_THEM, "You're one of them.", NULL},
+    {FT_SAY_YOU,  "No.", NULL},
+    {FT_SAY_THEM, "...No. You're not.", NULL},
+    {FT_SAY_THEM, "Take me home?", NULL},
+};
+
+static const FtBeat WREN_WAIT[] = {
+    {FT_SAY_THEM, "Don't.", NULL},
+};
+
+/* ---- Dispatch ---------------------------------------------------------- */
+
+static FtTalk keeper_talk(FtQuestState at) {
+    switch(at) {
+    case FT_QUEST_UNKNOWN: return (FtTalk)ASK(KEEPER, KEEPER_OFFER, "Fine", "Not now");
+    case FT_QUEST_ACTIVE:  return (FtTalk)TALK(KEEPER, KEEPER_ON);
+    case FT_QUEST_FAILED:  return (FtTalk)TALK(KEEPER, KEEPER_FAILED);
+    case FT_QUEST_READY:   return (FtTalk)TALK(KEEPER, KEEPER_PAID);
     case FT_QUEST_DONE:
-    default:
-        t = say3("Nothing else for", "you today.", NULL, 0);
-        break;
+    default:               return (FtTalk)TALK(KEEPER, KEEPER_DONE);
     }
-
-    t.who = "The Keeper";
-    return t;
 }
 
-static FtQuestTalk wren_talk(FtQuests* q) {
-    const FtQuestId id = FT_QUEST_WREN;
-    FtQuestTalk t;
-
-    switch(ft_quest_state(q, id)) {
-    case FT_QUEST_UNKNOWN:
-        /* She names the terms herself, because she would rather be wrong
-         * about you than right. */
-        set_state(q, id, FT_QUEST_ACTIVE);
-        t = say3("You move like them.", "A kid went east two",
-                 "days back. Find her.", 0);
-        break;
-
-    case FT_QUEST_ACTIVE:
-        t = say3("South, then east.", "She knew not to go.", "Go on.", 0);
-        break;
-
-    case FT_QUEST_FAILED:
-        set_state(q, id, FT_QUEST_ACTIVE);
-        t = say3("Still east. Still a", "kid. Go.", NULL, 0);
-        break;
-
-    case FT_QUEST_READY:
-        set_state(q, id, FT_QUEST_DONE);
-        /* No apology, no speech. The last line is the first thread of the
-         * plot: Chapter 1 ends by making the spine visible. */
-        t = say3("Wren. Inside.", "Gate's open, unit.",
-                 "You're not the first", FT_QUESTS[id].reward_orbs);
-        break;
-
+static FtTalk coll_talk(FtQuestState at) {
+    switch(at) {
+    case FT_QUEST_UNKNOWN: return (FtTalk)ASK(COLL, COLL_OFFER, "I'll go", "No");
+    case FT_QUEST_ACTIVE:  return (FtTalk)TALK(COLL, COLL_ON);
+    case FT_QUEST_FAILED:  return (FtTalk)TALK(COLL, COLL_FAILED);
+    case FT_QUEST_READY:   return (FtTalk)TALK(COLL, COLL_PAID);
     case FT_QUEST_DONE:
-    default:
-        t = say3("Gate's open.", "Mind the spans.", NULL, 0);
-        break;
+    default:               return (FtTalk)TALK(COLL, COLL_DONE);
     }
-
-    t.who = "Warden Coll";
-    return t;
 }
 
-FtQuestTalk ft_quest_talk(FtQuests* q, FtQuestId id) {
-    FtQuestTalk t;
+FtTalk ft_quest_talk(const FtQuests* q, FtQuestId id) {
+    const FtQuestState at = ft_quest_state(q, id);
 
     switch(id) {
-    case FT_QUEST_CLEAN_RUN: return clean_run_talk(q);
-    case FT_QUEST_WREN:      return wren_talk(q);
-    default:
-        t = say3("...", NULL, NULL, 0);
-        t.who = "";
-        return t;
+    case FT_QUEST_CLEAN_RUN: return keeper_talk(at);
+    case FT_QUEST_WREN:      return coll_talk(at);
+    default:                 return (FtTalk)TALK("", WREN_WAIT);
     }
 }
 
-FtQuestTalk ft_quest_wren_talk(FtQuests* q) {
-    /* Down the junction, once the things holding her are gone. */
+FtTalk ft_quest_wren_talk(const FtQuests* q) {
     if(ft_quest_state(q, FT_QUEST_WREN) != FT_QUEST_ACTIVE) {
-        return wren_line("Not now.", NULL, NULL);
+        return (FtTalk)TALK(WREN, WREN_WAIT);
     }
+    return (FtTalk)TALK(WREN, WREN_FOUND);
+}
 
-    ft_quest_advance(q, FT_QUEST_WREN, FT_QUEST_READY);
+/* ---- What a finished conversation did ---------------------------------- */
 
-    FtQuestTalk t = wren_line("You're one of them.", "But you're not.",
-                              "Take me home?");
-    t.follows = true;
-    return t;
+static FtQuestOutcome nothing(void) {
+    FtQuestOutcome o = {0, false, false};
+    return o;
+}
+
+FtQuestOutcome ft_quest_answer(FtQuests* q, FtQuestId id, bool yes) {
+    FtQuestOutcome o = nothing();
+    if(id >= FT_QUEST_COUNT) return o;
+
+    switch(ft_quest_state(q, id)) {
+    case FT_QUEST_UNKNOWN:
+        /* Saying no leaves everything exactly as it was, so a question you
+         * did not mean to open costs nothing. */
+        if(yes) set_state(q, id, FT_QUEST_ACTIVE);
+        break;
+
+    case FT_QUEST_FAILED:
+        /* Failing re-offers rather than closing the door: a quest that can
+         * only be failed once is a punishment for trying it early, which is
+         * exactly when a player would try it. */
+        set_state(q, id, FT_QUEST_ACTIVE);
+        break;
+
+    case FT_QUEST_READY:
+        set_state(q, id, FT_QUEST_DONE);
+        o.orbs = FT_QUESTS[id].reward_orbs;
+        o.ended = true;
+        break;
+
+    case FT_QUEST_ACTIVE:
+    case FT_QUEST_DONE:
+    default:
+        break;
+    }
+    return o;
+}
+
+FtQuestOutcome ft_quest_wren_answer(FtQuests* q) {
+    FtQuestOutcome o = nothing();
+
+    if(ft_quest_state(q, FT_QUEST_WREN) != FT_QUEST_ACTIVE) return o;
+
+    set_state(q, FT_QUEST_WREN, FT_QUEST_READY);
+    o.follows = true;
+    return o;
 }
 
 const char* ft_quest_status_line(const FtQuests* q, FtQuestId id) {

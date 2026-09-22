@@ -92,11 +92,16 @@ typedef struct {
      * screen pushed at the player unasked. */
     bool    levelled;
 
-    /* Which quest row is highlighted, and whatever was last said. */
-    uint8_t     quest_item;
-    uint8_t     pocket_item;
-    FtQuestTalk talk;
-    const char* talk_who;
+    /* Which quest row is highlighted, and the conversation in progress. */
+    uint8_t quest_item;
+    uint8_t pocket_item;
+
+    FtTalk    talk;
+    uint8_t   talk_beat;
+    bool      talk_choosing;
+    bool      talk_yes;
+    FtQuestId talk_quest;
+    bool      talk_is_wren;
 
     /* The New game confirmation. Defaults to No. */
     bool confirm_yes;
@@ -191,7 +196,8 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
         ft_render_pockets(canvas, &app->world.pockets, app->pocket_item,
                           &app->world.stats);
     } else if(app->mode == FT_MODE_TALK) {
-        ft_render_talk(canvas, app->talk_who, &app->talk);
+        ft_render_talk(canvas, &app->talk, app->talk_beat, app->talk_choosing,
+                       app->talk_yes);
     } else if(app->mode == FT_MODE_BATTLE) {
         ft_render_battle(canvas, &app->encounter);
     } else {
@@ -497,6 +503,40 @@ static bool ft_save_now(FlipperTales* app) {
     return ft_storage_save(&data);
 }
 
+/* Open whatever conversation has just been loaded into app->talk. */
+static void ft_start_talk(FlipperTales* app) {
+    app->talk_beat = 0;
+    app->talk_choosing = false;
+    app->talk_yes = true;
+
+    ft_sound_play(&app->sound, FT_SFX_TALK);
+    app->mode = FT_MODE_TALK;
+}
+
+/* And apply what it did, once it is over. Nothing changes until here, so a
+ * question opened by accident can be walked away from. */
+static void ft_finish_talk(FlipperTales* app, bool yes) {
+    const FtQuestOutcome out =
+        app->talk_is_wren ? ft_quest_wren_answer(&app->world.quests) :
+                            ft_quest_answer(&app->world.quests, app->talk_quest, yes);
+
+    if(out.follows) ft_world_escort_start(&app->world);
+
+    /* Handing her back is what ends the escort. */
+    if(out.ended) ft_world_escort_stop(&app->world);
+
+    if(out.orbs > 0) {
+        app->world.stats.orbs = (int16_t)(app->world.stats.orbs + out.orbs);
+        ft_sound_play(&app->sound, FT_SFX_LEVEL);
+    }
+
+    /* Anything a conversation changed is progress worth keeping even if the
+     * walk home goes badly. */
+    if(out.orbs > 0 || out.follows || out.ended) ft_save_now(app);
+
+    app->mode = FT_MODE_OVERWORLD;
+}
+
 static void ft_overworld_ok(FlipperTales* app) {
     /* A foe you are facing is struck before it can react. */
     const int ahead = ft_world_foe_ahead(&app->world);
@@ -530,15 +570,8 @@ static void ft_overworld_ok(FlipperTales* app) {
     const int kid = ft_world_wren_ahead(&app->world);
     if(kid >= 0) {
         app->talk = ft_quest_wren_talk(&app->world.quests);
-        app->talk_who = app->talk.who;
-        ft_sound_play(&app->sound, FT_SFX_TALK);
-
-        if(app->talk.follows) {
-            ft_world_escort_start(&app->world);
-            ft_save_now(app);
-        }
-
-        app->mode = FT_MODE_TALK;
+        app->talk_is_wren = true;
+        ft_start_talk(app);
         return;
     }
 
@@ -546,28 +579,12 @@ static void ft_overworld_ok(FlipperTales* app) {
      * one and pressing OK is the whole interaction. */
     const int who = ft_world_npc_ahead(&app->world);
     if(who >= 0) {
-        const FtRoom*   room = ft_room(app->world.room);
-        const FtQuestId id = (FtQuestId)room->ents[who].roster;
+        const FtRoom* room = ft_room(app->world.room);
 
-        app->talk = ft_quest_talk(&app->world.quests, id);
-        app->talk_who = app->talk.who;
-        ft_sound_play(&app->sound, FT_SFX_TALK);
-
-        /* Handing her back is what ends the escort. */
-        if(ft_quest_state(&app->world.quests, id) == FT_QUEST_DONE) {
-            ft_world_escort_stop(&app->world);
-        }
-
-        if(app->talk.orbs > 0) {
-            app->world.stats.orbs = (int16_t)(app->world.stats.orbs + app->talk.orbs);
-            ft_sound_play(&app->sound, FT_SFX_LEVEL);
-
-            /* Paid work is progress worth keeping even if the walk home goes
-             * badly, so it is written out before the screen changes. */
-            ft_save_now(app);
-        }
-
-        app->mode = FT_MODE_TALK;
+        app->talk_quest = (FtQuestId)room->ents[who].roster;
+        app->talk_is_wren = false;
+        app->talk = ft_quest_talk(&app->world.quests, app->talk_quest);
+        ft_start_talk(app);
         return;
     }
 
@@ -915,14 +932,46 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
     }
 
     if(app->mode == FT_MODE_TALK) {
-        /* Any key closes it. A conversation you have to find the right button
-         * to leave is a conversation nobody finishes. */
-        if(app->world.stats.orbs > 0 && app->talk.orbs > 0) {
-            app->orb_item = 0;
-            app->orbs_from_pause = false;
-            app->mode = FT_MODE_ORBS;
-        } else {
+        if(app->talk_choosing) {
+            switch(event->key) {
+            case InputKeyLeft:
+            case InputKeyRight:
+                app->talk_yes = !app->talk_yes;
+                ft_sound_play(&app->sound, FT_SFX_MOVE);
+                break;
+            case InputKeyOk:
+                ft_finish_talk(app, app->talk_yes);
+                break;
+            case InputKeyBack:
+            default:
+                /* Backing out of a question is the same as saying no, and
+                 * costs nothing: nothing has changed yet. */
+                ft_finish_talk(app, false);
+                break;
+            }
+            return;
+        }
+
+        switch(event->key) {
+        case InputKeyOk:
+            if(app->talk_beat + 1u < app->talk.count) {
+                app->talk_beat++;
+                ft_sound_play(&app->sound, FT_SFX_TALK);
+            } else if(app->talk.ask) {
+                app->talk_choosing = true;
+            } else {
+                ft_finish_talk(app, true);
+            }
+            break;
+
+        case InputKeyBack:
+            /* Leaving early is leaving: a conversation you cannot walk out
+             * of is one you resent. Nothing has been applied. */
             app->mode = FT_MODE_OVERWORLD;
+            break;
+
+        default:
+            break;
         }
         return;
     }
@@ -1197,9 +1246,12 @@ static FlipperTales* ft_alloc(void) {
     app->sound_struck = false;
     app->quest_item = 0;
     app->pocket_item = 0;
-    app->talk_who = "";
-    app->talk.lines = 0;
-    app->talk.orbs = 0;
+    app->talk_beat = 0;
+    app->talk_choosing = false;
+    app->talk_yes = true;
+    app->talk_quest = FT_QUEST_CLEAN_RUN;
+    app->talk_is_wren = false;
+    app->talk.count = 0;
     app->chapters_done = 0;
     app->confirm_yes = false;
     ft_practice_init(&app->practice, furi_get_tick());
