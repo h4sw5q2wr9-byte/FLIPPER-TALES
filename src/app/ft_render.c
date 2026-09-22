@@ -1339,14 +1339,7 @@ void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected) {
 
     for(uint8_t i = 0; i < FT_QUEST_COUNT; i++) {
         names[i] = ft_quest_def((FtQuestId)i)->name;
-
-        switch(ft_quest_state(q, (FtQuestId)i)) {
-        case FT_QUEST_ACTIVE: values[i] = "on"; break;
-        case FT_QUEST_FAILED: values[i] = "failed"; break;
-        case FT_QUEST_READY:  values[i] = "collect"; break;
-        case FT_QUEST_DONE:   values[i] = "done"; break;
-        default:              values[i] = "not met"; break;
-        }
+        values[i] = ft_quest_status_line(q, (FtQuestId)i);
     }
 
     ft_render_menu_list(canvas, "QUESTS", names, values, FT_QUEST_COUNT, selected);

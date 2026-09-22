@@ -71,6 +71,12 @@ int main(void) {
         {"cb1-terminal", 0, &FT_MAP_CB1, 36,  20, FT_FACE_UP,    false, 9000},
         {"cb1-exit",     0, &FT_MAP_CB1, 112, 28, FT_FACE_RIGHT, true,  9000},
         {"cb1-npc",      0, &FT_MAP_CB1, 48,  16, FT_FACE_RIGHT, false, 9000},
+        /* Chapter 1: the fork, the gate and the junction. */
+        {"ap1-fork",     9, &FT_MAP_AP1, 80,  40, FT_FACE_DOWN,  false, 0},
+        {"ap1-drop",     9, &FT_MAP_AP1, 80,  56, FT_FACE_DOWN,  false, 9000},
+        {"wh1-gate",    10, &FT_MAP_WH1, 136, 32, FT_FACE_RIGHT, false, 0},
+        {"wh1-village", 10, &FT_MAP_WH1, 64,  24, FT_FACE_RIGHT, false, 9000},
+        {"ej1-wren",    11, &FT_MAP_EJ1, 128, 16, FT_FACE_RIGHT, false, 0},
         {"cb2-foe",      1, &FT_MAP_CB2, 48,  28, FT_FACE_RIGHT, true,  0},
         {"cb2-mid",      1, &FT_MAP_CB2, 96,  36, FT_FACE_RIGHT, true,  9000},
         {"cb3-shelf",    2, &FT_MAP_CB3, 48,  28, FT_FACE_DOWN,  true,  0},
@@ -136,6 +142,26 @@ int main(void) {
         const int clipped = ft_stub_canvas_clipped(canvas);
         clipped_total += clipped;
         printf("  %-14s %s\n", s->name, clipped ? "CLIPPED" : "ok");
+    }
+
+    /* Walking her home: the escort behind the avatar, in the room she was
+     * taken from and in the one she is going to. */
+    {
+        FtWorld esc;
+        ft_world_init(&esc);
+        ft_quest_advance(&esc.quests, FT_QUEST_WREN, FT_QUEST_READY);
+        ft_world_enter(&esc, 11, 8, 1);
+        ft_world_escort_start(&esc);
+        esc.escort_mv.tx = 9;
+        esc.escort_mv.ty = 1;
+        esc.facing = FT_FACE_LEFT;
+
+        ft_overworld_render(canvas, &esc);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_24_escort.pbm");
+
+        const int c = ft_stub_canvas_clipped(canvas);
+        clipped_total += c;
+        printf("  %-14s %s\n", "escort", c ? "CLIPPED" : "ok");
     }
 
     /* Spotted: the mark over a group that has seen you and has not started

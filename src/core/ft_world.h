@@ -27,7 +27,12 @@
 typedef enum {
     FT_ENT_NONE = 0,
     FT_ENT_FOE,
-    FT_ENT_NPC  /* someone to talk to; `roster` carries their quest id */
+    FT_ENT_NPC,  /* someone to talk to; `roster` carries their quest id */
+
+    /* Wren, waiting at the end of the junction. Her own kind because she is
+     * not a quest giver: talking to her is the middle of somebody else's
+     * quest, and she leaves with you afterwards. */
+    FT_ENT_WREN
 } FtEntKind;
 
 typedef struct {
@@ -40,6 +45,17 @@ typedef struct {
     uint8_t tx, ty;
     uint8_t dest_room;
     uint8_t dest_tx, dest_ty;
+
+    /* A way that is not always a way.
+     *
+     * `need_quest` is a quest id plus one, 0 for an exit that is simply
+     * open. The exit works once that quest has reached `need_state`. This
+     * covers both of Chapter 1's gates with one mechanism: the drop the
+     * Courier has no reason to take (needs ACTIVE) and Weldhome's gate,
+     * which Warden Coll holds shut (needs DONE). Neither needs a key, an
+     * item or a tile of its own. */
+    uint8_t need_quest;
+    uint8_t need_state;
 } FtExit;
 
 typedef struct {
@@ -57,12 +73,25 @@ typedef struct {
     FtEnemyId foes[FT_MAX_ENEMIES];
 } FtRoster;
 
+/* Which rooms are what.
+ *
+ * [0, 3]  the prologue
+ * [4, 8]  one-room samples of the five chapters, each with its locked port
+ * [9, 11] Chapter 1's Weldhome chain, which is a place rather than a sample
+ *
+ * Named because the tests assert different things about each band, and
+ * "rooms 4 and up are area slices" stopped being true the moment Chapter 1
+ * was appended after them. */
+#define FT_ROOM_SLICE_FIRST 4
+#define FT_ROOM_SLICE_LAST  8
+#define FT_ROOM_CH1_FIRST   9
+
 const FtRoom*   ft_room(uint8_t index);
 uint8_t         ft_room_count(void);
 const FtRoster* ft_roster(uint8_t index);
 
 /* How many there are. The balance simulator walks all of them. */
-#define FT_ROSTER_COUNT 12
+#define FT_ROSTER_COUNT 13
 uint8_t ft_roster_count(void);
 
 /* A tile-aligned actor mid-step. */
@@ -139,6 +168,15 @@ typedef struct {
 
     /* What has been asked of you, and how far through it you are. */
     FtQuests        quests;
+
+    /* Somebody walking with you.
+     *
+     * She steps into the tile you just left, every time you leave one, which
+     * is all a conga line has ever been. Kept in the world rather than as an
+     * entity because she is not part of any room — she is part of you until
+     * she is dropped off. */
+    bool      escort;
+    FtStepper escort_mv;
 } FtWorld;
 
 void ft_world_init(FtWorld* w);
@@ -177,6 +215,18 @@ bool ft_world_foe_noticing(const FtWorld* w, uint8_t index);
 /* Index of the NPC on the tile the player faces, else -1. An NPC is solid, so
  * this is what you get by walking into one. */
 int ft_world_npc_ahead(const FtWorld* w);
+
+/* Same, for the kid waiting at the end of the junction. */
+int ft_world_wren_ahead(const FtWorld* w);
+
+/* Is this exit usable yet? An exit the quests have not opened refuses, and
+ * `ft_world_exit_refusal` says what the Courier thinks about that. */
+bool        ft_world_exit_open(const FtWorld* w, const FtExit* x);
+const char* ft_world_exit_refusal(const FtExit* x);
+
+/* Start and stop somebody walking with you. */
+void ft_world_escort_start(FtWorld* w);
+void ft_world_escort_stop(FtWorld* w);
 
 /* The exit under the player, or NULL. */
 const FtExit* ft_world_exit_under(const FtWorld* w);

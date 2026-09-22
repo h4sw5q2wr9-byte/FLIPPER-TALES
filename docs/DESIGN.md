@@ -774,6 +774,51 @@ only draws them. A test walks every state and measures every line.
 The quest state rides in `FtWorld` and in the save (`FT_QUEST_BYTES`, sized
 with headroom so adding a quest does not change the layout).
 
+#### Gated exits, and the turn you cannot take
+
+`FtExit` carries `need_quest` (a quest id plus one, 0 for always open) and
+`need_state`. An exit whose quest has not reached that state refuses, and says
+why. That one field covers both of Chapter 1's gates:
+
+- **The drop** in the Approach needs `FT_QUEST_WREN` at `ACTIVE`. Before Coll
+  asks, the Courier says *"Nothing down there."* and stays put.
+- **Weldhome's gate** needs it at `DONE`. Warden Coll stands beside it, not on
+  it, so the exit is what refuses and she is what explains.
+
+Neither is locked with a key, an item or a tile of its own. **The world opens
+because your reason changed**, which is the cheapest possible way to make a
+place you already walked past mean something later — no new art, no new
+mechanic, and the room is already built.
+
+#### Walking somebody home
+
+`FtWorld` carries an `escort` flag and one stepper. She enters the tile you
+are leaving **on the frame you leave it**, hooked into the same branch that
+starts the player's step, so the two move in lockstep and she never falls
+behind however long the direction is held. Every tile she walks is a tile you
+walked, so she can never end up inside a wall or cut a corner through one. A
+door, a ladder or a drop moves you further than a step, and there she catches
+up rather than walking it.
+
+She is in the save, because a terminal half way home is a terminal.
+
+### 5.4b Chapter 1
+
+See STORY.md 6 for why. Mechanically it is three rooms appended after the
+concept slices (`FT_ROOM_CH1_FIRST`), so nothing before them was renumbered:
+
+| Room | What it is |
+|---|---|
+| 9 The Approach | The fork. Two ways on, and a drop you have no reason to take. |
+| 10 Weldhome Gate | A village whose gate does not open for a unit. Warden Coll. |
+| 11 East Junction | Wren, behind a wall and two live ones. |
+
+The junction's roster is `{Blank Wall, Scrap Crawler, Stray Packet}` — measured
+at 46/83/97 across the simulator's three skill levels, level with the hardest
+roster in the game and still clearable. The first draft paired the wall with
+two AIRBORNE foes and read 19/52/78: the wall blocks the broadcast and the
+flyers refuse contact, so the fight had two locks and no key.
+
 ### 5.5 The debug menu
 
 Everything that exists to test the game rather than to play it lives behind

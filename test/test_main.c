@@ -636,7 +636,7 @@ static void test_world_tour(void) {
         FT_TILE_SCRAP, FT_TILE_FROST, FT_TILE_PYLON, FT_TILE_STATIC};
 
     int flavoured = 0;
-    for(uint8_t r = 4; r < ft_room_count(); r++) {
+    for(uint8_t r = FT_ROOM_SLICE_FIRST; r <= FT_ROOM_SLICE_LAST; r++) {
         const FtMap* m = ft_room(r)->map;
         bool has = false;
 
@@ -657,8 +657,9 @@ static void test_world_tour(void) {
     }
     CHECK(flavoured >= 4, "at least four areas have their own ground");
 
-    /* Every area slice carries the gate for the chapter after it. */
-    for(uint8_t r = 4; r < ft_room_count(); r++) {
+    /* Every area slice carries the gate for the chapter after it. Chapter 1's
+     * own rooms do not: nothing there is locked with a key. */
+    for(uint8_t r = FT_ROOM_SLICE_FIRST; r <= FT_ROOM_SLICE_LAST; r++) {
         const FtMap* m = ft_room(r)->map;
         int locks = 0;
 
@@ -4286,6 +4287,231 @@ static void test_guide_words(void) {
     CHECK(strstr(line, "MP-") != NULL, "and what it leaves: \"%s\"", line);
 }
 
+/* ---- Chapter 1, walked end to end -------------------------------------- */
+
+/* Step the player one tile, letting the step finish. */
+static void walk(FtWorld* w, int8_t dx, int8_t dy) {
+    for(int t = 0; t < 60; t++) {
+        ft_world_update(w, dx, dy, 10);
+        if(!ft_world_moving(w)) {
+            /* Give the facing update a frame of its own so a blocked step
+             * still turns the player. */
+            if(t > 0) return;
+        }
+    }
+}
+
+static void test_weldhome(void) {
+    section("Weldhome, the gate and the kid");
+
+    const uint8_t APPROACH = FT_ROOM_CH1_FIRST;
+    const uint8_t GATE = (uint8_t)(FT_ROOM_CH1_FIRST + 1u);
+    const uint8_t JUNCTION = (uint8_t)(FT_ROOM_CH1_FIRST + 2u);
+
+    CHECK(ft_room_count() > JUNCTION, "the three rooms exist");
+    CHECK_EQ(ft_quest_def(FT_QUEST_WREN)->giver_room, GATE);
+
+    /* The prologue now leads here rather than straight into the slices. */
+    const FtRoom* cold_gate = ft_room(3);
+    bool leads_on = false;
+    for(uint8_t i = 0; i < cold_gate->exit_count; i++) {
+        if(cold_gate->exits[i].dest_room == APPROACH) leads_on = true;
+    }
+    CHECK(leads_on, "the prologue ends at the Approach");
+
+    /* --- the turn you cannot take --- */
+    FtWorld w;
+    ft_world_init(&w);
+    ft_world_enter(&w, APPROACH, 1, 2);
+
+    const FtExit* drop = NULL;
+    const FtRoom* ap = ft_room(APPROACH);
+    for(uint8_t i = 0; i < ap->exit_count; i++) {
+        if(ap->exits[i].dest_room == JUNCTION) drop = &ap->exits[i];
+    }
+    CHECK(drop != NULL, "the Approach has a way down");
+    if(!drop) return;
+
+    CHECK(!ft_world_exit_open(&w, drop), "which is shut before anybody asks");
+
+    const char* no = ft_world_exit_refusal(drop);
+    CHECK(no != NULL, "and says why");
+    CHECK(no && strlen(no) <= FT_TUTORIAL_MAX_CHARS, "in one line: \"%s\"",
+          no ? no : "");
+
+    /* It is not locked with a key: nothing in the world changed, only the
+     * reason. Take the quest and the same exit works. */
+    ft_quest_talk(&w.quests, FT_QUEST_WREN);
+    CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_WREN), FT_QUEST_ACTIVE);
+    CHECK(ft_world_exit_open(&w, drop), "the drop opens once she asks");
+
+    /* --- the gate --- */
+    FtWorld g;
+    ft_world_init(&g);
+    ft_world_enter(&g, GATE, 1, 3);
+
+    const FtExit* gate = NULL;
+    const FtRoom* wh = ft_room(GATE);
+    for(uint8_t i = 0; i < wh->exit_count; i++) {
+        if(wh->exits[i].dest_room == 4u) gate = &wh->exits[i];
+    }
+    CHECK(gate != NULL, "Weldhome opens onto the Scrapline");
+    if(!gate) return;
+
+    CHECK(!ft_world_exit_open(&g, gate), "but not yet");
+    ft_quest_talk(&g.quests, FT_QUEST_WREN);
+    CHECK(!ft_world_exit_open(&g, gate), "and not just for asking");
+    ft_quest_advance(&g.quests, FT_QUEST_WREN, FT_QUEST_READY);
+    CHECK(!ft_world_exit_open(&g, gate), "nor for finding her");
+    ft_quest_talk(&g.quests, FT_QUEST_WREN);
+    CHECK_EQ(ft_quest_state(&g.quests, FT_QUEST_WREN), FT_QUEST_DONE);
+    CHECK(ft_world_exit_open(&g, gate), "only for bringing her back");
+
+    /* Coll is standing in the room, and she is the one who speaks. */
+    bool has_coll = false;
+    for(uint8_t i = 0; i < wh->ent_count; i++) {
+        if(wh->ents[i].kind == FT_ENT_NPC &&
+           wh->ents[i].roster == (uint8_t)FT_QUEST_WREN) {
+            has_coll = true;
+        }
+    }
+    CHECK(has_coll, "somebody is holding it");
+
+    /* --- the junction --- */
+    const FtRoom* ej = ft_room(JUNCTION);
+    bool has_wren = false, has_foe = false;
+    for(uint8_t i = 0; i < ej->ent_count; i++) {
+        if(ej->ents[i].kind == FT_ENT_WREN) has_wren = true;
+        if(ej->ents[i].kind == FT_ENT_FOE) {
+            has_foe = true;
+            const FtRoster* r = ft_roster(ej->ents[i].roster);
+            CHECK_EQ(r->count, 3);
+            CHECK(FT_ENEMIES[r->foes[0]].attrs & FT_ATTR_BULWARK,
+                  "guarded the way things guard: a wall in front");
+        }
+    }
+    CHECK(has_wren, "the kid is down there");
+    CHECK(has_foe, "so is what took her");
+
+    /* --- freeing her --- */
+    FtWorld j;
+    ft_world_init(&j);
+    ft_quest_talk(&j.quests, FT_QUEST_WREN); /* take it */
+    ft_world_enter(&j, JUNCTION, 1, 1);
+
+    CHECK(!j.escort, "nobody with you yet");
+
+    const FtQuestTalk hers = ft_quest_wren_talk(&j.quests);
+    CHECK(hers.follows, "she comes out with you");
+    CHECK_EQ(ft_quest_state(&j.quests, FT_QUEST_WREN), FT_QUEST_READY);
+    CHECK(hers.who && strcmp(hers.who, "Warden Coll") != 0,
+          "and she speaks for herself");
+
+    ft_world_escort_start(&j);
+    CHECK(j.escort, "walking with you");
+    CHECK_EQ(j.escort_mv.tx, j.mv.tx);
+
+    /* --- the walk home --- */
+    /* She steps into the tile you just left, so every tile she walks is a
+     * tile you walked: she can never end up inside a wall. */
+    const FtMap* map = ft_world_map(&j);
+    for(int step = 0; step < 6; step++) {
+        const uint8_t before_tx = j.mv.tx, before_ty = j.mv.ty;
+
+        walk(&j, 1, 0);
+        if(j.mv.tx == before_tx && j.mv.ty == before_ty) break;
+
+        for(int t = 0; t < 40; t++) ft_world_update(&j, 0, 0, 10);
+
+        CHECK(!ft_tile_solid(ft_map_tile(map, j.escort_mv.tx, j.escort_mv.ty)),
+              "she is on solid ground (%u,%u)", j.escort_mv.tx, j.escort_mv.ty);
+
+        const int32_t gap = abs_i32((int32_t)j.escort_mv.tx - (int32_t)j.mv.tx) +
+                            abs_i32((int32_t)j.escort_mv.ty - (int32_t)j.mv.ty);
+        CHECK(gap <= 1, "and keeps up (%d tiles back)", (int)gap);
+    }
+
+    /* A door carries her through with you rather than leaving her behind. */
+    ft_world_enter(&j, APPROACH, 10, 7);
+    CHECK(j.escort, "she comes through the door");
+    CHECK_EQ(j.escort_mv.tx, 10);
+    CHECK_EQ(j.escort_mv.ty, 7);
+
+    /* And she is not still standing in the junction she left. */
+    CHECK_EQ(ft_world_wren_ahead(&j), -1);
+
+    /* --- handing her back --- */
+    ft_world_enter(&j, GATE, 1, 3);
+    const FtQuestTalk done = ft_quest_talk(&j.quests, FT_QUEST_WREN);
+    CHECK_EQ(ft_quest_state(&j.quests, FT_QUEST_WREN), FT_QUEST_DONE);
+    CHECK(done.orbs > 0, "which pays");
+
+    ft_world_escort_stop(&j);
+    CHECK(!j.escort, "and she goes inside");
+
+    /* Every line anybody says in this chain fits the box. */
+    for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+        FtQuests q;
+        ft_quests_init(&q);
+        q.state[FT_QUEST_WREN] = st;
+
+        const FtQuestTalk t = ft_quest_talk(&q, FT_QUEST_WREN);
+        CHECK(t.who && strlen(t.who) <= FT_TUTORIAL_MAX_CHARS,
+              "state %u names its speaker: \"%s\"", st, t.who ? t.who : "");
+
+        for(uint8_t i = 0; i < t.lines; i++) {
+            CHECK(t.line[i] && strlen(t.line[i]) <= FT_TUTORIAL_MAX_CHARS,
+                  "Coll state %u line %u fits: \"%s\"", st, i,
+                  t.line[i] ? t.line[i] : "");
+        }
+
+        FtQuests k;
+        ft_quests_init(&k);
+        k.state[FT_QUEST_WREN] = st;
+
+        const FtQuestTalk kt = ft_quest_wren_talk(&k);
+        for(uint8_t i = 0; i < kt.lines; i++) {
+            CHECK(kt.line[i] && strlen(kt.line[i]) <= FT_TUTORIAL_MAX_CHARS,
+                  "Wren state %u line %u fits: \"%s\"", st, i,
+                  kt.line[i] ? kt.line[i] : "");
+        }
+    }
+
+    /* Only the right state frees her: she does not walk off with somebody
+     * who has not been asked to fetch her. */
+    FtQuests cold;
+    ft_quests_init(&cold);
+    CHECK(!ft_quest_wren_talk(&cold).follows, "she stays put before Coll asks");
+
+    /* She survives a save, because a terminal half way home is a terminal. */
+    FtWorld carry;
+    ft_world_init(&carry);
+    ft_quest_talk(&carry.quests, FT_QUEST_WREN);
+    ft_world_enter(&carry, APPROACH, 5, 2);
+    ft_world_escort_start(&carry);
+    carry.escort_mv.tx = 4;
+    carry.escort_mv.ty = 2;
+
+    FtSaveData sd;
+    ft_save_from_world(&carry, false, &sd);
+
+    uint8_t bytes[FT_SAVE_MAX_BYTES];
+    const uint8_t len = ft_save_encode(&sd, bytes, sizeof(bytes));
+    CHECK(len > 0, "the save encodes");
+
+    FtSaveData back;
+    CHECK(ft_save_decode(bytes, len, &back), "and decodes");
+
+    FtWorld reloaded;
+    bool coach = true;
+    ft_save_to_world(&back, &reloaded, &coach);
+
+    CHECK(reloaded.escort, "she is still with you");
+    CHECK_EQ(reloaded.escort_mv.tx, 4);
+    CHECK_EQ(reloaded.escort_mv.ty, 2);
+    CHECK_EQ(ft_quest_state(&reloaded.quests, FT_QUEST_WREN), FT_QUEST_ACTIVE);
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -4326,6 +4552,7 @@ int main(void) {
     test_orbs();
     test_quests();
     test_npc();
+    test_weldhome();
     test_notice();
     test_guard_aftermath();
     test_deflect();

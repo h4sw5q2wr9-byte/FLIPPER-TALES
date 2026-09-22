@@ -93,6 +93,56 @@ D................#
 """)
 
 
+# ---- Chapter 1: Weldhome -----------------------------------------------
+#
+# The first place in this game with people in it. See STORY.md 6.
+#
+# The shape is the point: a fork you walk past, a gate that will not open,
+# and the fork again — now with a reason. Nothing here is locked with a key.
+
+# [10] The Approach. Three ways out: back to the prologue, east to the gate,
+# and a dark drop south that the Courier refuses until somebody gives them a
+# reason to go down there.
+MAPS["ap1"] = ("The Approach", 16, """
+####################
+#..................#
+D.......C..........#
+#..................#
+#.....*......**....#
+#..................D
+#........#..#......#
+#........#..#......#
+##########DD########
+""")
+
+# [11] Weldhome Gate. A junction village built into the Carrier, with the way
+# through held shut. Warden Coll stands in front of it.
+MAPS["wh1"] = ("Weldhome Gate", 12, """
+####################
+#....##......##....#
+#....##..T...##....#
+D..................#
+#..................D
+#....##......##....#
+#..*.##..**..##..*.#
+####################
+""")
+
+# [12] East Junction. Down, dark, and full of the things that took Wren.
+# The wreckage funnels you into one approach, which is what makes the group
+# at the far end a wall rather than a crowd.
+MAPS["ej1"] = ("East Junction", 20, """
+##########DD########
+#........DD........#
+#...SS.........SS..#
+#..SSSS...S...SSS..#
+#.........S........#
+#...SS....S....S...#
+#..................#
+####################
+""")
+
+
 # ---- Concept slices ----------------------------------------------------
 #
 # One room from each of the five chapters, so the areas exist as places

@@ -34,6 +34,18 @@ static const FtRoster FT_ROSTERS[] = {
      * slot so clearing the row is what wakes it. */
     {3, {FT_ENEMY_BLANK_WALL, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET}},
     {3, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_COLD_BOOTER}},
+
+    /* [12] The East Junction. Chapter 1's set-piece, and the first fight the
+     * game asks you to win for somebody else: a wall in front so you cannot
+     * reach past it, something fast behind it, and something ordinary.
+     *
+     * Measured at 46/83/97 across the three skill levels, which puts it level
+     * with the hardest roster in the game and still lets a careful player
+     * through. Pairing the wall with two AIRBORNE foes instead read 19/52/78:
+     * the wall blocks the broadcast and the flyers refuse contact, so the
+     * fight had two locks and no key. A story beat nobody can clear is not a
+     * story beat. */
+    {3, {FT_ENEMY_BLANK_WALL, FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_STRAY_PACKET}},
 };
 #define ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
 
@@ -44,7 +56,7 @@ typedef char ft_roster_count_matches[(ROSTER_COUNT == FT_ROSTER_COUNT) ? 1 : -1]
  * anything. No foe — the first room teaches walking, saving and talking,
  * nothing else. */
 static const FtExit CB1_EXITS[] = {
-    {15, 3, 1, 1, 2},
+    {15, 3, 1, 1, 2, 0, 0},
 };
 static const FtEntity CB1_ENTS[] = {
     /* Two tiles from where you wake up, off the line to the door, so you
@@ -55,8 +67,8 @@ static const FtEntity CB1_ENTS[] = {
 /* [2] Boot Corridor: the first encounter, placed far enough right that it is
  * seen well before it is reached. */
 static const FtExit CB2_EXITS[] = {
-    {0, 2, 0, 14, 3},
-    {19, 4, 2, 1, 2},
+    {0, 2, 0, 14, 3, 0, 0},
+    {19, 4, 2, 1, 2, 0, 0},
 };
 static const FtEntity CB2_ENTS[] = {
     {FT_ENT_FOE, 13, 3, 0},
@@ -64,8 +76,8 @@ static const FtEntity CB2_ENTS[] = {
 
 /* [3] The Drop: upper shelf, ladder down, terminal on the lower floor. */
 static const FtExit CB3_EXITS[] = {
-    {0, 2, 1, 18, 4},
-    {17, 10, 3, 1, 2},
+    {0, 2, 1, 18, 4, 0, 0},
+    {17, 10, 3, 1, 2, 0, 0},
 };
 static const FtEntity CB3_ENTS[] = {
     {FT_ENT_FOE, 9, 2, 1},
@@ -74,12 +86,51 @@ static const FtEntity CB3_ENTS[] = {
 
 /* [4] Cold Gate: a group standing in the exit, the way an area ends. */
 static const FtExit CB4_EXITS[] = {
-    {0, 2, 2, 16, 10},
-    {17, 8, 4, 1, 2}, /* out of the prologue and into the concept slices */
+    {0, 2, 2, 16, 10, 0, 0},
+    {17, 8, 9, 1, 2, 0, 0}, /* out of the prologue, into Chapter 1 */
 };
 static const FtEntity CB4_ENTS[] = {
     {FT_ENT_FOE, 13, 8, 3},
 };
+
+/* ---- Chapter 1: Weldhome ----------------------------------------------
+ *
+ * See STORY.md 6. The shape: a fork you walk past, a gate that will not
+ * open, and the fork again — now with a reason.
+ *
+ * Nothing here is locked with a key. The drop south refuses because the
+ * Courier has no reason to take it, and Weldhome's gate refuses because
+ * Warden Coll is holding it. Both are the same field in FtExit. */
+
+/* [10] The Approach. */
+static const FtExit AP1_EXITS[] = {
+    {0, 2, 3, 16, 8, 0, 0},
+    {19, 5, 10, 1, 3, 0, 0},
+
+    /* The drop. Open from the moment Coll asks, and not before. */
+    {10, 8, 11, 10, 1, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_ACTIVE},
+};
+
+/* [11] Weldhome Gate. Coll stands beside the way through, not on it: the
+ * exit is what refuses, so she can say why. */
+static const FtExit WH1_EXITS[] = {
+    {0, 3, 9, 18, 5, 0, 0},
+    {19, 4, 4, 1, 2, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_DONE},
+};
+static const FtEntity WH1_ENTS[] = {
+    {FT_ENT_NPC, 18, 4, (uint8_t)FT_QUEST_WREN},
+};
+
+/* [12] East Junction. Wren at the far end, behind a wall and two live ones —
+ * guarded the way things guard, so the fight cannot be skipped to the end. */
+static const FtExit EJ1_EXITS[] = {
+    {10, 0, 9, 10, 7, 0, 0},
+};
+static const FtEntity EJ1_ENTS[] = {
+    {FT_ENT_FOE, 14, 4, 12},
+    {FT_ENT_WREN, 18, 2, 0},
+};
+
 
 /* ---- Concept slices ---------------------------------------------------
  *
@@ -96,8 +147,8 @@ static const FtEntity CB4_ENTS[] = {
  * stranded on the far side: Infrared is line-of-sight, so what the module
  * buys you here is reaching across a gap you cannot walk. */
 static const FtExit SL1_EXITS[] = {
-    {0, 2, 3, 16, 8},
-    {21, 8, 5, 1, 2},
+    {0, 2, 3, 16, 8, 0, 0},
+    {21, 8, 5, 1, 2, 0, 0},
 };
 static const FtEntity SL1_ENTS[] = {
     {FT_ENT_FOE, 8, 6, 4},
@@ -108,8 +159,8 @@ static const FtEntity SL1_ENTS[] = {
  * visible way in: RFID reads through walls, so the module finds the door
  * that was never drawn. */
 static const FtExit CS1_EXITS[] = {
-    {0, 2, 4, 20, 8},
-    {21, 8, 6, 1, 2},
+    {0, 2, 4, 20, 8, 0, 0},
+    {21, 8, 6, 1, 2, 0, 0},
 };
 static const FtEntity CS1_ENTS[] = {
     {FT_ENT_FOE, 17, 2, 6},
@@ -120,8 +171,8 @@ static const FtEntity CS1_ENTS[] = {
  * This is the wall the chapter is named after, and you can walk up to it
  * long before the iButton exists. */
 static const FtExit TS1_EXITS[] = {
-    {0, 2, 5, 20, 8},
-    {21, 8, 7, 1, 2},
+    {0, 2, 5, 20, 8, 0, 0},
+    {21, 8, 7, 1, 2, 0, 0},
 };
 static const FtEntity TS1_ENTS[] = {
     {FT_ENT_FOE, 15, 4, 7},
@@ -132,8 +183,8 @@ static const FtEntity TS1_ENTS[] = {
  * up sitting behind a run that carries nothing: GPIO powers what is already
  * there. */
 static const FtExit SH1_EXITS[] = {
-    {0, 2, 6, 20, 8},
-    {21, 8, 8, 1, 2},
+    {0, 2, 6, 20, 8, 0, 0},
+    {21, 8, 8, 1, 2, 0, 0},
 };
 static const FtEntity SH1_ENTS[] = {
     {FT_ENT_FOE, 15, 1, 8},
@@ -145,8 +196,8 @@ static const FtEntity SH1_ENTS[] = {
  * are the way through. The chain loops back to the start from here: past
  * this is Chapter 1, which does not exist yet. */
 static const FtExit DZ1_EXITS[] = {
-    {0, 2, 7, 20, 8},
-    {21, 8, 0, 3, 4},
+    {0, 2, 7, 20, 8, 0, 0},
+    {21, 8, 0, 3, 4, 0, 0},
 };
 static const FtEntity DZ1_ENTS[] = {
     {FT_ENT_FOE, 9, 4, 9},
@@ -163,6 +214,9 @@ static const FtRoom FT_ROOMS[] = {
     {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2},
     {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2},
     {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2},
+    {&FT_MAP_AP1, AP1_EXITS, 3, NULL, 0},
+    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 1},
+    {&FT_MAP_EJ1, EJ1_EXITS, 1, EJ1_ENTS, 2},
 };
 #define ROOM_COUNT (sizeof(FT_ROOMS) / sizeof(FT_ROOMS[0]))
 
@@ -302,6 +356,16 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
      * everything else it hears about from the app. */
     ft_quest_enter_room(&w->quests, w->room);
 
+    /* She comes through the door with you, standing where you are until you
+     * take your first step. */
+    if(w->escort) {
+        w->escort_mv.tx = tx;
+        w->escort_mv.ty = ty;
+        w->escort_mv.dx = 0;
+        w->escort_mv.dy = 0;
+        w->escort_mv.step_ms = 0;
+    }
+
     /* Foes start where the room says, and are alive unless already beaten. */
     const FtRoom* r = ft_room(w->room);
     for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) {
@@ -372,6 +436,7 @@ void ft_world_init(FtWorld* w) {
     ft_stats_init(&w->stats);
     ft_guide_init(&w->guide);
     ft_quests_init(&w->quests);
+    w->escort = false;
 
     /* World stats are authoritative and carry the loadout's bonuses, because a
      * battle copies them in rather than building its own. */
@@ -609,6 +674,11 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
         w->arrived = step_advance(&w->mv, dt_ms, FT_STEP_MS);
     }
 
+    /* --- whoever is walking with you --- */
+    if(w->escort && (w->escort_mv.dx || w->escort_mv.dy)) {
+        (void)step_advance(&w->escort_mv, dt_ms, FT_STEP_MS);
+    }
+
     if(!ft_world_moving(w) && (dx || dy)) {
         /* One axis at a time keeps the player on the grid; horizontal wins so
          * a diagonal press still moves rather than stalling. */
@@ -624,6 +694,27 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
          * turn and talk to someone you just bumped into. */
         if(step_target_free(map, w->mv.tx, w->mv.ty, dx, dy) &&
            npc_at_tile(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) < 0) {
+            /* She steps into the tile you are leaving on the frame you leave
+             * it, so the two move in lockstep and she never falls behind
+             * however long the direction is held. It also means every tile
+             * she walks is a tile you walked: she can never end up inside a
+             * wall, and never cuts a corner through one. */
+            if(w->escort && !(w->escort_mv.dx || w->escort_mv.dy)) {
+                const int32_t ex = (int32_t)w->mv.tx - (int32_t)w->escort_mv.tx;
+                const int32_t ey = (int32_t)w->mv.ty - (int32_t)w->escort_mv.ty;
+
+                if(abs32(ex) + abs32(ey) == 1) {
+                    w->escort_mv.dx = (int8_t)ex;
+                    w->escort_mv.dy = (int8_t)ey;
+                    w->escort_mv.step_ms = 0;
+                } else if(ex || ey) {
+                    /* A door, a ladder or a drop moves you further than a
+                     * step. She catches up rather than walking it. */
+                    w->escort_mv.tx = w->mv.tx;
+                    w->escort_mv.ty = w->mv.ty;
+                }
+            }
+
             w->mv.dx = dx;
             w->mv.dy = dy;
             w->mv.step_ms = 0;
@@ -723,7 +814,9 @@ static int npc_at_tile(const FtWorld* w, int32_t tx, int32_t ty) {
     const FtRoom* r = ft_room(w->room);
 
     for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
-        if(r->ents[i].kind != FT_ENT_NPC) continue;
+        const bool person = (r->ents[i].kind == FT_ENT_NPC) ||
+                            (r->ents[i].kind == FT_ENT_WREN && !w->escort);
+        if(!person) continue;
         if((int32_t)r->ents[i].tx == tx && (int32_t)r->ents[i].ty == ty) return (int)i;
     }
     return -1;
@@ -769,6 +862,57 @@ int ft_world_npc_ahead(const FtWorld* w) {
 
     const int32_t tx = (int32_t)w->mv.tx + dx, ty = (int32_t)w->mv.ty + dy;
     return npc_at_tile(w, tx, ty);
+}
+
+int ft_world_wren_ahead(const FtWorld* w) {
+    /* Once she is walking with you she is behind you, not ahead of you, and
+     * there is nothing in the room to talk to any more. */
+    if(w->escort) return -1;
+
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+
+    const int32_t tx = (int32_t)w->mv.tx + dx, ty = (int32_t)w->mv.ty + dy;
+    const FtRoom* r = ft_room(w->room);
+
+    for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(r->ents[i].kind != FT_ENT_WREN) continue;
+        if((int32_t)r->ents[i].tx == tx && (int32_t)r->ents[i].ty == ty) return (int)i;
+    }
+    return -1;
+}
+
+bool ft_world_exit_open(const FtWorld* w, const FtExit* x) {
+    if(x == NULL) return false;
+    if(x->need_quest == 0u) return true;
+
+    return ft_quest_at_least(&w->quests, (FtQuestId)(x->need_quest - 1u),
+                             (FtQuestState)x->need_state);
+}
+
+const char* ft_world_exit_refusal(const FtExit* x) {
+    if(x == NULL || x->need_quest == 0u) return NULL;
+
+    const FtQuestId id = (FtQuestId)(x->need_quest - 1u);
+
+    /* A gate somebody is holding says who is holding it; a way you simply
+     * have no reason to take is the Courier talking to themselves. */
+    if(x->need_state == (uint8_t)FT_QUEST_DONE) return "Coll won't open it.";
+
+    return ft_quest_refusal(id, (FtQuestState)x->need_state);
+}
+
+void ft_world_escort_start(FtWorld* w) {
+    w->escort = true;
+    w->escort_mv.tx = w->mv.tx;
+    w->escort_mv.ty = w->mv.ty;
+    w->escort_mv.dx = 0;
+    w->escort_mv.dy = 0;
+    w->escort_mv.step_ms = 0;
+}
+
+void ft_world_escort_stop(FtWorld* w) {
+    w->escort = false;
 }
 
 const FtExit* ft_world_exit_under(const FtWorld* w) {

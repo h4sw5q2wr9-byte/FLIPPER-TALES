@@ -484,6 +484,22 @@ static void ft_overworld_ok(FlipperTales* app) {
         return;
     }
 
+    /* The kid at the end of the junction. Talking to her is what frees her,
+     * and she walks out with you. */
+    const int kid = ft_world_wren_ahead(&app->world);
+    if(kid >= 0) {
+        app->talk = ft_quest_wren_talk(&app->world.quests);
+        app->talk_who = app->talk.who;
+
+        if(app->talk.follows) {
+            ft_world_escort_start(&app->world);
+            ft_save_now(app);
+        }
+
+        app->mode = FT_MODE_TALK;
+        return;
+    }
+
     /* Somebody you are facing is talked to. An NPC is solid, so walking into
      * one and pressing OK is the whole interaction. */
     const int who = ft_world_npc_ahead(&app->world);
@@ -492,7 +508,12 @@ static void ft_overworld_ok(FlipperTales* app) {
         const FtQuestId id = (FtQuestId)room->ents[who].roster;
 
         app->talk = ft_quest_talk(&app->world.quests, id);
-        app->talk_who = ft_quest_def(id)->name;
+        app->talk_who = app->talk.who;
+
+        /* Handing her back is what ends the escort. */
+        if(ft_quest_state(&app->world.quests, id) == FT_QUEST_DONE) {
+            ft_world_escort_stop(&app->world);
+        }
 
         if(app->talk.orbs > 0) {
             app->world.stats.orbs = (int16_t)(app->world.stats.orbs + app->talk.orbs);
@@ -910,7 +931,13 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
      * to stop and press to change room turns a corridor into paperwork. */
     if(app->world.arrived) {
         const FtExit* exit = ft_world_exit_under(&app->world);
-        if(exit) {
+
+        if(exit && !ft_world_exit_open(&app->world, exit)) {
+            /* A way you have no reason to take, or a gate somebody is
+             * holding. Both say so and leave you standing on the threshold,
+             * which is what makes coming back here later mean something. */
+            ft_toast(app, ft_world_exit_refusal(exit));
+        } else if(exit) {
             ft_world_enter(&app->world, exit->dest_room, exit->dest_tx, exit->dest_ty);
             return;
         }

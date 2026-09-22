@@ -27,7 +27,7 @@
 
 /* Bumped whenever the layout changes. An older or newer file is refused
  * rather than misread: a garbled save is worse than a missing one. */
-#define FT_SAVE_VERSION 5
+#define FT_SAVE_VERSION 6
 
 /* Header (4 magic + 1 version + 1 length) + payload + 4 checksum. Generous,
  * and asserted against the real encoded length by the tests. */
@@ -45,6 +45,11 @@ typedef struct {
 
     uint8_t cleared[FT_CLEARED_BYTES];
     bool    coach;
+
+    /* Whether somebody is walking with you, and where they are standing.
+     * Saving at a terminal half way home must not lose her. */
+    bool    escort;
+    uint8_t escort_tx, escort_ty;
 } FtSaveData;
 
 /* Returns the number of bytes written, or 0 if the buffer is too small. */

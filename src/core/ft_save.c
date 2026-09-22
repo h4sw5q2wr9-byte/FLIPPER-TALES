@@ -72,6 +72,10 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
 
     put_u8(b, &at, d->coach ? 1u : 0u);
 
+    put_u8(b, &at, d->escort ? 1u : 0u);
+    put_u8(b, &at, d->escort_tx);
+    put_u8(b, &at, d->escort_ty);
+
     return at;
 }
 
@@ -105,6 +109,10 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) d->cleared[i] = get_u8(b, &at);
 
     d->coach = get_u8(b, &at) != 0u;
+
+    d->escort = get_u8(b, &at) != 0u;
+    d->escort_tx = get_u8(b, &at);
+    d->escort_ty = get_u8(b, &at);
 }
 
 /* The payload length, which the header carries so a decode can check the file
@@ -115,7 +123,8 @@ static uint8_t payload_bytes(void) {
                      + 2u                         /* field guide */
                      + FT_QUEST_BYTES             /* quests */
                      + 6u                         /* position and save point */
-                     + FT_CLEARED_BYTES + 1u);    /* flags */
+                     + FT_CLEARED_BYTES + 1u      /* flags */
+                     + 3u);                       /* whoever is with you */
 }
 
 /* ---- Encode and decode ------------------------------------------------- */
@@ -192,6 +201,10 @@ void ft_save_from_world(const FtWorld* w, bool coach, FtSaveData* d) {
 
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) d->cleared[i] = w->cleared[i];
     d->coach = coach;
+
+    d->escort = w->escort;
+    d->escort_tx = w->escort_mv.tx;
+    d->escort_ty = w->escort_mv.ty;
 }
 
 void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach) {
@@ -212,6 +225,16 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach) {
     w->save_ty = d->save_ty;
 
     ft_world_enter(w, d->room, d->tx, d->ty);
+
+    /* After entering, because entering is what places her beside you. */
+    w->escort = d->escort;
+    if(w->escort) {
+        w->escort_mv.tx = d->escort_tx;
+        w->escort_mv.ty = d->escort_ty;
+        w->escort_mv.dx = 0;
+        w->escort_mv.dy = 0;
+        w->escort_mv.step_ms = 0;
+    }
 
     if(coach) *coach = d->coach;
 }

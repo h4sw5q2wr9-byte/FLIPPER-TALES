@@ -304,6 +304,17 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
      * sprites at fixed offsets from a leader made a group of three read as
      * one object being dragged about. */
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        /* Wren, while she is still waiting to be found. Once she is walking
+         * with you she is drawn from the world's escort stepper instead. */
+        if(room->ents[i].kind == FT_ENT_WREN) {
+            if(w->escort) continue;
+
+            draw_foe(canvas,
+                     FT_SPRITE_KID,
+                     (int32_t)room->ents[i].tx * FT_TILE_PX - cam.x,
+                     (int32_t)room->ents[i].ty * FT_TILE_PX - cam.y);
+            continue;
+        }
         if(room->ents[i].kind == FT_ENT_NPC) {
             /* Standing still on their tile, drawn like a foe so the world has
              * one scale. They never move, so there is no stepper to ask. */
@@ -332,6 +343,13 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
             const FtPos fp = ft_stepper_pos(&w->foes[i].w[0].mv, FT_FOE_STEP_MS);
             draw_notice(canvas, fp.x - cam.x, fp.y - cam.y);
         }
+    }
+
+    /* Whoever is walking with you, behind the avatar so the player is never
+     * hidden by their own escort. */
+    if(w->escort) {
+        const FtPos ep = ft_stepper_pos(&w->escort_mv, FT_STEP_MS);
+        draw_foe(canvas, FT_SPRITE_KID, ep.x - cam.x, ep.y - cam.y);
     }
 
     const bool moving = ft_world_moving(w);
