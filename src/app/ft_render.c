@@ -1,6 +1,7 @@
 #include "ft_render.h"
 
 #include "../core/ft_tutorial.h"
+#include "ft_enemy_art.h"
 #include "ft_sprites.h"
 
 #include <stdio.h>
@@ -83,6 +84,26 @@ static void draw_header(Canvas* canvas, const FtEncounter* e) {
     int32_t right = FT_SCREEN_W - 2;
 
     char tag[10];
+
+    /* Right to left, least urgent first, because the name is clipped from the
+     * right and the last tag placed is the one nearest it.
+     *
+     * FAST and JAM are here because both became real: FAST orders the round
+     * and JAM locks the meter, and until they were wired up neither did
+     * anything, so neither needed saying. An attribute that changes the
+     * fight and is not on the screen is a rule the player has to lose to. */
+    if(en->attrs & FT_ATTR_JAMMER) {
+        strcpy(tag, "JAM");
+        right -= (int32_t)canvas_string_width(canvas, tag);
+        canvas_draw_str(canvas, right, 7, tag);
+        right -= 3;
+    }
+    if(en->attrs & FT_ATTR_FAST) {
+        strcpy(tag, "FST");
+        right -= (int32_t)canvas_string_width(canvas, tag);
+        canvas_draw_str(canvas, right, 7, tag);
+        right -= 3;
+    }
     if(en->attrs & FT_ATTR_ENCRYPTED) {
         strcpy(tag, "ENC");
         right -= (int32_t)canvas_string_width(canvas, tag);
@@ -166,12 +187,6 @@ static void draw_player(Canvas* c, int32_t x, int32_t floor_y, bool hurt) {
             FT_HERO_SCREEN_W, FT_HERO_SCREEN_H);
         canvas_set_color(c, ColorBlack);
     }
-}
-
-static const uint16_t* enemy_sprite(uint32_t attrs) {
-    if(attrs & FT_ATTR_AIRBORNE) return FT_SPRITE_BEACON;
-    if(attrs & FT_ATTR_ENCRYPTED) return FT_SPRITE_LOCK;
-    return FT_SPRITE_PACKET;
 }
 
 /* Where each foe stands. Spread to fill the right of the arena so a lone foe
@@ -472,7 +487,7 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
 
         /* A foe this turn killed folds up instead of being drawn standing. */
         const uint8_t dying = ft_encounter_foe_defeat(e, i);
-        const uint16_t* art = enemy_sprite(FT_ENEMIES[e->foes[i].id].attrs);
+        const uint16_t* art = ft_enemy_art(e->foes[i].id);
 
         if(dying > 0u) {
             draw_defeat(canvas, art, x, y, dying);
@@ -1252,13 +1267,16 @@ void ft_render_battle(Canvas* canvas, const FtEncounter* e) {
         } else {
             snprintf(detail, sizeof(detail), "charge depleted");
         }
-        draw_centred(canvas, FT_SCREEN_W / 2, 34, detail);
+        draw_centred(canvas, FT_SCREEN_W / 2, 32, detail);
+
+        /* Losing costs the run everything since the last save, so the screen
+         * says so before the player presses anything. */
+        if(!won) draw_centred(canvas, FT_SCREEN_W / 2, 42, "Back to your save");
 
         /* Baselines stay at or below 62: a glyph cell extends one row past
          * its baseline, and descenders need that row. */
-        draw_centred(canvas, FT_SCREEN_W / 2, 46, "OK: next fight");
-        draw_centred(canvas, FT_SCREEN_W / 2, 54, "UP: how to play");
-        draw_centred(canvas, FT_SCREEN_W / 2, 62, "BACK: quit");
+        draw_centred(canvas, FT_SCREEN_W / 2, 52, won ? "OK: carry on" : "OK: continue");
+        draw_centred(canvas, FT_SCREEN_W / 2, 62, "UP: how to play");
         return;
     }
 

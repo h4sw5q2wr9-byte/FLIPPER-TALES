@@ -9,6 +9,7 @@
 
 #include "ft_combat.h"
 #include "ft_data.h"
+#include "ft_priority.h"
 #include "ft_progress.h"
 #include "ft_rng.h"
 #include "ft_roll.h"
@@ -98,6 +99,10 @@ typedef struct {
     /* Player actions taken this battle. Foes only act on every other one —
      * see FT_PLAYER_TURNS_PER_ROUND. */
     uint16_t player_turns;
+
+    /* True while the round's FAST foes are taking their pre-emptive turns.
+     * A round runs: fast foes, the player's turns, then everything else. */
+    bool fast_phase;
 
     /* Action command state. The sweep stops the moment it is pressed, so the
      * cursor can be shown frozen where it landed. */

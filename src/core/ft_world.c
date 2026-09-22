@@ -7,12 +7,27 @@
 /* One visible foe means a whole group in battle, which is what makes the
  * broadcast-versus-contact choice matter out here too. */
 static const FtRoster FT_ROSTERS[] = {
+    /* [0-3] The prologue, one lesson at a time. */
     {1, {FT_ENEMY_STRAY_PACKET, 0, 0}},
     {2, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, 0}},
     {2, {FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET, 0}},
     {3, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK}},
+
+    /* [4-8] One per area. Each pairs its own enemy with something from the
+     * prologue, so a fight is the new idea plus a thing you already know how
+     * to handle rather than two puzzles at once. */
+    {2, {FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_STRAY_PACKET, 0}},           /* Scrapline */
+    {3, {FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_SCRAP_CRAWLER,
+         FT_ENEMY_STRAY_PACKET}},                                      /* Scrapline, heavier */
+    {2, {FT_ENEMY_RIME_SHELL, FT_ENEMY_STRAY_PACKET, 0}},              /* Cold Storage */
+    {2, {FT_ENEMY_GATE_DRONE, FT_ENEMY_SEALED_LOCK, 0}},               /* Turnstile */
+    {2, {FT_ENEMY_MAST_RELAY, FT_ENEMY_DRIFT_BEACON, 0}},              /* Signal Hill */
+    {2, {FT_ENEMY_NULL_FIELD, FT_ENEMY_SCRAP_CRAWLER, 0}},             /* Deadzone */
 };
 #define ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
+
+/* Kept in step with the table by the compiler rather than by memory. */
+typedef char ft_roster_count_matches[(ROSTER_COUNT == FT_ROSTER_COUNT) ? 1 : -1];
 
 /* [1] Wake: a terminal and the way out. No foe — the first room teaches
  * walking and saving, nothing else. */
@@ -68,8 +83,8 @@ static const FtExit SL1_EXITS[] = {
     {21, 8, 5, 1, 2},
 };
 static const FtEntity SL1_ENTS[] = {
-    {FT_ENT_FOE, 8, 6, 0},
-    {FT_ENT_FOE, 11, 3, 2},
+    {FT_ENT_FOE, 8, 6, 4},
+    {FT_ENT_FOE, 11, 3, 5},
 };
 
 /* [6] Cold Storage. A sealed cell in the middle of a frosted floor, with no
@@ -80,8 +95,8 @@ static const FtExit CS1_EXITS[] = {
     {21, 8, 6, 1, 2},
 };
 static const FtEntity CS1_ENTS[] = {
-    {FT_ENT_FOE, 17, 2, 1},
-    {FT_ENT_FOE, 4, 7, 0},
+    {FT_ENT_FOE, 17, 2, 6},
+    {FT_ENT_FOE, 4, 7, 6},
 };
 
 /* [7] The Turnstile. Ranks of locked ports across the only route through.
@@ -92,7 +107,7 @@ static const FtExit TS1_EXITS[] = {
     {21, 8, 7, 1, 2},
 };
 static const FtEntity TS1_ENTS[] = {
-    {FT_ENT_FOE, 15, 4, 3},
+    {FT_ENT_FOE, 15, 4, 7},
 };
 
 /* [8] Signal Hill. Pylons and dead cable runs on a terrace, with the ladder
@@ -103,8 +118,8 @@ static const FtExit SH1_EXITS[] = {
     {21, 8, 8, 1, 2},
 };
 static const FtEntity SH1_ENTS[] = {
-    {FT_ENT_FOE, 15, 1, 2},
-    {FT_ENT_FOE, 5, 6, 1},
+    {FT_ENT_FOE, 15, 1, 8},
+    {FT_ENT_FOE, 5, 6, 8},
 };
 
 /* [9] The Deadzone. Interference over everything and nothing that reads
@@ -116,8 +131,8 @@ static const FtExit DZ1_EXITS[] = {
     {21, 8, 0, 3, 4},
 };
 static const FtEntity DZ1_ENTS[] = {
-    {FT_ENT_FOE, 9, 4, 3},
-    {FT_ENT_FOE, 17, 7, 2},
+    {FT_ENT_FOE, 9, 4, 9},
+    {FT_ENT_FOE, 17, 7, 9},
 };
 
 static const FtRoom FT_ROOMS[] = {
@@ -145,6 +160,10 @@ const FtRoom* ft_room(uint8_t index) {
 
 uint8_t ft_room_count(void) {
     return (uint8_t)ROOM_COUNT;
+}
+
+uint8_t ft_roster_count(void) {
+    return (uint8_t)ROSTER_COUNT;
 }
 
 const FtRoster* ft_roster(uint8_t index) {

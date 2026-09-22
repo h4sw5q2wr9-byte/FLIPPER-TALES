@@ -298,6 +298,42 @@ against it carries over unchanged. The description line reads the derived
 action, which is why it stays in one place at both levels instead of moving
 when the panel opens.
 
+### 4.7b Losing
+
+A lost fight **reloads the last save**, in full: the stats, the captures, the
+cleared encounters, all of it.
+
+It did not. Being downed healed you to the brim, moved you to the save point
+and left everything else exactly as it was — so losing cost nothing and was
+*strictly better* than walking away hurt. You kept the signals you had just
+captured, kept every foe you had beaten since saving, and got a free top-up
+for the trouble. Reported as "if you fail a battle you basically still win",
+which is precisely right.
+
+Reloading is what a checkpoint means. It is also the only thing that makes a
+terminal worth walking to, and the DOWNED screen says so before the player
+presses anything. A run with no save yet starts over instead — the first room
+has a terminal and no foe, specifically so that cannot happen by surprise.
+
+### 4.7c FAST, which had never once been true
+
+`FT_ATTR_FAST` was a published attribute that nothing read. `ft_priority.c`
+computed `FT_PRIO_FAST_ENEMY` and the encounter never asked, so the Sealed
+Lock carried the tag through the whole prologue without ever acting early.
+
+The rule now: **the player always opens a fight**, and from then on a round
+runs *FAST foes → the player's turns → everything else*. Over a whole cycle
+everyone still acts once, so raw damage is unchanged; what FAST buys is
+position — its hit lands immediately before your turn, so you cannot brace
+for it, and being low on Charge when it is about to act is a real problem.
+
+Giving the fast foes the *opening* instead was tried and rejected: it took the
+prologue's last fight from 57% to 32% at low skill, which is not "quick", it
+is "ambushed".
+
+FAST and JAM are on the title bar now. An attribute that changes the fight and
+is not on the screen is a rule the player can only learn by losing to it.
+
 ### 4.8 Enemy attributes — Milestone 1 subset
 
 | Attribute | Effect | Block Tales equivalent |
@@ -970,6 +1006,36 @@ behind it honest rather than arbitrary.
 | The Turnstile | **iButton** | Strips enemy buffs |
 | Signal Hill | **GPIO** | Support, buffs, RAM regen |
 | The Deadzone | **BLE** | Control — and where `JAMMER` foes live |
+
+#### One enemy per area *(built)*
+
+The slices looked like five places and fought like one — every encounter in
+all nine rooms was the prologue's Packet, Beacon and Lock. Each area now has
+a foe of its own, built from mechanics the prologue already taught:
+
+| Area | Enemy | What it does |
+|---|---|---|
+| The Scrapline | **Scrap Crawler** | `FAST`, fragile, hits hard. Initiative is a stat: kill it early or brace for a hit you cannot out-race |
+| Cold Storage | **Rime Shell** | `ENCRYPTED` *and* shield 3. Broadcast is refunded, unpierced contact barely scratches it — the fight that makes Payload worth its Flash |
+| The Turnstile | **Gate Drone** | `AIRBORNE` + `FAST`. Out of contact's reach and moving before you |
+| Signal Hill | **Mast Relay** | `JAMMER`. The meter is locked all fight: no Focus, no replays, the two base modules carry it |
+| The Deadzone | **Null Field** | `ENCRYPTED` + `JAMMER`, and both its attacks are `GUARDED`. No broadcast damage, no meter, no new captures. The area is named for what it takes away |
+
+Each roster pairs the area's enemy with something from the prologue, so a
+fight is one new idea plus a thing you already know rather than two puzzles at
+once. Measured at level 1 on the base kit, the ladder runs 100 / 75 / 97 / 57
+/ 89 / 78 percent at low skill across the five areas — `make -C test sim`
+walks every roster, not just the prologue's.
+
+**No enemy is ever both `AIRBORNE` and `ENCRYPTED`.** That pair is immune to
+both base modules at once, which is not difficulty, it is a fight that cannot
+be finished. A test asserts it, along with: every attack id being unique
+(duplicates would replay the wrong captured signal), and every enemy taking
+damage from a perfect hit with whichever base module can reach it.
+
+Sprites are picked by **enemy id**, not by attributes. Attributes stopped
+being unique the moment two enemies shared one, and the old attribute lookup
+silently handed the Gate Drone the Drift Beacon's body.
 
 #### Concept slices *(built)*
 

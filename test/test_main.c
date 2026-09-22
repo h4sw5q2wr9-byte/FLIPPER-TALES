@@ -811,12 +811,15 @@ static void test_turn_economy(void) {
     FtLoadout lo;
     ft_loadout_init(&lo);
 
+    /* No FAST foe here: the turn economy is the thing under test, and a FAST
+     * foe opens the fight before the player ever sees the menu. */
     const FtEnemyId group[3] = {
-        FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK};
+        FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
 
     FtEncounter e;
     ft_encounter_init(&e, group, 3, &lo, 5);
     CHECK_EQ(e.player_turns, 0);
+    CHECK_EQ(e.phase, FT_PHASE_MENU);
 
     /* Take one action and run out the result hold: it should be the player's
      * go again, not the enemies'. */
@@ -1970,6 +1973,7 @@ static void test_practice(void) {
         CHECK(e.foe_count >= 1 && e.foe_count <= FT_MAX_ENEMIES,
               "group %u fields 1..3 foes (got %u)", g, e.foe_count);
         CHECK_EQ(ft_encounter_living(&e), e.foe_count);
+
         CHECK_EQ(e.phase, FT_PHASE_MENU);
         CHECK(!e.coach, "the arena does not nag");
         CHECK(e.roll.current == e.stats.charge_max, "you start full");
@@ -2372,6 +2376,272 @@ static void test_save_world(void) {
           "clearing is per room, not global");
 }
 
+static void test_fast_turn_order(void) {
+    section("FAST acts before you");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* FAST was a published attribute that nothing read: ft_priority.c computed
+     * FT_PRIO_FAST_ENEMY and the encounter never asked, so the Sealed Lock
+     * carried the tag through the whole prologue without ever once acting
+     * early.
+     *
+     * The rule: the player always opens a fight, and from then on a round
+     * runs FAST foes, the player's turns, everything else. Giving the fast
+     * foes the opening instead took the prologue's last fight from 57% to
+     * 32% at low skill, which is not "quick", it is "ambushed". */
+    FtEncounter quick;
+    ft_encounter_init_single(&quick, FT_ENEMY_SCRAP_CRAWLER, &lo, 3);
+    CHECK_EQ(quick.phase, FT_PHASE_MENU);
+    CHECK(!quick.fast_phase, "the player always opens");
+
+    /* In a mixed group, play two rounds and record who acted when. */
+    const FtEnemyId mixed[2] = {FT_ENEMY_STRAY_PACKET, FT_ENEMY_SCRAP_CRAWLER};
+
+    FtEncounter e;
+    ft_encounter_init(&e, mixed, 2, &lo, 3);
+
+    /* Neither can die, or the order stops being observable. */
+    e.foes[0].charge = 900;
+    e.foes[1].charge = 900;
+    e.stats.charge_max = 900;
+    ft_roll_init(&e.roll, 900);
+
+    int order[24];
+    int n = 0, last = -1;
+
+    for(int i = 0; i < 200000 && !ft_encounter_over(&e) && n < 10; i++) {
+        if(e.phase == FT_PHASE_MENU) {
+            e.menu_index = FT_ACTION_FOCUS;
+            ft_encounter_press_ok(&e);
+            if(last != 100) { order[n++] = 100; last = 100; }
+        } else if(e.phase == FT_PHASE_TELEGRAPH && last != (int)e.acting_foe) {
+            order[n++] = (int)e.acting_foe;
+            last = (int)e.acting_foe;
+        }
+        ft_encounter_tick(&e, 10);
+    }
+
+    CHECK(n >= 6, "the fight got going (%d entries)", n);
+
+    /* Round one: the player opens. */
+    CHECK_EQ(order[0], 100);
+
+    /* Then the slow Packet, then the quick Crawler — and from there the
+     * Crawler is always the one immediately before the player, which is what
+     * FAST buys it: you cannot brace for a hit that lands before your go. */
+    CHECK_EQ(order[1], 0);
+    CHECK_EQ(order[2], 1);
+    CHECK_EQ(order[3], 100);
+
+    if(n >= 6) {
+        CHECK_EQ(order[4], 0);
+        CHECK_EQ(order[5], 1);
+    }
+
+    /* Whoever acts, the player is never starved of a turn. */
+    int player_turns = 0;
+    for(int i = 0; i < n; i++) {
+        if(order[i] == 100) player_turns++;
+    }
+    CHECK(player_turns >= 2, "the player keeps getting turns (%d)", player_turns);
+
+    /* A board where everything is FAST still reaches the menu. */
+    const FtEnemyId allfast[2] = {FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_GATE_DRONE};
+
+    FtEncounter rush;
+    ft_encounter_init(&rush, allfast, 2, &lo, 3);
+    CHECK_EQ(rush.phase, FT_PHASE_MENU);
+
+    int menus = 0;
+    for(int i = 0; i < 200000 && !ft_encounter_over(&rush); i++) {
+        if(rush.phase == FT_PHASE_MENU) {
+            rush.menu_index = FT_ACTION_DEFEND;
+            ft_encounter_press_ok(&rush);
+            menus++;
+        }
+        ft_encounter_tick(&rush, 10);
+    }
+    CHECK(menus >= 2, "an all-FAST board still gives turns (%d)", menus);
+
+    /* Bracing does not carry across a round: it is cleared before the next
+     * set of foes acts, or Defend would cover a hit from two rounds away. */
+    FtEncounter brace;
+    ft_encounter_init_single(&brace, FT_ENEMY_SCRAP_CRAWLER, &lo, 3);
+    brace.foes[0].charge = 900;
+
+    brace.menu_index = FT_ACTION_DEFEND;
+    ft_encounter_press_ok(&brace);
+    CHECK(brace.defending, "bracing is on");
+
+    for(int i = 0; i < 40000 && brace.phase != FT_PHASE_MENU; i++) {
+        ft_encounter_tick(&brace, 10);
+    }
+    CHECK(!brace.defending, "and off again by the next menu");
+}
+
+static void test_enemy_roster(void) {
+    section("every enemy is beatable");
+
+    for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+        const FtEnemy* en = &FT_ENEMIES[i];
+
+        CHECK(en->name != NULL && en->name[0] != '\0', "enemy %u is named", i);
+        CHECK(strlen(en->name) <= 16, "enemy %u's name fits the title bar", i);
+        CHECK(en->charge > 0, "%s has Charge", en->name);
+        CHECK(en->shielded >= 0, "%s has a sane shield", en->name);
+        CHECK(en->level >= 1, "%s has a level", en->name);
+        CHECK(en->xp > 0, "%s is worth something", en->name);
+        CHECK(en->attack_count >= 1 && en->attack_count <= FT_ENEMY_MAX_ATTACKS,
+              "%s has 1..%d attacks", en->name, FT_ENEMY_MAX_ATTACKS);
+
+        /* The one combination that must never exist: AIRBORNE turns contact
+         * away and ENCRYPTED turns broadcast away, so both at once is immune
+         * to the entire base kit. That is not difficulty, it is a fight you
+         * cannot finish. */
+        const bool air = (en->attrs & FT_ATTR_AIRBORNE) != 0u;
+        const bool enc = (en->attrs & FT_ATTR_ENCRYPTED) != 0u;
+        CHECK(!(air && enc), "%s can be hit by something", en->name);
+
+        for(uint8_t a = 0; a < en->attack_count; a++) {
+            const FtAttack* atk = &en->attacks[a];
+
+            CHECK(atk->id != 0u, "%s attack %u has an id", en->name, a);
+            CHECK(atk->base_power > 0, "%s attack %u hurts", en->name, a);
+
+            /* Ids are the save format's handle on a captured signal, so a
+             * duplicate would silently replay the wrong attack. */
+            for(uint8_t j = 0; j < FT_ENEMY_COUNT; j++) {
+                for(uint8_t b = 0; b < FT_ENEMIES[j].attack_count; b++) {
+                    if(j == i && b == a) continue;
+                    CHECK(FT_ENEMIES[j].attacks[b].id != atk->id,
+                          "%s attack %u has a unique id (%u)", en->name, a, atk->id);
+                }
+            }
+
+            /* Every attack must resolve into something the player can meet:
+             * an undodgeable attack that also drains and cannot be braced
+             * would have no counterplay at all. */
+            CHECK(ft_guard_permitted(atk->klass, FT_GUARD_JAM) != FT_GUARD_NONE ||
+                      atk->klass == FT_CLASS_UNDODGEABLE,
+                  "%s attack %u can be jammed unless it says otherwise", en->name, a);
+        }
+
+        /* A shield must not make an enemy immune to a fully powered hit from
+         * the base kit, or the fight is unwinnable for a player with no
+         * cards installed. */
+        const FtAttack* nfc = &FT_MODULES[FT_MOD_NFC].attack;
+        const FtDefender def = {en->shielded, en->attrs};
+        const FtHitParams best = {0, 0, FT_RATING_EXCELLENT, false, FT_GUARD_NONE, 0};
+        const FtHitResult hit = ft_resolve_hit(nfc, &def, &best);
+
+        if(!air) {
+            CHECK(hit.damage > 0, "%s takes damage from a perfect NFC hit (%d)",
+                  en->name, (int)hit.damage);
+        } else {
+            const FtAttack* sub = &FT_MODULES[FT_MOD_SUBGHZ].attack;
+            const FtHitResult bro = ft_resolve_hit(sub, &def, &best);
+            CHECK(bro.damage > 0, "%s takes damage from a perfect Sub-GHz hit (%d)",
+                  en->name, (int)bro.damage);
+        }
+    }
+
+    /* Every roster must be fightable: at least one living foe, and at least
+     * one that each of the two base modules can reach between them. */
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    for(uint8_t r = 0; r < 16u; r++) {
+        const FtRoster* roster = ft_roster(r);
+        if(roster->count == 0u) continue;
+
+        FtEncounter e;
+        ft_encounter_init(&e, roster->foes, roster->count, &lo, 1);
+
+        uint8_t reachable = 0;
+        for(uint8_t i = 0; i < e.foe_count; i++) {
+            if(ft_encounter_can_reach(&e, FT_ACTION_CONTACT, i) ||
+               ft_encounter_can_reach(&e, FT_ACTION_BROADCAST, i)) {
+                reachable++;
+            }
+        }
+        CHECK_EQ(reachable, e.foe_count);
+    }
+}
+
+static void test_losing_costs(void) {
+    section("losing costs the run");
+
+    FtLoadout lo;
+    ft_loadout_init(&lo);
+
+    /* A player who never acts against three of the toughest enemy loses. The
+     * point of the test is what that loss is worth. */
+    const FtEnemyId trio[FT_MAX_ENEMIES] = {
+        FT_ENEMY_SEALED_LOCK, FT_ENEMY_SEALED_LOCK, FT_ENEMY_SEALED_LOCK};
+
+    FtEncounter e;
+    ft_encounter_init(&e, trio, 3, &lo, 7);
+
+    for(int i = 0; i < 200000 && !ft_encounter_over(&e); i++) {
+        if(e.phase == FT_PHASE_MENU) {
+            e.menu_index = FT_ACTION_FOCUS;
+            ft_encounter_press_ok(&e);
+        }
+        ft_encounter_tick(&e, 10);
+    }
+
+    CHECK_EQ(e.phase, FT_PHASE_LOSE);
+    CHECK_EQ(ft_encounter_living(&e), 3);
+    CHECK(e.roll.current <= 0, "you are down");
+
+    /* A lost fight pays nothing, however long it lasted. */
+    CHECK_EQ(ft_encounter_xp(&e), 0);
+
+    /* And the world-side cost: a loss reloads the save, so everything done
+     * since it is gone. This is the whole reason a terminal is worth walking
+     * to, and for a while it did not happen at all — losing healed you to
+     * full, moved you to the save point and kept every foe you had beaten,
+     * which made it strictly better than walking away hurt. */
+    FtWorld w;
+    ft_world_init(&w);
+    ft_world_enter(&w, 1, ft_room(1)->exits[0].tx, ft_room(1)->exits[0].ty);
+
+    w.save_room = 1;
+    w.save_tx = ft_room(1)->exits[0].tx;
+    w.save_ty = ft_room(1)->exits[0].ty;
+
+    FtSaveData checkpoint;
+    ft_save_from_world(&w, false, &checkpoint);
+
+    const int16_t saved_charge_max = w.stats.charge_max;
+
+    /* Now make progress past the save: beat the room's encounter, level up,
+     * capture something. */
+    ft_world_clear_entity(&w, 0);
+    ft_level_apply(&w.stats, FT_UP_CHARGE);
+    ft_siglib_capture(&w.lib, 1234u);
+
+    CHECK(ft_world_entity_gone(&w, 0), "the foe was beaten");
+    CHECK(w.stats.charge_max > saved_charge_max, "and a level was taken");
+
+    /* Then go down. Restoring the checkpoint must undo all of it. */
+    FtWorld after;
+    bool coach = true;
+    ft_save_to_world(&checkpoint, &after, &coach);
+
+    CHECK(!ft_world_entity_gone(&after, 0), "the foe is standing again");
+    CHECK_EQ(after.stats.charge_max, saved_charge_max);
+    CHECK_EQ(after.stats.level, 1);
+    CHECK(!ft_siglib_holds(&after.lib, 1234u), "the capture is gone too");
+    CHECK_EQ(after.room, 1);
+
+    /* The foe really is back on its tile, not merely un-flagged. */
+    CHECK(after.foes[0].alive, "and is spawned again");
+    CHECK(after.foes[0].count > 0, "with its walkers");
+}
+
 static void test_levelup(void) {
     section("levelling up");
 
@@ -2681,6 +2951,9 @@ int main(void) {
     test_defeat();
     test_save();
     test_save_world();
+    test_fast_turn_order();
+    test_enemy_roster();
+    test_losing_costs();
     test_levelup();
     test_scene_wipe();
     test_broadcast_sweep();

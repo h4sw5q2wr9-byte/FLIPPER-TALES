@@ -186,6 +186,12 @@ int main(void) {
         {"die-early",       FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     740,  0, 7, 3, false},
         {"die-mid",         FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     800,  0, 7, 3, false},
         {"die-late",        FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     870,  0, 7, 3, false},
+        /* Every enemy, so new art is looked at rather than assumed. */
+        {"foe-crawler",     FT_ENEMY_SCRAP_CRAWLER, FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-rime",        FT_ENEMY_RIME_SHELL,    FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-drone",       FT_ENEMY_GATE_DRONE,    FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-relay",       FT_ENEMY_MAST_RELAY,    FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-null",        FT_ENEMY_NULL_FIELD,    FT_PHASE_MENU,      0,    0, 0, 0, false},
         {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0, 0, false},
         {"lose",            FT_ENEMY_SEALED_LOCK,  FT_PHASE_LOSE,       100,  0, 0, 0, false},
     };

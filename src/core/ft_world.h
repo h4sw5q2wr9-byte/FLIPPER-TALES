@@ -58,6 +58,10 @@ const FtRoom*   ft_room(uint8_t index);
 uint8_t         ft_room_count(void);
 const FtRoster* ft_roster(uint8_t index);
 
+/* How many there are. The balance simulator walks all of them. */
+#define FT_ROSTER_COUNT 10
+uint8_t ft_roster_count(void);
+
 /* A tile-aligned actor mid-step. */
 typedef struct {
     uint8_t  tx, ty;

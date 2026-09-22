@@ -238,13 +238,33 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
 
         ft_toast(app, "Cleared.");
     } else {
-        /* Downed: back to the terminal you last saved at, patched up. It used
-         * to be hardcoded to the first room, which quietly undid any progress
-         * past it. */
+        /* Downed: the run goes back to the last save, in full.
+         *
+         * It used to heal you to the brim, move you to the save point and
+         * leave everything else exactly as it was — so losing cost nothing
+         * and was strictly better than walking away hurt. You kept the
+         * signals you had just captured and every foe you had beaten since
+         * saving, and got a free top-up for the trouble.
+         *
+         * Reloading is what a checkpoint means. Everything since it is gone:
+         * the stats, the captures, the cleared encounters. That is the cost,
+         * and it is also what makes a terminal worth walking to. */
+        FtSaveData saved;
+
+        if(ft_storage_load(&saved)) {
+            ft_save_to_world(&saved, &app->world, &app->coach);
+            ft_toast(app, "Back to your save.");
+        } else {
+            /* Never saved: there is no checkpoint to go back to, so the run
+             * starts over. The first room has a terminal and no foe, which
+             * is exactly so this cannot happen by surprise. */
+            ft_world_init(&app->world);
+            ft_toast(app, "No save. Restarted.");
+        }
+
+        app->levels_owed = 0;
         app->world.stats.charge = app->world.stats.charge_max;
-        ft_world_enter(
-            &app->world, app->world.save_room, app->world.save_tx, app->world.save_ty);
-        ft_toast(app, "Rebooted.");
+        app->world.stats.ram = app->world.stats.ram_max;
     }
 
     app->battle_entity = -1;

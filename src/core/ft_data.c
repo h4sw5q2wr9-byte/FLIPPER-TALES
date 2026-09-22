@@ -11,6 +11,16 @@
 #define FT_ATK_LOCK_CLAMP   13
 #define FT_ATK_LOCK_SEAL    14
 
+#define FT_ATK_CRAWLER_RIP  20
+#define FT_ATK_RIME_CRUSH   21
+#define FT_ATK_RIME_FREEZE  22
+#define FT_ATK_DRONE_STRAFE 23
+#define FT_ATK_DRONE_DIVE   24
+#define FT_ATK_RELAY_HUM    25
+#define FT_ATK_RELAY_SURGE  26
+#define FT_ATK_NULL_WASH    27
+#define FT_ATK_NULL_COLLAPSE 28
+
 const FtModule FT_MODULES[FT_MODULE_COUNT] = {
     [FT_MOD_SUBGHZ] =
         {.name = "Sub-GHz",
@@ -173,6 +183,100 @@ const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT] = {
                      /* Undodgeable: neither jammable nor capturable. */
                      {FT_ATK_LOCK_SEAL, 4, 1, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_UNDODGEABLE, FT_PAYLOAD_DRAIN}}},
+
+    /* ---- The Scrapline ------------------------------------------------
+     *
+     * FAST and fragile. It gets the first word every round, so the lesson is
+     * that initiative is a stat: kill it before it is a problem, or spend a
+     * turn bracing for a hit you cannot out-race. */
+    [FT_ENEMY_SCRAP_CRAWLER] =
+        {.name = "Scrap Crawler",
+         /* Tough enough to survive one good hit, or FAST never gets to be
+          * true of it: at 7 Charge it died before it ever acted and the
+          * Scrapline was a 100% walkover at every skill level. */
+         .charge = 12,
+         .shielded = 0,
+         .attrs = FT_ATTR_FAST,
+         .level = 2,
+         .xp = 16,
+         .attack_count = 1,
+         .attacks = {{FT_ATK_CRAWLER_RIP, 6, 0, false, FT_DELIVERY_CONTACT,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_NONE}}},
+
+    /* ---- Cold Storage --------------------------------------------------
+     *
+     * The Sealed Lock's lesson with the volume up: shield 3 on top of
+     * ENCRYPTED. Broadcast is refunded and unpierced contact barely scratches
+     * it, so this is the fight that makes Payload's half-pierce worth its
+     * Flash. Slow and low-damage to compensate — it is a wall, not a threat. */
+    [FT_ENEMY_RIME_SHELL] =
+        {.name = "Rime Shell",
+         .charge = 16,
+         .shielded = 3,
+         .attrs = FT_ATTR_ENCRYPTED,
+         .level = 3,
+         .xp = 28,
+         .attack_count = 2,
+         .attacks = {{FT_ATK_RIME_CRUSH, 4, 0, false, FT_DELIVERY_CONTACT,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
+                     {FT_ATK_RIME_FREEZE, 3, 0, false, FT_DELIVERY_CONTACT,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_STALL}}},
+
+    /* ---- The Turnstile --------------------------------------------------
+     *
+     * AIRBORNE and FAST together: contact cannot touch it and it moves before
+     * you do. Broadcast is the only answer, which is the point — the area is
+     * about routes that are closed until you hold the right thing. */
+    [FT_ENEMY_GATE_DRONE] =
+        {.name = "Gate Drone",
+         .charge = 9,
+         .shielded = 1,
+         .attrs = FT_ATTR_AIRBORNE | FT_ATTR_FAST,
+         .level = 3,
+         .xp = 24,
+         .attack_count = 2,
+         .attacks = {{FT_ATK_DRONE_STRAFE, 3, 0, false, FT_DELIVERY_BROADCAST,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
+                     {FT_ATK_DRONE_DIVE, 5, 0, false, FT_DELIVERY_CONTACT,
+                      FT_CLASS_GUARDED, FT_PAYLOAD_NONE}}},
+
+    /* ---- Signal Hill ----------------------------------------------------
+     *
+     * A JAMMER: the Signal meter is locked for the whole fight, so Focus and
+     * every captured replay are off the table and the two base modules have
+     * to carry it. Tanky and slow, because a fight you have fewer tools for
+     * should be long rather than sharp. */
+    [FT_ENEMY_MAST_RELAY] =
+        {.name = "Mast Relay",
+         .charge = 18,
+         .shielded = 1,
+         .attrs = FT_ATTR_JAMMER,
+         .level = 4,
+         .xp = 32,
+         .attack_count = 2,
+         .attacks = {{FT_ATK_RELAY_HUM, 3, 0, false, FT_DELIVERY_BROADCAST,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
+                     {FT_ATK_RELAY_SURGE, 5, 0, false, FT_DELIVERY_BROADCAST,
+                      FT_CLASS_GUARDED, FT_PAYLOAD_CORRUPT}}},
+
+    /* ---- The Deadzone ---------------------------------------------------
+     *
+     * ENCRYPTED and a JAMMER, and both its attacks are GUARDED — jammable,
+     * never capturable. Nothing about this fight gives you anything back:
+     * no broadcast damage, no meter, no new signals. Contact and timing, or
+     * nothing. The area is named for what it takes away. */
+    [FT_ENEMY_NULL_FIELD] =
+        {.name = "Null Field",
+         .charge = 15,
+         .shielded = 2,
+         .attrs = FT_ATTR_ENCRYPTED | FT_ATTR_JAMMER,
+         .level = 5,
+         .xp = 40,
+         .attack_count = 2,
+         .attacks = {{FT_ATK_NULL_WASH, 4, 0, false, FT_DELIVERY_BROADCAST,
+                      FT_CLASS_GUARDED, FT_PAYLOAD_NONE},
+                     {FT_ATK_NULL_COLLAPSE, 6, 0, false, FT_DELIVERY_CONTACT,
+                      FT_CLASS_GUARDED, FT_PAYLOAD_DRAIN}}},
 };
 
 const FtAttack* ft_attack_by_id(uint16_t id) {

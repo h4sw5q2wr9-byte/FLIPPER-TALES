@@ -88,9 +88,24 @@ typedef struct {
 } FtEnemy;
 
 typedef enum {
+    /* The prologue: one enemy per lesson. */
     FT_ENEMY_STRAY_PACKET = 0, /* plain      — both modules work */
     FT_ENEMY_DRIFT_BEACON,     /* AIRBORNE   — contact cannot reach */
     FT_ENEMY_SEALED_LOCK,      /* ENCRYPTED  — broadcast does nothing */
+
+    /* One per area, each taking a mechanic the prologue taught and turning
+     * it up. An area that looks like five places and fights like one is not
+     * five places.
+     *
+     * No enemy is ever both AIRBORNE and ENCRYPTED: that combination is
+     * immune to both modules at once, which is not difficulty, it is an
+     * unwinnable fight. ft_data.c's tests assert it. */
+    FT_ENEMY_SCRAP_CRAWLER,    /* FAST            — hits first, hits hard */
+    FT_ENEMY_RIME_SHELL,       /* ENCRYPTED, SH3  — a wall; pierce it */
+    FT_ENEMY_GATE_DRONE,       /* AIRBORNE, FAST  — out of reach and quick */
+    FT_ENEMY_MAST_RELAY,       /* JAMMER          — no replays in this fight */
+    FT_ENEMY_NULL_FIELD,       /* ENCRYPTED+JAM   — and its hits resist capture */
+
     FT_ENEMY_COUNT
 } FtEnemyId;
 

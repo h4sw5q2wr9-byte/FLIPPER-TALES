@@ -146,7 +146,9 @@ int main(void) {
 
     const uint32_t skills[] = {20, 50, 80};
 
-    for(uint8_t ri = 0; ri < 4; ri++) {
+    /* Every roster, not just the prologue's. An area fight that nobody has
+     * measured is an area fight nobody knows is winnable. */
+    for(uint8_t ri = 0; ri < FT_ROSTER_COUNT; ri++) {
         const FtRoster* roster = ft_roster(ri);
 
         printf("\n  roster %u: %u foe(s) —", ri, roster->count);

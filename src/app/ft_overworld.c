@@ -1,5 +1,6 @@
 #include "ft_overworld.h"
 
+#include "ft_enemy_art.h"
 #include "ft_sprites.h"
 #include "ft_tiles.h"
 
@@ -216,12 +217,6 @@ static void draw_foe(Canvas* c, const uint16_t* rows, int32_t x, int32_t y) {
     blit_keyed(c, wide, FT_SPRITE_H, sx, sy, FT_SPRITE_W);
 }
 
-static const uint16_t* foe_sprite(uint32_t attrs) {
-    if(attrs & FT_ATTR_AIRBORNE) return FT_SPRITE_BEACON;
-    if(attrs & FT_ATTR_ENCRYPTED) return FT_SPRITE_LOCK;
-    return FT_SPRITE_PACKET;
-}
-
 void ft_overworld_toast(Canvas* canvas, const char* text) {
     if(!text) return;
 
@@ -294,12 +289,11 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
         const FtRoster* roster = ft_roster(room->ents[i].roster);
 
         for(uint8_t m = 0; m < w->foes[i].count && m < FT_MAX_ENEMIES; m++) {
-            const uint32_t attrs = FT_ENEMIES[roster->foes[m]].attrs;
             const FtPos fp = ft_stepper_pos(&w->foes[i].w[m].mv, FT_FOE_STEP_MS);
 
             /* Both actors are bottom-aligned on their tile by draw_foe and
              * draw_avatar, so no fudge is needed here. */
-            draw_foe(canvas, foe_sprite(attrs), fp.x - cam.x, fp.y - cam.y);
+            draw_foe(canvas, ft_enemy_art(roster->foes[m]), fp.x - cam.x, fp.y - cam.y);
         }
     }
 

@@ -12,6 +12,117 @@ SPRITES = {}
 # interior, and dark features at least 2x2 inside it. Mixing thin outline with
 # fill turns to mush at this size.
 
+# ---- One enemy per area ------------------------------------------------
+#
+# Each has to be told apart from the prologue three at a glance, on a 1-bit
+# panel, at 16x16. Silhouette does that work: legs, round, blocky, tall, wide.
+
+# Scrap Crawler (The Scrapline). FAST. Low and many-legged, so "this thing
+# moves first" is readable before it proves it.
+SPRITES["crawler"] = """
+................
+................
+..#..######..#..
+..##########.#..
+.#.##########.#.
+.###.##..##.###.
+.############.#.
+#.############.#
+.##############.
+.#.##########.#.
+..############..
+.#.#.#.##.#.#.#.
+#..#.#.##.#.#..#
+..#...#..#...#..
+.#...#....#...#.
+................
+"""
+
+# Rime Shell (Cold Storage). ENCRYPTED, shield 3. A closed armoured box with
+# a seam down it — deliberately the most solid silhouette in the game.
+SPRITES["rime"] = """
+................
+..############..
+.##############.
+.##..######..##.
+.##.########.##.
+.##.##.##.##.##.
+.####.####.####.
+.##############.
+.##############.
+.####.####.####.
+.##.##.##.##.##.
+.##.########.##.
+.##..######..##.
+.##############.
+..############..
+................
+"""
+
+# Gate Drone (The Turnstile). AIRBORNE and FAST. Swept back and pointed, with
+# nothing under it: it reads as hovering and as going somewhere.
+SPRITES["drone"] = """
+.......##.......
+......####......
+.....######.....
+##...######...##
+.##.########.##.
+..##########.#..
+...###..###.....
+##..##..##..####
+.#####..#####.#.
+...##....##.....
+....######......
+.....####.......
+......##........
+................
+................
+................
+"""
+
+# Mast Relay (Signal Hill). JAMMER. Tall and thin with a wide base and rings
+# coming off the top — a transmitter, which is what is eating your meter.
+SPRITES["relay"] = """
+#..............#
+.#....####....#.
+..#..######..#..
+...#.##..##.#...
+......####......
+.......##.......
+......####......
+.....##..##.....
+.....##..##.....
+.....##..##.....
+....########....
+...##########...
+..############..
+.####......####.
+####........####
+................
+"""
+
+# Null Field (The Deadzone). ENCRYPTED and a JAMMER. A hollow ring with
+# nothing in the middle: the one silhouette here that is mostly absence.
+SPRITES["nullf"] = """
+....########....
+..##........##..
+.#............#.
+##..........#.##
+#...........#..#
+#....#..#...#..#
+#...#....#..#..#
+#..#......#....#
+#..#......#....#
+#...#....#.....#
+#....#..#......#
+##.............#
+.#............#.
+..##........##..
+....########....
+................
+"""
+
+
 # The hero, 16x18 and the ONLY player art there is.
 #
 # There used to be two: a 16x16 battle sprite and a separate 8x12 overworld

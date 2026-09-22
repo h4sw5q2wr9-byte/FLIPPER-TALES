@@ -1,5 +1,9 @@
 #include "ft_encounter.h"
 
+/* Defined below with the rest of the turn order; needed by ft_encounter_init,
+ * because a FAST foe opens the fight rather than waiting for round two. */
+static void advance_foe_turn(FtEncounter* e, uint8_t from);
+
 /* ---- Timing ---------------------------------------------------------- */
 
 uint32_t ft_jam_window_ms(bool hard_mode, FtAttackClass klass) {
@@ -166,6 +170,7 @@ void ft_encounter_init(
 
     e->phase = FT_PHASE_MENU;
     e->phase_ms = 0;
+    e->fast_phase = false;
     e->menu_index = 0;
     e->menu_level = FT_MENU_ROOT;
     e->root_index = FT_ROOT_ATTACK;
@@ -192,6 +197,11 @@ void ft_encounter_init(
     e->coach = true;
 
     ft_rng_seed(&e->rng, seed);
+
+    /* The player always opens. FAST orders the foes *within* a round — it
+     * does not buy them a free hit before the fight has started. Kicking the
+     * fast phase off here instead took the prologue's last fight from 57% to
+     * 32% at low skill, which is not "quick", it is "ambushed". */
 }
 
 void ft_encounter_init_single(
@@ -696,18 +706,59 @@ void ft_encounter_press_ok(FtEncounter* e) {
 /* ---- Tick ------------------------------------------------------------ */
 
 /* Hand the turn to the next foe, or back to the player when the row is done. */
-static void advance_foe_turn(FtEncounter* e, uint8_t from) {
-    const int n = next_living(e, from);
+static bool foe_is_fast(const FtEncounter* e, uint8_t i) {
+    return ft_priority_for_enemy(FT_ENEMIES[e->foes[i].id].attrs) == FT_PRIO_FAST_ENEMY;
+}
 
-    if(n < 0) {
-        e->defending = false;
+/* Next living foe at or after `from` on the side of the round we are in.
+ *
+ * FAST used to be a published attribute that nothing read: ft_priority.c
+ * computed FT_PRIO_FAST_ENEMY and the encounter never asked. The Sealed
+ * Lock has carried the tag since the prologue was written and it never once
+ * acted early. */
+static int next_actor(const FtEncounter* e, uint8_t from) {
+    for(uint8_t i = from; i < e->foe_count; i++) {
+        if(e->foes[i].charge <= 0) continue;
+        if(foe_is_fast(e, i) == e->fast_phase) return (int)i;
+    }
+    return -1;
+}
+
+/* Kept so the round can tell "nothing is alive" from "nothing on this side of
+ * the round is alive" — the two have very different consequences. */
+static int any_living(const FtEncounter* e) {
+    return next_living(e, 0);
+}
+
+static void advance_foe_turn(FtEncounter* e, uint8_t from) {
+    const int n = next_actor(e, from);
+
+    if(n >= 0) {
+        e->acting_foe = (uint8_t)n;
+        choose_enemy_attack(e);
+        enter_phase(e, FT_PHASE_TELEGRAPH);
+        return;
+    }
+
+    e->defending = false;
+
+    if(e->fast_phase) {
+        /* The quick ones have had their say; now the player moves. */
+        e->fast_phase = false;
+        e->player_turns = 0;
         enter_phase(e, FT_PHASE_MENU);
         return;
     }
 
-    e->acting_foe = (uint8_t)n;
-    choose_enemy_attack(e);
-    enter_phase(e, FT_PHASE_TELEGRAPH);
+    if(any_living(e) < 0) {
+        enter_phase(e, FT_PHASE_MENU); /* the tick will call it a win */
+        return;
+    }
+
+    /* Round over. The next one opens with whatever is FAST, or with the
+     * player if nothing is. */
+    e->fast_phase = true;
+    advance_foe_turn(e, 0);
 }
 
 void ft_encounter_tick(FtEncounter* e, uint32_t dt_ms) {
