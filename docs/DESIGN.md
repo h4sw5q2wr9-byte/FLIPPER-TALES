@@ -880,13 +880,59 @@ concept slices (`FT_ROOM_CH1_FIRST`), so nothing before them was renumbered:
 |---|---|
 | 9 The Approach | The fork. Two ways on, and a drop you have no reason to take. |
 | 10 Weldhome Gate | A village whose gate does not open for a unit. Warden Coll. |
-| 11 East Junction | Wren, behind a wall and two live ones. |
+| 11 The Hollow | The cave under the long grass. Wren, behind a wall and two live ones. |
 
-The junction's roster is `{Blank Wall, Scrap Crawler, Stray Packet}` — measured
+The Hollow's roster is `{Blank Wall, Scrap Crawler, Stray Packet}` — measured
 at 46/83/97 across the simulator's three skill levels, level with the hardest
 roster in the game and still clearable. The first draft paired the wall with
 two AIRBORNE foes and read 19/52/78: the wall blocks the broadcast and the
 flyers refuse contact, so the fight had two locks and no key.
+
+#### Hale and the long grass
+
+The way down to Wren used to be an exit you could see and were refused ("Nothing
+down there"). Now it is one you do not know about.
+
+- **Long grass** is a tile you wade through: drawn whole as ground, and its
+  bottom half drawn again in front of whoever is standing in it, so they keep
+  their head and lose their legs. **Nothing happens in it.** It is not an
+  encounter zone and no room with long grass has a foe in it — a test holds
+  that line. It hides a way, not a fight.
+- **The pit** is an exit with a `reveal` bit (`FtExit.reveal`). Until
+  `FtWorld.revealed` carries that bit the exit does not exist: standing on
+  its tile is standing in grass, there is no refusal and no art. Different
+  from `need_quest` on purpose — a gated exit is a way you can see and are
+  refused; a hidden one is a way you do not know about.
+- **Hale** is the second guard on the gate, and the one person in the game who
+  walks between rooms, so he lives in `FtWorld` like the escort does. Coll's
+  offer ends *"Hale knows. Go with him."*, and saying yes sets him off.
+
+What he does is decided entirely by where the player goes — there is nothing
+to press and nothing to learn:
+
+| Phase | What he is doing | What ends it |
+|---|---|---|
+| `POST` | On the gate, opposite Coll. Solid; talk to him. | Coll's yes, or asking him again |
+| `LEAD` | Out of Weldhome's west door, across the Approach, into the long grass. Stops and looks back if you fall more than three tiles behind. | Reaching the grass: the pit appears beside him, with a sound. Turning back home: he comes with you. |
+| `WAIT` | Beside the pit. Solid; talk to him. | You walking four tiles away from him |
+| `FOLLOW` | Behind you — behind Wren, if she is with you. | Going through Weldhome's door (he walks home), or down the pit or off west (he goes back to it) |
+| `HOME` | From Weldhome's door back to his post. | Getting there |
+
+The pit stays found for good, and so does everything in the table: all of it
+is saved.
+
+Two things that looked fine on paper and did not survive being walked:
+
+- **A standoff in the doorway.** He will not walk through you and you are
+  waiting for him, so reaching the door just before him froze you both. Now
+  being blocked at the last step or two of a leg counts as arriving.
+- **Following from too far back.** He only starts following once you have
+  walked off, so he starts four or five tiles behind, and at walking pace a
+  gap never closes — the first measurement had him seven tiles back all the
+  way home. He jogs at twice your pace until he is in his place, and once he
+  is, he joins the same conga as Wren: into the tile the one in front of him
+  is leaving, on the frame they leave it. The tests walk the whole route —
+  lead, reveal, down, up, home with Wren — and hold him to three tiles.
 
 ### 5.4c Pockets
 
@@ -1203,10 +1249,10 @@ row-major — the format production maps will stream from the SD card, so nothin
 about the renderer changes when they do. Maps, tiles and sprites are all
 authored as editable ASCII under `tools/`.
 
-Twenty tiles: floor, wall, void, grass, cable, door, terminal, locked port,
-crate, ladder; one ground or obstacle per chapter (scrap, frost, pylon,
-static); a gate; and the pieces things are built out of — trunk, leaf, hut,
-roof, hut door.
+Twenty-three tiles: floor, wall, void, grass, cable, door, terminal, locked
+port, crate, ladder; one ground or obstacle per chapter (scrap, frost, pylon,
+static); a gate; the pieces things are built out of — trunk, leaf, hut, roof,
+hut door; long grass; and a cave's rock and floor.
 
 #### Things with a top and a bottom
 
@@ -1279,16 +1325,18 @@ Four rules, none of them new — they are what the genre has always done:
 - **Corridor logic does not survive being taken outdoors.** The Approach's way
   down started as a shaft framed by two columns of wall, which is how you draw
   a passage inside a hull — outdoors it was a walled corridor standing up out
-  of a meadow, marking a route that needed no marking. It is a track worn
-  through the grass to a ladder now, which says exactly the same thing and
-  belongs to the field it is in.
+  of a meadow, marking a route that needed no marking. The next version kept
+  the ladder and lost the walls, which left a ladder lying in the grass
+  leading into a doorway in the map's edge: two ways of leaving a room at
+  once. From above, "down" is a hole in the ground. A ladder belongs at the
+  *bottom* of the hole, where it is how you climb back out.
 
-Room shapes carry the same load they always did. The Approach forks — west,
-east, and a track south you have no reason to follow yet — and the fork is
-legible because the path branches, not because a wall is missing. East
-Junction is a bulkhead straight down the middle with one gap punched in the
-bottom of it, which is what makes the thing at the far end a wall rather than
-a crowd: there is no route round it, so the fight *is* the room.
+Room shapes carry the same load they always did. The Approach forks west and
+east, and the third way is not drawn at all until somebody shows it to you
+(see *Hale and the long grass*, below). The Hollow is a cave with one passage
+between its two caverns, three tiles long and one wide, which is what makes
+the thing guarding Wren a wall rather than a crowd: there is no route round
+it, so the fight *is* the room.
 
 One tree in The Approach stands in the middle of the path with its crown
 across it. That is deliberate and it is the first thing you meet outdoors:

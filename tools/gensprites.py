@@ -154,6 +154,29 @@ SPRITES["warden"] = """
 ....##....##....
 ....##....##....
 """
+# HALE. Important — tall and helmeted, the same body as Coll's — so you can
+# tell across the room that he is somebody. What makes him not Coll is the
+# spear: a line down his right side, held in one hand, that nobody else in
+# the game carries. Coll holds the gate; Hale is the one who walks.
+SPRITES["guard"] = """
+....########..#.
+...##########.#.
+...#........#.#.
+...#.##..##.#.#.
+...#.##..##.#.#.
+...##########.#.
+....########..#.
+..###########.#.
+..##.......##.#.
+..##.......####.
+..##.......##.#.
+..###########.#.
+...##.....##..#.
+...##.....##..#.
+....##...##...#.
+....##...##...#.
+"""
+
 # Fruit hanging in a canopy. The tree itself is map tiles now — a trunk you
 # bump into and leaves you walk behind — so this is only the thing worth
 # walking over for, drawn small and high in the branches.

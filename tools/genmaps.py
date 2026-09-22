@@ -29,6 +29,9 @@ LEGEND = {
     "h": 17, # hut      (a building's wall)
     "r": 18, # roof     (walkable, drawn in front)
     "d": 19, # hut door (scenery, solid: nothing here goes indoors)
+    "w": 20, # tall grass (walkable, drawn in front, hides things)
+    "R": 21, # rock     (a cave's wall)
+    ",": 22, # cave floor
 }
 
 MAPS = {}
@@ -132,24 +135,24 @@ D................#
 # and the fork again — now with a reason. Nothing here is locked with a key.
 
 # [10] The Approach. Outside, and drawn the way outside is drawn: a field of
-# grass with one worn path cut through it. The path is the room's instruction
-# — it runs west to east, door to door, and everything you might stop for is
-# a step off it.
+# grass with one worn path cut through it, west to east, door to door.
+#
+# South of the path is a patch of long grass, and nothing about it says there
+# is anything in it — you can wade through it and nothing happens. The way
+# down to the Hollow is in there, and it stays hidden until Hale walks you to
+# it. That is the whole trick: the fork you walked past on the way in was
+# there all along, and it takes somebody who lives here to show you.
+#
+# It used to be a framed shaft with a door at the bottom of the map, which
+# was corridor logic dragged outdoors — a walled passage standing up out of a
+# meadow — and a ladder leading into a doorway, which is two ways of leaving
+# a room at once. A hole in the ground is what "down" looks like from above.
 #
 # The middle tree stands ON the path with its canopy across it, so the first
-# thing you do out here is walk under leaves and watch yourself show through
-# them.
-#
-# The drop south is a spur off the same path ending in a ladder. It used to be
-# a shaft framed by two columns of wall, which was corridor logic applied
-# outdoors: a walled passage standing up out of a meadow, marking a route
-# nobody needed marking. Out here a track worn through the grass says the same
-# thing and belongs to the place it is in.
-#
+# thing you do out here is walk under leaves and see yourself through them.
 # Neither path edge runs straight for long, and weeds come up through the
-# swept ground (ft_map_scatter). A road ruled across a field with grass butted
-# hard against it does not MEET the grass, it cuts it off; a ragged edge with
-# something growing through it is the join.
+# swept ground (ft_map_scatter): a road ruled across a field with the grass
+# butted hard against it does not meet the grass, it cuts it off.
 MAPS["ap1"] = ("The Approach", 20, """
 ########################
 #**********************#
@@ -157,11 +160,11 @@ MAPS["ap1"] = ("The Approach", 20, """
 #*lll**lll********lll**#
 #*ltl**lll***...**ltl**#
 D......ltl.............D
-#*...******.***...*****#
-#*lll******.******lll**#
-#*lll*****...*****lll**#
-#*ltl*****.H.*****ltl**#
-###########D############
+#*...****ww****...*****#
+#*lll***wwwwww****lll**#
+#*lll**wwwwwwwww**lll**#
+#*ltl***wwwwwww***ltl**#
+########################
 """)
 
 # [11] Weldhome Gate. A junction village, laid out the way a village is: the
@@ -192,26 +195,33 @@ D......................G
 ########################
 """)
 
-# [12] East Junction. Down, dark, and full of the things that took Wren.
+# [12] The Hollow. What is under the long grass: a cave, and the things that
+# took Wren.
 #
-# Below ground, so no grass and no sky: bare deck, heaped wreckage and a
-# bulkhead straight down the middle with a single gap punched in the bottom of
-# it. That gap is why the thing at the far end is a wall and not a crowd —
-# there is no route round it, so the fight IS the room. Everything on the way
-# to the gap (the heaps, the cache, the one tree still alive down here) is
-# passed on a route you have no choice about.
-MAPS["ej1"] = ("East Junction", 10, """
-#####D##################
-#............#.........#
-#..lll.......#....SS...#
-#..lll.......#...SSSS..#
-#..ltl....SS.#....SS...#
-#.........SS.#.........#
-#..SS........#...lll...#
-#.SSSS.......#...lll...#
-#..SS............ltl...#
-#............#.........#
-########################
+# You come down the ladder into the west cavern, and the only way on is a
+# passage three tiles long and one tile wide under the rock. The thing
+# guarding her stands in it. There is no route round, so the fight IS the
+# room — the same rule the bulkhead drew when this was a wreck, but here it
+# is the ground doing it rather than somebody's wall.
+#
+# The ladder is right here, and only here. Underground, climbing back up to
+# a hole in the roof is exactly what a ladder is for; up in the field it was
+# a ladder lying in the grass. Nothing grows without light, so no weeds and
+# no trees, and the one side pocket off the cavern is where somebody left
+# their pack.
+MAPS["ej1"] = ("The Hollow", 0, """
+RRRRRRRRRRRRRRRRRRRRRRRR
+RRRH,RRRRRRRRRRRRRRRRRRR
+RR,,,,,RRRRRRRRRR,,,,RRR
+RR,,,,,,,RRRRRR,,,,,,,RR
+RRR,,,,,,,RRRRR,,,,,,,RR
+RR,,,,,,,,,RRRR,,,,,,,RR
+RR,,,,,RR,,RRRR,,,,,,RRR
+RRR,,,RRRR,,RRR,,,,,,RRR
+RRRR,,,,,,,,,,,,,,,,RRRR
+RRRRR,,,,,RRRRRRR,,RRRRR
+RRRRRRR,,RRRRRRRRRRRRRRR
+RRRRRRRRRRRRRRRRRRRRRRRR
 """)
 
 
@@ -307,7 +317,7 @@ Dss~~ssssCsss~~~sssss#
 """)
 
 
-SOLID = {1, 2, 8, 10, 12, 15, 17, 19}  # wall, void, crate, scrap, pylon, trunk, hut, hut door
+SOLID = {1, 2, 8, 10, 12, 15, 17, 19, 21}  # wall, void, crate, scrap, pylon, trunk, hut, hut door, rock
 DOOR = 5
 GATE = 14  # a way out, like a door, and allowed on a border
 

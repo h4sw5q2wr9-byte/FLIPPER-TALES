@@ -75,6 +75,12 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
     put_u8(b, &at, d->escort_tx);
     put_u8(b, &at, d->escort_ty);
 
+    put_u8(b, &at, d->revealed);
+    put_u8(b, &at, d->hale);
+    put_u8(b, &at, d->hale_room);
+    put_u8(b, &at, d->hale_tx);
+    put_u8(b, &at, d->hale_ty);
+
     return at;
 }
 
@@ -111,6 +117,12 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     d->escort = get_u8(b, &at) != 0u;
     d->escort_tx = get_u8(b, &at);
     d->escort_ty = get_u8(b, &at);
+
+    d->revealed = get_u8(b, &at);
+    d->hale = get_u8(b, &at);
+    d->hale_room = get_u8(b, &at);
+    d->hale_tx = get_u8(b, &at);
+    d->hale_ty = get_u8(b, &at);
 }
 
 /* The payload length, which the header carries so a decode can check the file
@@ -122,7 +134,8 @@ static uint8_t payload_bytes(void) {
                      + FT_ITEM_COUNT              /* pockets */
                      + 6u                         /* position and save point */
                      + FT_CLEARED_BYTES + 2u      /* flags */
-                     + 3u);                       /* whoever is with you */
+                     + 3u                         /* whoever is with you */
+                     + 5u);                       /* what was shown, and Hale */
 }
 
 /* ---- Encode and decode ------------------------------------------------- */
@@ -204,6 +217,12 @@ void ft_save_from_world(const FtWorld* w, bool coach, bool sound, FtSaveData* d)
     d->escort = w->escort;
     d->escort_tx = w->escort_mv.tx;
     d->escort_ty = w->escort_mv.ty;
+
+    d->revealed = w->revealed;
+    d->hale = w->hale;
+    d->hale_room = w->hale_room;
+    d->hale_tx = w->hale_mv.tx;
+    d->hale_ty = w->hale_mv.ty;
 }
 
 void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach, bool* sound) {
@@ -234,6 +253,18 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach, bool* sound)
         w->escort_mv.dy = 0;
         w->escort_mv.step_ms = 0;
     }
+
+    /* After entering too: entering is what moves Hale between rooms, and
+     * the room being restored is not a room he was walked out of. */
+    w->revealed = d->revealed;
+    w->hale = (d->hale <= (uint8_t)FT_HALE_HOME) ? d->hale : (uint8_t)FT_HALE_POST;
+    w->hale_room = (d->hale_room < ft_room_count()) ? d->hale_room : (uint8_t)FT_ROOM_WELDHOME;
+    w->hale_mv.tx = d->hale_tx;
+    w->hale_mv.ty = d->hale_ty;
+    w->hale_mv.dx = 0;
+    w->hale_mv.dy = 0;
+    w->hale_mv.step_ms = 0;
+    w->hale_hurry = false;
 
     if(coach) *coach = d->coach;
     if(sound) *sound = d->sound;

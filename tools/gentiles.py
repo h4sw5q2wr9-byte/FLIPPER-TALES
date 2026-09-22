@@ -239,6 +239,65 @@ TILES["hut_door"] = """
 ########
 """
 
+# Grass up to your knees.
+#
+# Drawn twice, the way the genre has always done it: the whole tile goes
+# down with the ground, and only its bottom half goes down again in front of
+# whoever is standing in it. The first version drew all of it in front, and
+# because a person stands in one tile that is nearly their full height, the
+# "knee-high" grass came up to their neck.
+#
+# The blades are deliberately irregular — tips at different heights, leaning
+# different ways. A regular pattern in a patch this size reads as a fence.
+TILES["tall_grass"] = """
+...#....
+.#.#..#.
+.#.#.##.
+#.##.#.#
+#.#..#.#
+.##.#.#.
+.#.##.#.
+#..#..##
+"""
+
+# A cave's wall. Dark, with cracks running on the diagonal: a hull's wall is
+# laid in courses, and rock that is laid in courses is a wall somebody built.
+TILES["rock"] = """
+###.####
+##.#####
+#.######
+.####.##
+####.###
+###.####
+.#######
+#####.#.
+"""
+
+# The ground in a cave: bare, with a few stones on it. Kept light for the
+# same reason every floor is — whoever stands on it has to read against it.
+TILES["cave"] = """
+........
+....##..
+........
+.#......
+........
+......#.
+..##....
+........
+"""
+
+# The pit, once Hale has found it. Drawn over the long grass it was hidden in.
+TILES["pit"] = """
+........
+..####..
+.######.
+########
+########
+########
+.######.
+..####..
+"""
+
 # Locked port in a vertical wall: the same gap, barred.
 TILES["lock_side"] = """
 ########
@@ -473,9 +532,10 @@ static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
     # Must match FtTile exactly, then the orientation variants (FT_TILE_ART_*).
     order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock",
              "crate", "ladder", "scrap", "frost", "pylon", "static", "gate",
-             "trunk", "leaf", "hut", "roof", "hut_door",
+             "trunk", "leaf", "hut", "roof", "hut_door", "tall_grass", "rock",
+             "cave",
              "door_side", "lock_side", "cable_v", "wall_top", "shadow", "tuft",
-             "gate_side", "leaf_tl", "leaf_tr", "leaf_bl", "leaf_br"]
+             "gate_side", "leaf_tl", "leaf_tr", "leaf_bl", "leaf_br", "pit"]
     for name in order:
         fh.write("    /* %-6s */ {%s},\n" % (name, ", ".join("0x%02X" % b for b in data[name])))
     fh.write("};\n\n#endif /* FT_TILES_H */\n")

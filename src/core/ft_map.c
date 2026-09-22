@@ -1,7 +1,7 @@
 #include "ft_map.h"
 
 bool ft_tile_foreground(FtTile t) {
-    return t == FT_TILE_LEAF || t == FT_TILE_ROOF;
+    return t == FT_TILE_LEAF || t == FT_TILE_ROOF || t == FT_TILE_TALL_GRASS;
 }
 
 bool ft_tile_solid(FtTile t) {
@@ -15,6 +15,7 @@ bool ft_tile_solid(FtTile t) {
     case FT_TILE_TRUNK:
     case FT_TILE_HUT:
     case FT_TILE_HUT_DOOR:
+    case FT_TILE_ROCK:
         return true;
     default:
         return false;

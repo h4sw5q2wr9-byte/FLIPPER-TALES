@@ -118,12 +118,20 @@ typedef struct {
     int16_t orbs;    /* paid out, usually 0 */
     bool    follows; /* somebody just started walking with you */
     bool    ended;   /* the quest is now done */
+    bool    leads;   /* somebody just set off to show you the way */
 } FtQuestOutcome;
 
 /* Apply the outcome of a finished conversation. `yes` is only read by a
  * talk that asked; a refusal leaves everything exactly as it was. */
 FtQuestOutcome ft_quest_answer(FtQuests* q, FtQuestId id, bool yes);
 FtQuestOutcome ft_quest_wren_answer(FtQuests* q);
+
+/* Hale, the other guard on the gate. He is not a giver either — he is how
+ * you get where Coll sent you — so what he says depends on how far the Wren
+ * quest has got, whether he has shown you the pit yet, and whether he is
+ * standing beside it. Pure, like the others. */
+FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit);
+FtQuestOutcome ft_quest_hale_answer(const FtQuests* q, bool pit_found, bool by_the_pit);
 
 /* What the Courier says to themselves at a way they have no reason to take.
  * The world asks this before refusing a gated exit. */

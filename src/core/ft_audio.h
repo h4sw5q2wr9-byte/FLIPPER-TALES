@@ -39,6 +39,7 @@ typedef enum {
     FT_SFX_WIN,
     FT_SFX_LOSE,
     FT_SFX_ENCOUNTER,  /* the wipe into a fight */
+    FT_SFX_REVEAL,     /* something hidden, found */
     FT_SFX_COUNT
 } FtSfxId;
 

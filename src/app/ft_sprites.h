@@ -143,6 +143,25 @@ static const uint16_t FT_SPRITE_WARDEN[FT_SPRITE_H] = {
     0x0C30,
 };
 
+static const uint16_t FT_SPRITE_GUARD[FT_SPRITE_H] = {
+    0x4FF0,
+    0x5FF8,
+    0x5008,
+    0x5668,
+    0x5668,
+    0x5FF8,
+    0x4FF0,
+    0x5FFC,
+    0x580C,
+    0x780C,
+    0x580C,
+    0x5FFC,
+    0x4C18,
+    0x4C18,
+    0x4630,
+    0x4630,
+};
+
 static const uint16_t FT_SPRITE_FRUIT[FT_SPRITE_H] = {
     0x0000,
     0x0000,

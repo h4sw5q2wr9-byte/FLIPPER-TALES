@@ -69,7 +69,22 @@ typedef struct {
      * item or a tile of its own. */
     uint8_t need_quest;
     uint8_t need_state;
+
+    /* A way that is not there at all until somebody shows it to you.
+     *
+     * Zero for an ordinary exit. Otherwise one or more FT_REVEAL_* bits, and
+     * until every one of them is set in FtWorld.revealed the exit does not
+     * exist: no refusal, no art, nothing under your feet. The pit in the
+     * Approach's long grass is one of these — you can stand on the tile it is
+     * on and nothing happens, which is the point.
+     *
+     * Different from need_quest on purpose. A gated exit is a way you can
+     * see and are refused; a hidden one is a way you do not know about. */
+    uint8_t reveal;
 } FtExit;
+
+/* Things that have been shown to you, one bit each. Saved. */
+#define FT_REVEAL_PIT 0x01u
 
 typedef struct {
     const FtMap*    map;
@@ -98,6 +113,12 @@ typedef struct {
 #define FT_ROOM_SLICE_FIRST 4
 #define FT_ROOM_SLICE_LAST  8
 #define FT_ROOM_CH1_FIRST   9
+
+/* Chapter 1's three rooms by name, because Hale walks between two of them
+ * and the rules for where he goes are written in terms of rooms. */
+#define FT_ROOM_APPROACH  FT_ROOM_CH1_FIRST
+#define FT_ROOM_WELDHOME  (FT_ROOM_CH1_FIRST + 1)
+#define FT_ROOM_HOLLOW    (FT_ROOM_CH1_FIRST + 2)
 
 const FtRoom*   ft_room(uint8_t index);
 uint8_t         ft_room_count(void);
@@ -146,6 +167,28 @@ typedef struct {
     uint8_t count; /* walkers, from the roster */
     FtFoeWalker w[FT_MAX_ENEMIES];
 } FtFoeState;
+
+/* Hale, the other guard on Weldhome's gate.
+ *
+ * He is the only person in the game who walks between rooms, so he lives in
+ * the world rather than in a room's entity table, like the escort does. Five
+ * things he can be doing, and the player never has to know which — every
+ * change is triggered by where the player goes, not by anything they press:
+ *
+ *   POST    standing on the gate. Talk to him.
+ *   LEAD    walking you to the pit: out of Weldhome, across the Approach and
+ *           into the long grass. He waits whenever you fall behind.
+ *   WAIT    standing beside the pit he found, until you come back up.
+ *   FOLLOW  walking behind you, once you head off from the pit. Behind Wren,
+ *           if she is with you.
+ *   HOME    back in Weldhome, walking from the gate to his post. */
+typedef enum {
+    FT_HALE_POST = 0,
+    FT_HALE_LEAD,
+    FT_HALE_WAIT,
+    FT_HALE_FOLLOW,
+    FT_HALE_HOME
+} FtHalePhase;
 
 typedef struct {
     uint8_t   room;
@@ -196,6 +239,23 @@ typedef struct {
      * she is dropped off. */
     bool      escort;
     FtStepper escort_mv;
+
+    /* FT_REVEAL_* bits: hidden ways somebody has shown you. */
+    uint8_t revealed;
+
+    /* Set for one update when something is revealed, so the app can play it
+     * a sound without watching the bits itself. */
+    bool revealed_now;
+
+    /* Hale. See FtHalePhase. */
+    uint8_t   hale;      /* FtHalePhase */
+    uint8_t   hale_room;
+    FtStepper hale_mv;
+    FtFacing  hale_facing;
+
+    /* He is jogging this step, to catch up. Not saved: a step is a fifth of
+     * a second, and a reload always lands him standing still. */
+    bool hale_hurry;
 } FtWorld;
 
 void ft_world_init(FtWorld* w);
@@ -255,11 +315,39 @@ FtItemId ft_world_pick(FtWorld* w, uint8_t index);
 bool        ft_world_exit_open(const FtWorld* w, const FtExit* x);
 const char* ft_world_exit_refusal(const FtExit* x);
 
+/* ---- Hale ---- */
+
+/* Start him walking you to the pit. Does nothing once the pit is found, or
+ * while he is already somewhere other than his post. */
+void ft_world_hale_lead(FtWorld* w);
+
+/* Is Hale in this room, and where? False when he is somewhere else. */
+bool ft_world_hale_here(const FtWorld* w);
+
+/* How long his current step takes. Shorter than a walking step while he is
+ * catching up; the renderer needs it to draw him between tiles. */
+uint32_t ft_world_hale_step_ms(const FtWorld* w);
+
+/* Is he standing on the tile the player faces, still enough to talk to? He
+ * is solid while he stands (at his post, or by the pit) and walks through
+ * nobody while he is on the move. */
+bool ft_world_hale_ahead(const FtWorld* w);
+
+/* Where he stands at his post, and beside the pit. Exposed for the tests,
+ * which walk him there. */
+void ft_world_hale_post(uint8_t* tx, uint8_t* ty);
+void ft_world_hale_pitside(uint8_t* tx, uint8_t* ty);
+
+/* Is there a way down on this tile that has been shown to you? The renderer
+ * draws a hole here instead of the grass it was hidden in. */
+bool ft_world_pit_at(const FtWorld* w, int32_t tx, int32_t ty);
+
 /* Start and stop somebody walking with you. */
 void ft_world_escort_start(FtWorld* w);
 void ft_world_escort_stop(FtWorld* w);
 
-/* The exit under the player, or NULL. */
+/* The exit under the player, or NULL. A hidden exit nobody has shown you is
+ * not an exit yet, so it is NULL too. */
 const FtExit* ft_world_exit_under(const FtWorld* w);
 
 bool ft_world_terminal_near(const FtWorld* w);

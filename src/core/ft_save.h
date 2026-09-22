@@ -28,7 +28,7 @@
 
 /* Bumped whenever the layout changes. An older or newer file is refused
  * rather than misread: a garbled save is worse than a missing one. */
-#define FT_SAVE_VERSION 9
+#define FT_SAVE_VERSION 10
 
 /* Header (4 magic + 1 version + 1 length) + payload + 4 checksum. Generous,
  * and asserted against the real encoded length by the tests. */
@@ -52,6 +52,12 @@ typedef struct {
      * Saving at a terminal half way home must not lose her. */
     bool    escort;
     uint8_t escort_tx, escort_ty;
+
+    /* What has been shown to you, and where Hale is and what he is doing.
+     * A pit found and then forgotten on reload is the same bug as a boss
+     * that respawns. */
+    uint8_t revealed;
+    uint8_t hale, hale_room, hale_tx, hale_ty;
 } FtSaveData;
 
 /* Returns the number of bytes written, or 0 if the buffer is too small. */

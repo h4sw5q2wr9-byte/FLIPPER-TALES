@@ -3339,8 +3339,22 @@ static void test_world_links(void) {
             /* A door or a gate: both are ways out, and a gate is what a way
              * somebody is holding shut looks like. */
             const FtTile here = ft_map_tile(room->map, x->tx, x->ty);
-            CHECK(here == FT_TILE_DOOR || here == FT_TILE_GATE,
-                  "room %u exit %u stands on a way out (got %d)", r, e, (int)here);
+
+            if(x->reveal != 0u) {
+                /* A hidden way has to be hidden in something: in the long
+                 * grass, where you can stand on it and nothing happens. A
+                 * hidden exit on a door tile would be a door that does not
+                 * work, which is a bug report, not a secret. */
+                CHECK(here == FT_TILE_TALL_GRASS,
+                      "room %u exit %u is hidden in the long grass (got %d)", r, e,
+                      (int)here);
+            } else {
+                /* A ladder is a way out too: the climb back up from under
+                 * the ground, which is the one place a ladder belongs. */
+                CHECK(here == FT_TILE_DOOR || here == FT_TILE_GATE ||
+                          here == FT_TILE_LADDER,
+                      "room %u exit %u stands on a way out (got %d)", r, e, (int)here);
+            }
 
             /* And a gated exit has to *look* gated, or the refusal arrives
              * from nowhere. */
@@ -4262,6 +4276,350 @@ static void walk(FtWorld* w, int8_t dx, int8_t dy) {
     }
 }
 
+/* ---- Hale ------------------------------------------------------------- */
+
+/* Plays the app's part in the overworld: steps the world and takes an exit
+ * the moment one is stood on, which is what ft_overworld_update does. */
+static void drive_tick(FtWorld* w, int8_t dx, int8_t dy, bool* revealed_seen) {
+    ft_world_update(w, dx, dy, 10);
+    if(revealed_seen && w->revealed_now) *revealed_seen = true;
+
+    if(w->arrived) {
+        const FtExit* x = ft_world_exit_under(w);
+        if(x && ft_world_exit_open(w, x)) {
+            ft_world_enter(w, x->dest_room, x->dest_tx, x->dest_ty);
+        }
+    }
+}
+
+/* One greedy step toward a tile — along the longer axis, or the shorter one
+ * when that is blocked. The ground Hale walks over is open, so this is
+ * enough to follow him, which is the thing being tested: if a player who
+ * does nothing cleverer than walk toward him cannot get to the pit, neither
+ * can a real one. */
+static void chase(const FtWorld* w, int32_t tx, int32_t ty, int8_t* dx, int8_t* dy) {
+    const FtMap* m = ft_world_map(w);
+    const int32_t ex = tx - (int32_t)w->mv.tx, ey = ty - (int32_t)w->mv.ty;
+    const int8_t ax = (int8_t)((ex > 0) - (ex < 0));
+    const int8_t ay = (int8_t)((ey > 0) - (ey < 0));
+
+    const bool x_ok = ax && !ft_tile_solid(ft_map_tile(m, (int32_t)w->mv.tx + ax, w->mv.ty));
+    const bool y_ok = ay && !ft_tile_solid(ft_map_tile(m, w->mv.tx, (int32_t)w->mv.ty + ay));
+
+    *dx = 0;
+    *dy = 0;
+    if(abs_i32(ex) >= abs_i32(ey)) {
+        if(x_ok) *dx = ax;
+        else if(y_ok) *dy = ay;
+    } else {
+        if(y_ok) *dy = ay;
+        else if(x_ok) *dx = ax;
+    }
+}
+
+static int32_t hale_gap(const FtWorld* w) {
+    return abs_i32((int32_t)w->hale_mv.tx - (int32_t)w->mv.tx) +
+           abs_i32((int32_t)w->hale_mv.ty - (int32_t)w->mv.ty);
+}
+
+/* Walk after Hale until he has shown you the pit, or time runs out. */
+static bool follow_hale(FtWorld* w, bool* revealed_seen) {
+    for(int t = 0; t < 20000 && !(w->revealed & FT_REVEAL_PIT); t++) {
+        int8_t dx = 0, dy = 0;
+
+        if(!ft_world_moving(w)) {
+            if(ft_world_hale_here(w)) {
+                if(hale_gap(w) > 1) chase(w, w->hale_mv.tx, w->hale_mv.ty, &dx, &dy);
+            } else if(w->room == FT_ROOM_WELDHOME) {
+                /* He has gone on ahead through the west door. */
+                chase(w, 0, 5, &dx, &dy);
+            }
+        }
+        drive_tick(w, dx, dy, revealed_seen);
+    }
+    return (w->revealed & FT_REVEAL_PIT) != 0u;
+}
+
+/* Walk to a tile, taking whatever exit is on it, until `room` is reached. */
+static bool walk_to_room(FtWorld* w, int32_t tx, int32_t ty, uint8_t room) {
+    for(int t = 0; t < 20000 && w->room != room; t++) {
+        int8_t dx = 0, dy = 0;
+        if(!ft_world_moving(w)) chase(w, tx, ty, &dx, &dy);
+        drive_tick(w, dx, dy, NULL);
+    }
+    return w->room == room;
+}
+
+static void idle(FtWorld* w, int ticks) {
+    for(int t = 0; t < ticks; t++) drive_tick(w, 0, 0, NULL);
+}
+
+static const FtExit* pit_exit(void) {
+    const FtRoom* ap = ft_room(FT_ROOM_APPROACH);
+    for(uint8_t i = 0; i < ap->exit_count; i++) {
+        if(ap->exits[i].reveal & FT_REVEAL_PIT) return &ap->exits[i];
+    }
+    return NULL;
+}
+
+static void test_hale(void) {
+    section("Hale shows you the way");
+
+    const FtExit* pit = pit_exit();
+    CHECK(pit != NULL, "there is a pit to show");
+    if(!pit) return;
+
+    uint8_t post_x, post_y, side_x, side_y;
+    ft_world_hale_post(&post_x, &post_y);
+    ft_world_hale_pitside(&side_x, &side_y);
+
+    /* Everywhere he stands has to be somewhere he can stand. */
+    CHECK(!ft_tile_solid(ft_map_tile(ft_room(FT_ROOM_WELDHOME)->map, post_x, post_y)),
+          "his post is open ground");
+    CHECK(!ft_tile_solid(ft_map_tile(ft_room(FT_ROOM_APPROACH)->map, side_x, side_y)),
+          "so is the tile beside the pit");
+    CHECK_EQ(abs_i32((int32_t)side_x - pit->tx) + abs_i32((int32_t)side_y - pit->ty), 1);
+
+    FtWorld w;
+    ft_world_init(&w);
+    CHECK_EQ(w.hale, FT_HALE_POST);
+    CHECK_EQ(w.hale_room, FT_ROOM_WELDHOME);
+
+    /* --- on his post --- */
+    /* Standing still, he is somebody: solid, and you face him to talk. */
+    ft_world_enter(&w, FT_ROOM_WELDHOME, post_x, (uint8_t)(post_y - 1u));
+    walk(&w, 0, 1);
+    CHECK_EQ(w.mv.ty, post_y - 1u);
+    CHECK(ft_world_hale_ahead(&w), "he is in the way, and you are facing him");
+
+    /* Before Coll has asked you anything, he has nothing to show you. */
+    CHECK(!ft_quest_hale_answer(&w.quests, false, false).leads,
+          "he does not set off for a stranger");
+    ft_world_hale_lead(&w);
+    CHECK_EQ(w.hale, FT_HALE_LEAD); /* the world does as it is told... */
+    w.hale = FT_HALE_POST;          /* ...so the answer above is what matters */
+
+    /* Coll's yes is what sets him off: "Hale knows. Go with him." */
+    const FtQuestOutcome yes = ft_quest_answer(&w.quests, FT_QUEST_WREN, true);
+    CHECK(yes.leads, "saying yes to Coll sends Hale");
+    ft_world_hale_lead(&w);
+    CHECK_EQ(w.hale, FT_HALE_LEAD);
+    CHECK(!ft_world_hale_ahead(&w), "and on the move he is not in your way");
+
+    /* --- he waits for you --- */
+    {
+        FtWorld still = w;
+        idle(&still, 3000); /* half a minute of not moving */
+
+        CHECK(!(still.revealed & FT_REVEAL_PIT), "stand still and he never gets there");
+        CHECK_EQ(still.hale_room, FT_ROOM_WELDHOME);
+        CHECK(hale_gap(&still) <= 4, "he stops and waits a few steps off (%d)",
+              (int)hale_gap(&still));
+    }
+
+    /* --- follow him --- */
+    bool seen = false;
+    CHECK(follow_hale(&w, &seen), "walking after him finds the pit");
+    CHECK(seen, "and the world says so, once, for the sound");
+    CHECK_EQ(w.room, FT_ROOM_APPROACH);
+    CHECK_EQ(w.hale, FT_HALE_WAIT);
+    CHECK_EQ(w.hale_mv.tx, side_x);
+    CHECK_EQ(w.hale_mv.ty, side_y);
+    CHECK(ft_world_pit_at(&w, pit->tx, pit->ty), "the hole is there to draw");
+
+    /* Beside it, he is still again, so he is solid and you can talk. */
+    const FtTalk by = ft_quest_hale_talk(&w.quests, true, true);
+    CHECK(by.speaker && strcmp(by.speaker, "Hale") == 0, "it is Hale talking");
+    CHECK(!ft_quest_hale_answer(&w.quests, true, true).leads,
+          "and he has nowhere left to take you");
+
+    FtWorld saved = w; /* for the round trip below */
+
+    /* --- down, and he stays --- */
+    {
+        FtWorld d = w;
+        CHECK(walk_to_room(&d, pit->tx, pit->ty, FT_ROOM_HOLLOW), "the pit takes you down");
+        CHECK_EQ(d.hale, FT_HALE_WAIT);
+        CHECK_EQ(d.hale_room, FT_ROOM_APPROACH);
+        CHECK(!ft_world_hale_here(&d), "he does not come down with you");
+
+        /* Up the ladder, and he is still there. */
+        const FtExit* up = &ft_room(FT_ROOM_HOLLOW)->exits[0];
+        CHECK(walk_to_room(&d, up->tx, up->ty, FT_ROOM_APPROACH), "the ladder takes you up");
+        CHECK_EQ(d.hale, FT_HALE_WAIT);
+        CHECK(ft_world_hale_here(&d), "and he is waiting");
+        CHECK(!ft_world_pit_at(&d, d.mv.tx, d.mv.ty), "you come out beside the hole, not in it");
+
+        /* Wren comes up with you. Walk off home and he falls in behind her:
+         * never on anybody, never more than a few steps back once caught up. */
+        ft_world_escort_start(&d);
+
+        bool followed = false, tidy = true, caught = false;
+        int32_t worst = 0;
+        for(int t = 0; t < 20000 && d.room != FT_ROOM_WELDHOME; t++) {
+            int8_t dx = 0, dy = 0;
+            if(!ft_world_moving(&d)) chase(&d, 23, 5, &dx, &dy);
+            drive_tick(&d, dx, dy, NULL);
+
+            if(d.hale == FT_HALE_FOLLOW) followed = true;
+            if(d.room == FT_ROOM_APPROACH && d.hale == FT_HALE_FOLLOW &&
+               !(d.hale_mv.dx || d.hale_mv.dy)) {
+                if(d.hale_mv.tx == d.mv.tx && d.hale_mv.ty == d.mv.ty) tidy = false;
+                if(d.hale_mv.tx == d.escort_mv.tx && d.hale_mv.ty == d.escort_mv.ty) tidy = false;
+
+                /* He starts a long way back — you had to walk off for him
+                 * to follow at all — so what matters is that he closes the
+                 * gap, and then keeps it closed. */
+                const int32_t g = hale_gap(&d);
+                if(g <= 2) caught = true;
+                if(caught && g > worst) worst = g;
+            }
+        }
+        CHECK(followed, "walking off from the pit, he comes with you");
+        CHECK(tidy, "without ever standing on you or on her");
+        CHECK_EQ(d.room, FT_ROOM_WELDHOME);
+        CHECK_EQ(d.hale, FT_HALE_HOME);
+        CHECK(ft_world_hale_here(&d), "he comes through the gate with you");
+
+        idle(&d, 4000);
+        CHECK_EQ(d.hale, FT_HALE_POST);
+        CHECK_EQ(d.hale_mv.tx, post_x);
+        CHECK_EQ(d.hale_mv.ty, post_y);
+
+        /* Behind Wren, who is behind you: two back is his place in the line,
+         * and a step in hand for the moment he is still catching up. */
+        CHECK(caught, "he catches you up");
+        CHECK(worst <= 3, "and keeps up after that (worst %d tiles back)", (int)worst);
+    }
+
+    /* --- home without her --- */
+    {
+        FtWorld h = w;
+        CHECK(walk_to_room(&h, 23, 5, FT_ROOM_WELDHOME), "you can walk back without her");
+        CHECK_EQ(h.hale, FT_HALE_HOME);
+        idle(&h, 4000);
+        CHECK_EQ(h.hale, FT_HALE_POST);
+        CHECK(h.revealed & FT_REVEAL_PIT, "and the pit stays found");
+
+        /* Back at the gate he says so, rather than setting off again. */
+        CHECK(!ft_quest_hale_answer(&h.quests, true, false).leads,
+              "you know the way now; he does not walk it twice");
+    }
+
+    /* --- off west, the wrong way --- */
+    {
+        FtWorld o = w;
+        CHECK(walk_to_room(&o, 0, 5, 3u), "the Approach still leads back west");
+        CHECK_EQ(o.hale, FT_HALE_WAIT);
+        CHECK_EQ(o.hale_room, FT_ROOM_APPROACH);
+        CHECK_EQ(o.hale_mv.tx, side_x);
+    }
+
+    /* --- turning back half way --- */
+    {
+        FtWorld b;
+        ft_world_init(&b);
+        ft_quest_answer(&b.quests, FT_QUEST_WREN, true);
+        ft_world_enter(&b, FT_ROOM_WELDHOME, post_x, (uint8_t)(post_y - 1u));
+        ft_world_hale_lead(&b);
+
+        /* Out after him into the Approach, then straight back home. */
+        for(int t = 0; t < 20000 && b.room != FT_ROOM_APPROACH; t++) {
+            int8_t dx = 0, dy = 0;
+            if(!ft_world_moving(&b)) {
+                if(ft_world_hale_here(&b) && hale_gap(&b) > 1) {
+                    chase(&b, b.hale_mv.tx, b.hale_mv.ty, &dx, &dy);
+                } else if(!ft_world_hale_here(&b)) {
+                    chase(&b, 0, 5, &dx, &dy);
+                }
+            }
+            drive_tick(&b, dx, dy, NULL);
+        }
+        CHECK_EQ(b.room, FT_ROOM_APPROACH);
+        CHECK(ft_world_hale_here(&b), "he is just ahead of you as you come through");
+        CHECK(hale_gap(&b) <= 2, "right in front (%d)", (int)hale_gap(&b));
+
+        CHECK(walk_to_room(&b, 23, 5, FT_ROOM_WELDHOME), "and you can turn round");
+        CHECK_EQ(b.hale, FT_HALE_HOME);
+        CHECK(!(b.revealed & FT_REVEAL_PIT), "without the pit found");
+
+        idle(&b, 4000);
+        CHECK_EQ(b.hale, FT_HALE_POST);
+        CHECK(ft_quest_hale_answer(&b.quests, false, false).leads,
+              "and asking him again sets him off again");
+    }
+
+    /* --- it survives a save --- */
+    {
+        FtSaveData d;
+        ft_save_from_world(&saved, true, true, &d);
+
+        uint8_t buf[FT_SAVE_MAX_BYTES];
+        const uint8_t len = ft_save_encode(&d, buf, sizeof(buf));
+        CHECK(len > 0, "the save still fits");
+
+        FtSaveData back;
+        CHECK(ft_save_decode(buf, len, &back), "and decodes");
+
+        FtWorld r;
+        ft_save_to_world(&back, &r, NULL, NULL);
+        CHECK(r.revealed & FT_REVEAL_PIT, "the pit is still found after loading");
+        CHECK_EQ(r.hale, FT_HALE_WAIT);
+        CHECK_EQ(r.hale_room, FT_ROOM_APPROACH);
+        CHECK_EQ(r.hale_mv.tx, side_x);
+        CHECK_EQ(r.hale_mv.ty, side_y);
+    }
+
+    /* --- what he says fits --- */
+    for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+        for(uint8_t k = 0; k < 4u; k++) {
+            FtQuests q;
+            ft_quests_init(&q);
+            q.state[FT_QUEST_WREN] = st;
+
+            const FtTalk c = ft_quest_hale_talk(&q, (k & 1u) != 0u, (k & 2u) != 0u);
+            CHECK(c.count > 0 && c.count <= FT_TALK_MAX_BEATS,
+                  "Hale says something in state %u/%u", st, k);
+            for(uint8_t i = 0; i < c.count; i++) {
+                CHECK(c.beats[i].a && strlen(c.beats[i].a) <= FT_TUTORIAL_MAX_CHARS,
+                      "Hale beat %u fits: \"%s\"", i, c.beats[i].a ? c.beats[i].a : "");
+                if(c.beats[i].b) {
+                    CHECK(strlen(c.beats[i].b) <= FT_TUTORIAL_MAX_CHARS,
+                          "Hale beat %u line b fits: \"%s\"", i, c.beats[i].b);
+                }
+            }
+        }
+    }
+}
+
+/* Long grass is somewhere to wade, not somewhere things happen. */
+static void test_long_grass(void) {
+    section("long grass");
+
+    CHECK(!ft_tile_solid(FT_TILE_TALL_GRASS), "you can walk in it");
+    CHECK(ft_tile_foreground(FT_TILE_TALL_GRASS), "and it is drawn in front of you");
+    CHECK(ft_tile_solid(FT_TILE_ROCK), "rock is a wall");
+    CHECK(!ft_tile_solid(FT_TILE_CAVE), "a cave floor is not");
+
+    /* No foe anywhere stands in long grass, and none of the rooms with long
+     * grass in them has a foe at all: it hides a way, not a fight. */
+    for(uint8_t r = 0; r < ft_room_count(); r++) {
+        const FtRoom* room = ft_room(r);
+        bool grass = false;
+        for(uint16_t y = 0; y < room->map->h; y++) {
+            for(uint16_t x = 0; x < room->map->w; x++) {
+                if(ft_map_tile(room->map, x, y) == FT_TILE_TALL_GRASS) grass = true;
+            }
+        }
+        if(!grass) continue;
+
+        for(uint8_t i = 0; i < room->ent_count; i++) {
+            CHECK(room->ents[i].kind != FT_ENT_FOE,
+                  "room %u has long grass and no fight in it", r);
+        }
+    }
+}
+
 static void test_weldhome(void) {
     section("Weldhome, the gate and the kid");
 
@@ -4280,10 +4638,9 @@ static void test_weldhome(void) {
     }
     CHECK(leads_on, "the prologue ends at the Approach");
 
-    /* --- the turn you cannot take --- */
+    /* --- the way you do not know about --- */
     FtWorld w;
     ft_world_init(&w);
-    ft_world_enter(&w, APPROACH, 1, 2);
 
     const FtExit* drop = NULL;
     const FtRoom* ap = ft_room(APPROACH);
@@ -4293,18 +4650,21 @@ static void test_weldhome(void) {
     CHECK(drop != NULL, "the Approach has a way down");
     if(!drop) return;
 
-    CHECK(!ft_world_exit_open(&w, drop), "which is shut before anybody asks");
+    CHECK(drop->reveal == FT_REVEAL_PIT, "and it is hidden");
 
-    const char* no = ft_world_exit_refusal(drop);
-    CHECK(no != NULL, "and says why");
-    CHECK(no && strlen(no) <= FT_TUTORIAL_MAX_CHARS, "in one line: \"%s\"",
-          no ? no : "");
+    /* Stand right on it: it is long grass, and nothing happens. Not a
+     * refusal — a refusal would tell you there was something to refuse. */
+    ft_world_enter(&w, APPROACH, drop->tx, drop->ty);
+    CHECK(ft_world_exit_under(&w) == NULL, "standing on it before Hale shows you is standing in grass");
+    CHECK(!ft_world_pit_at(&w, drop->tx, drop->ty), "and there is no hole to draw");
 
-    /* It is not locked with a key: nothing in the world changed, only the
-     * reason. Take the quest and the same exit works. */
+    /* Taking the quest does not show it to you either. Hale does. */
     ft_quest_answer(&w.quests, FT_QUEST_WREN, true);
-    CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_WREN), FT_QUEST_ACTIVE);
-    CHECK(ft_world_exit_open(&w, drop), "the drop opens once she asks");
+    CHECK(ft_world_exit_under(&w) == NULL, "saying yes to Coll does not open it");
+
+    w.revealed |= FT_REVEAL_PIT;
+    CHECK(ft_world_exit_under(&w) == drop, "once it is shown, it is there");
+    CHECK(ft_world_pit_at(&w, drop->tx, drop->ty), "and drawn");
 
     /* --- the gate --- */
     FtWorld g;
@@ -4358,7 +4718,7 @@ static void test_weldhome(void) {
     FtWorld j;
     ft_world_init(&j);
     ft_quest_answer(&j.quests, FT_QUEST_WREN, true); /* take it */
-    ft_world_enter(&j, JUNCTION, 1, 1);
+    ft_world_enter(&j, JUNCTION, 3, 3);
 
     CHECK(!j.escort, "nobody with you yet");
 
@@ -4910,6 +5270,8 @@ int main(void) {
     test_quests();
     test_npc();
     test_weldhome();
+    test_hale();
+    test_long_grass();
     test_items();
     test_audio();
     test_notice();

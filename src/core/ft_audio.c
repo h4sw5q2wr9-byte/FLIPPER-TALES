@@ -72,6 +72,13 @@ static const FtNote SFX_ENCOUNTER[] = {
     {C5, 45}, {FT_NOTE_REST, 30}, {G5, 45}, {FT_NOTE_REST, 30}, {C6, 90},
 };
 
+/* Found. Falling, low and slow — the ground giving way under the grass —
+ * and then one note back up, so it lands as a discovery rather than as a
+ * trap. It ends high on purpose: this is good news. */
+static const FtNote SFX_REVEAL[] = {
+    {G4, 60}, {E4, 60}, {C4, 90}, {FT_NOTE_REST, 60}, {G5, 110},
+};
+
 #define CUE(a, v) {a, (uint8_t)(sizeof(a) / sizeof((a)[0])), v}
 
 static const struct {
@@ -98,6 +105,7 @@ static const struct {
     [FT_SFX_LEVEL]     = CUE(SFX_LEVEL, 70),
     [FT_SFX_WIN]       = CUE(SFX_WIN, 75),
     [FT_SFX_LOSE]      = CUE(SFX_LOSE, 60),
+    [FT_SFX_REVEAL]    = CUE(SFX_REVEAL, 70),
     [FT_SFX_ENCOUNTER] = CUE(SFX_ENCOUNTER, 65),
 };
 

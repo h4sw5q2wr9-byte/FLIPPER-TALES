@@ -102,6 +102,7 @@ typedef struct {
     bool      talk_yes;
     FtQuestId talk_quest;
     bool      talk_is_wren;
+    bool      talk_is_hale;
 
     /* The New game confirmation. Defaults to No. */
     bool confirm_yes;
@@ -514,11 +515,19 @@ static void ft_start_talk(FlipperTales* app) {
 /* And apply what it did, once it is over. Nothing changes until here, so a
  * question opened by accident can be walked away from. */
 static void ft_finish_talk(FlipperTales* app, bool yes) {
+    FtWorld* w = &app->world;
     const FtQuestOutcome out =
-        app->talk_is_wren ? ft_quest_wren_answer(&app->world.quests) :
-                            ft_quest_answer(&app->world.quests, app->talk_quest, yes);
+        app->talk_is_wren ? ft_quest_wren_answer(&w->quests) :
+        app->talk_is_hale ?
+                            ft_quest_hale_answer(&w->quests, (w->revealed & FT_REVEAL_PIT) != 0u,
+                                                 w->hale == (uint8_t)FT_HALE_WAIT) :
+                            ft_quest_answer(&w->quests, app->talk_quest, yes);
 
     if(out.follows) ft_world_escort_start(&app->world);
+
+    /* Somebody setting off to show you the way. It is Hale either way: Coll
+     * says "go with him", and he goes. */
+    if(out.leads) ft_world_hale_lead(&app->world);
 
     /* Handing her back is what ends the escort. */
     if(out.ended) ft_world_escort_stop(&app->world);
@@ -530,7 +539,7 @@ static void ft_finish_talk(FlipperTales* app, bool yes) {
 
     /* Anything a conversation changed is progress worth keeping even if the
      * walk home goes badly. */
-    if(out.orbs > 0 || out.follows || out.ended) ft_save_now(app);
+    if(out.orbs > 0 || out.follows || out.ended || out.leads) ft_save_now(app);
 
     app->mode = FT_MODE_OVERWORLD;
 }
@@ -569,6 +578,19 @@ static void ft_overworld_ok(FlipperTales* app) {
     if(kid >= 0) {
         app->talk = ft_quest_wren_talk(&app->world.quests);
         app->talk_is_wren = true;
+        app->talk_is_hale = false;
+        ft_start_talk(app);
+        return;
+    }
+
+    /* Hale, while he is standing still: at his post, or beside the pit. */
+    if(ft_world_hale_ahead(&app->world)) {
+        const FtWorld* w = &app->world;
+
+        app->talk = ft_quest_hale_talk(&w->quests, (w->revealed & FT_REVEAL_PIT) != 0u,
+                                       w->hale == (uint8_t)FT_HALE_WAIT);
+        app->talk_is_wren = false;
+        app->talk_is_hale = true;
         ft_start_talk(app);
         return;
     }
@@ -581,6 +603,7 @@ static void ft_overworld_ok(FlipperTales* app) {
 
         app->talk_quest = (FtQuestId)room->ents[who].roster;
         app->talk_is_wren = false;
+        app->talk_is_hale = false;
         app->talk = ft_quest_talk(&app->world.quests, app->talk_quest);
         ft_start_talk(app);
         return;
@@ -1169,6 +1192,14 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
         }
     }
 
+    /* Hale has just shown you the pit. The world keeps the bit; the app
+     * makes the noise, says what happened, and keeps it on the card. */
+    if(app->world.revealed_now) {
+        ft_sound_play(&app->sound, FT_SFX_REVEAL);
+        ft_toast(app, "A way down!");
+        ft_save_now(app);
+    }
+
     /* Doors take themselves the moment you finish stepping onto one: having
      * to stop and press to change room turns a corridor into paperwork. */
     if(app->world.arrived) ft_sound_play(&app->sound, FT_SFX_MOVE);
@@ -1249,6 +1280,7 @@ static FlipperTales* ft_alloc(void) {
     app->talk_yes = true;
     app->talk_quest = FT_QUEST_CLEAN_RUN;
     app->talk_is_wren = false;
+    app->talk_is_hale = false;
     app->talk.count = 0;
     app->chapters_done = 0;
     app->confirm_yes = false;

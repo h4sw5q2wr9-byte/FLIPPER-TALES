@@ -170,13 +170,13 @@ static const FtBeat COLL_OFFER[] = {
     {FT_SAY_THEM, "So does everybody.", NULL},
     {FT_SAY_THEM, "You move like the", "things that take us."},
     {FT_SAY_YOU,  "I'm not one of them.", NULL},
-    {FT_SAY_THEM, "Then prove it to me.", NULL},
-    {FT_SAY_YOU,  "How?", NULL},
-    {FT_SAY_THEM, "A girl went east.", "Bring Wren home."},
+    {FT_SAY_THEM, "Then prove it. A", "girl's gone. Wren."},
+    {FT_SAY_YOU,  "Gone where?", NULL},
+    {FT_SAY_THEM, "Hale knows. Go with", "him. Bring her back."},
 };
 
 static const FtBeat COLL_ON[] = {
-    {FT_SAY_THEM, "Down the shaft, then", "east. She knew it."},
+    {FT_SAY_THEM, "Hale knows where she", "went. Go with him."},
     {FT_SAY_YOU,  "Why would she go", "down there?"},
     {FT_SAY_THEM, "Because I told her", "not to."},
 };
@@ -202,6 +202,44 @@ static const FtBeat COLL_DONE[] = {
     {FT_SAY_THEM, "Gate's open. Go on.", NULL},
     {FT_SAY_YOU,  "Thanks.", NULL},
     {FT_SAY_THEM, "Mind the spans.", NULL},
+};
+
+/* ---- Hale, the other guard on the gate ----
+ *
+ * Young, easy, and more frightened of what is under the grass than he lets
+ * on. Coll talks; he does the walking. */
+
+static const char* HALE = "Hale";
+
+static const FtBeat HALE_IDLE[] = {
+    {FT_SAY_THEM, "Coll does the", "talking round here."},
+    {FT_SAY_YOU,  "And you?", NULL},
+    {FT_SAY_THEM, "I do the standing.", NULL},
+};
+
+/* You turned back before he got you there. Talking sets him off again. */
+static const FtBeat HALE_AGAIN[] = {
+    {FT_SAY_THEM, "Changed your mind?", NULL},
+    {FT_SAY_YOU,  "Show me again.", NULL},
+    {FT_SAY_THEM, "Stay close, then.", NULL},
+};
+
+static const FtBeat HALE_PITSIDE[] = {
+    {FT_SAY_THEM, "She went down there.", "I'd bet on it."},
+    {FT_SAY_YOU,  "You're not coming?", NULL},
+    {FT_SAY_THEM, "Someone has to be", "here when you're up."},
+};
+
+/* Back at the gate, with the pit found and Wren still down it. */
+static const FtBeat HALE_KNOWN[] = {
+    {FT_SAY_THEM, "You know the way", "now. The long grass."},
+    {FT_SAY_YOU,  "I'm going back.", NULL},
+    {FT_SAY_THEM, "Eat something first.", NULL},
+};
+
+static const FtBeat HALE_HOME[] = {
+    {FT_SAY_THEM, "She's home.", NULL},
+    {FT_SAY_THEM, "Thank you. Really.", NULL},
 };
 
 /* ---- Wren, at the end of the junction ---- */
@@ -264,10 +302,21 @@ FtTalk ft_quest_wren_talk(const FtQuests* q) {
     return (FtTalk)TALK(WREN, WREN_FOUND);
 }
 
+FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit) {
+    const FtQuestState at = ft_quest_state(q, FT_QUEST_WREN);
+
+    if(at == FT_QUEST_READY || at == FT_QUEST_DONE) return (FtTalk)TALK(HALE, HALE_HOME);
+    if(at != FT_QUEST_ACTIVE) return (FtTalk)TALK(HALE, HALE_IDLE);
+
+    if(by_the_pit) return (FtTalk)TALK(HALE, HALE_PITSIDE);
+    if(pit_found) return (FtTalk)TALK(HALE, HALE_KNOWN);
+    return (FtTalk)TALK(HALE, HALE_AGAIN);
+}
+
 /* ---- What a finished conversation did ---------------------------------- */
 
 static FtQuestOutcome nothing(void) {
-    FtQuestOutcome o = {0, false, false};
+    FtQuestOutcome o = {0, false, false, false};
     return o;
 }
 
@@ -279,7 +328,14 @@ FtQuestOutcome ft_quest_answer(FtQuests* q, FtQuestId id, bool yes) {
     case FT_QUEST_UNKNOWN:
         /* Saying no leaves everything exactly as it was, so a question you
          * did not mean to open costs nothing. */
-        if(yes) set_state(q, id, FT_QUEST_ACTIVE);
+        if(yes) {
+            set_state(q, id, FT_QUEST_ACTIVE);
+
+            /* Coll's last line is "Hale knows. Go with him." — so he goes,
+             * the moment you say yes, and following him is the next thing
+             * the game asks of you. */
+            if(id == FT_QUEST_WREN) o.leads = true;
+        }
         break;
 
     case FT_QUEST_FAILED:
@@ -310,6 +366,17 @@ FtQuestOutcome ft_quest_wren_answer(FtQuests* q) {
 
     set_state(q, FT_QUEST_WREN, FT_QUEST_READY);
     o.follows = true;
+    return o;
+}
+
+FtQuestOutcome ft_quest_hale_answer(const FtQuests* q, bool pit_found, bool by_the_pit) {
+    FtQuestOutcome o = nothing();
+
+    /* Only one of his conversations does anything: the one where you turned
+     * back before he got you there, and asked again. */
+    if(ft_quest_state(q, FT_QUEST_WREN) == FT_QUEST_ACTIVE && !pit_found && !by_the_pit) {
+        o.leads = true;
+    }
     return o;
 }
 

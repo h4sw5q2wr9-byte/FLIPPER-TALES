@@ -35,7 +35,7 @@ static const FtRoster FT_ROSTERS[] = {
     {3, {FT_ENEMY_BLANK_WALL, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET}},
     {3, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_COLD_BOOTER}},
 
-    /* [12] The East Junction. Chapter 1's set-piece, and the first fight the
+    /* [12] The Hollow. Chapter 1's set-piece, and the first fight the
      * game asks you to win for somebody else: a wall in front so you cannot
      * reach past it, something fast behind it, and something ordinary.
      *
@@ -56,7 +56,7 @@ typedef char ft_roster_count_matches[(ROSTER_COUNT == FT_ROSTER_COUNT) ? 1 : -1]
  * anything. No foe — the first room teaches walking, saving and talking,
  * nothing else. */
 static const FtExit CB1_EXITS[] = {
-    {17, 4, 1, 1, 2, 0, 0},
+    {17, 4, 1, 1, 2, 0, 0, 0},
 };
 static const FtEntity CB1_ENTS[] = {
     /* Two tiles from where you wake up, off the line to the door, so you
@@ -76,8 +76,8 @@ static const FtEntity CB1_ENTS[] = {
 /* [2] Boot Corridor: the first encounter, placed far enough right that it is
  * seen well before it is reached. */
 static const FtExit CB2_EXITS[] = {
-    {0, 2, 0, 16, 4, 0, 0},
-    {19, 4, 2, 1, 2, 0, 0},
+    {0, 2, 0, 16, 4, 0, 0, 0},
+    {19, 4, 2, 1, 2, 0, 0, 0},
 };
 static const FtEntity CB2_ENTS[] = {
     /* Standing in the grass across the middle of the corridor: seen from the
@@ -87,8 +87,8 @@ static const FtEntity CB2_ENTS[] = {
 
 /* [3] The Drop: upper shelf, ladder down, terminal on the lower floor. */
 static const FtExit CB3_EXITS[] = {
-    {0, 2, 1, 18, 4, 0, 0},
-    {17, 10, 3, 1, 2, 0, 0},
+    {0, 2, 1, 18, 4, 0, 0, 0},
+    {17, 10, 3, 1, 2, 0, 0, 0},
 };
 static const FtEntity CB3_ENTS[] = {
     {FT_ENT_FOE, 9, 2, 1},
@@ -98,8 +98,8 @@ static const FtEntity CB3_ENTS[] = {
 
 /* [4] Cold Gate: a group standing in the exit, the way an area ends. */
 static const FtExit CB4_EXITS[] = {
-    {0, 2, 2, 16, 10, 0, 0},
-    {17, 8, 9, 1, 5, 0, 0}, /* out of the prologue, into Chapter 1 */
+    {0, 2, 2, 16, 10, 0, 0, 0},
+    {17, 8, 9, 1, 5, 0, 0, 0}, /* out of the prologue, into Chapter 1 */
 };
 static const FtEntity CB4_ENTS[] = {
     {FT_ENT_FOE, 13, 8, 3},
@@ -120,15 +120,15 @@ static const FtEntity CB4_ENTS[] = {
  * Courier has no reason to take it, and Weldhome's gate refuses because
  * Warden Coll is holding it. Both are the same field in FtExit. */
 
-/* [10] The Approach. The way down is a framed ladder shaft rather than a
- * notch in the bottom wall: a route you have no reason to take should look
- * like a route, not like a hole somebody forgot to fill in. */
+/* [10] The Approach. Three ways out, and you can only see two of them: the
+ * third is a pit in the long grass that Hale has to show you. */
 static const FtExit AP1_EXITS[] = {
-    {0, 5, 3, 16, 8, 0, 0},
-    {23, 5, 10, 1, 5, 0, 0},
+    {0, 5, 3, 16, 8, 0, 0, 0},
+    {23, 5, 10, 1, 5, 0, 0, 0},
 
-    /* The drop. Open from the moment Coll asks, and not before. */
-    {11, 10, 11, 5, 1, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_ACTIVE},
+    /* The pit, in the long grass. Not there at all until Hale has walked you
+     * to it — not refused, not drawn, not anything. */
+    {11, 8, 11, 3, 2, 0, 0, FT_REVEAL_PIT},
 };
 static const FtEntity AP1_ENTS[] = {
     /* Both a step off the path, at either end of it. Fruit is worth leaving
@@ -140,8 +140,8 @@ static const FtEntity AP1_ENTS[] = {
 /* [11] Weldhome Gate. A real gate tile, so a way that is shut against you
  * does not look like an ordinary doorway you have not tried yet. */
 static const FtExit WH1_EXITS[] = {
-    {0, 5, 9, 22, 5, 0, 0},
-    {23, 5, 4, 1, 2, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_DONE},
+    {0, 5, 9, 22, 5, 0, 0, 0},
+    {23, 5, 4, 1, 2, (uint8_t)FT_QUEST_WREN + 1u, (uint8_t)FT_QUEST_DONE, 0},
 };
 static const FtEntity WH1_ENTS[] = {
     /* Beside the gate, not in front of it.
@@ -159,21 +159,27 @@ static const FtEntity WH1_ENTS[] = {
     {FT_ENT_CACHE, 13, 8, FT_ITEM_CELL},
 };
 
-/* [12] East Junction. Wren at the far end, behind a wall and two live ones —
- * guarded the way things guard, so the fight cannot be skipped to the end. */
+/* [12] The Hollow. The cave under the long grass. Wren at the far end, and
+ * the one passage to her guarded the way things guard — a wall in front — so
+ * the fight cannot be skipped to the end. */
 static const FtExit EJ1_EXITS[] = {
-    {5, 0, 9, 11, 9, 0, 0},
+    /* The ladder, back up to the hole in the roof. You come out beside the
+     * pit, on the other side of it from wherever Hale is standing. */
+    {3, 1, 9, 12, 8, 0, 0, 0},
 };
 static const FtEntity EJ1_ENTS[] = {
-    /* In the gap in the ridge, on Wren's side of it. There is no route round
-     * the wreckage, so this is the fight or nothing. */
-    {FT_ENT_FOE, 15, 8, 12},
-    {FT_ENT_WREN, 21, 7, 0},
+    /* In the passage under the rock, the only way through. There is no
+     * route round, so this is the fight or nothing. */
+    {FT_ENT_FOE, 13, 8, 12},
 
-    /* On the way in, before the wall. Whether you spend it now or save it
-     * for the fight is the first real pocket decision the game asks. */
-    {FT_ENT_CACHE, 8, 2, FT_ITEM_RATION},
-    {FT_ENT_TREE, 4, 4, FT_ITEM_APPLE},
+    /* At the far end of the east cavern, as far from the ladder as the
+     * cave goes. */
+    {FT_ENT_WREN, 19, 3, 0},
+
+    /* In the side pocket off the first cavern, before the passage. Whether
+     * you spend it now or save it for the fight is the first real pocket
+     * decision the game asks. */
+    {FT_ENT_CACHE, 8, 10, FT_ITEM_RATION},
 };
 
 
@@ -192,8 +198,8 @@ static const FtEntity EJ1_ENTS[] = {
  * stranded on the far side: Infrared is line-of-sight, so what the module
  * buys you here is reaching across a gap you cannot walk. */
 static const FtExit SL1_EXITS[] = {
-    {0, 2, 3, 16, 8, 0, 0},
-    {21, 8, 5, 1, 2, 0, 0},
+    {0, 2, 3, 16, 8, 0, 0, 0},
+    {21, 8, 5, 1, 2, 0, 0, 0},
 };
 static const FtEntity SL1_ENTS[] = {
     {FT_ENT_FOE, 8, 6, 4},
@@ -204,8 +210,8 @@ static const FtEntity SL1_ENTS[] = {
  * visible way in: RFID reads through walls, so the module finds the door
  * that was never drawn. */
 static const FtExit CS1_EXITS[] = {
-    {0, 2, 4, 20, 8, 0, 0},
-    {21, 8, 6, 1, 2, 0, 0},
+    {0, 2, 4, 20, 8, 0, 0, 0},
+    {21, 8, 6, 1, 2, 0, 0, 0},
 };
 static const FtEntity CS1_ENTS[] = {
     {FT_ENT_FOE, 17, 2, 6},
@@ -216,8 +222,8 @@ static const FtEntity CS1_ENTS[] = {
  * This is the wall the chapter is named after, and you can walk up to it
  * long before the iButton exists. */
 static const FtExit TS1_EXITS[] = {
-    {0, 2, 5, 20, 8, 0, 0},
-    {21, 8, 7, 1, 2, 0, 0},
+    {0, 2, 5, 20, 8, 0, 0, 0},
+    {21, 8, 7, 1, 2, 0, 0, 0},
 };
 static const FtEntity TS1_ENTS[] = {
     {FT_ENT_FOE, 15, 4, 7},
@@ -228,8 +234,8 @@ static const FtEntity TS1_ENTS[] = {
  * up sitting behind a run that carries nothing: GPIO powers what is already
  * there. */
 static const FtExit SH1_EXITS[] = {
-    {0, 2, 6, 20, 8, 0, 0},
-    {21, 8, 8, 1, 2, 0, 0},
+    {0, 2, 6, 20, 8, 0, 0, 0},
+    {21, 8, 8, 1, 2, 0, 0, 0},
 };
 static const FtEntity SH1_ENTS[] = {
     {FT_ENT_FOE, 15, 1, 8},
@@ -241,8 +247,8 @@ static const FtEntity SH1_ENTS[] = {
  * are the way through. The chain loops back to the start from here: past
  * this is Chapter 1, which does not exist yet. */
 static const FtExit DZ1_EXITS[] = {
-    {0, 2, 7, 20, 8, 0, 0},
-    {21, 8, 0, 3, 4, 0, 0},
+    {0, 2, 7, 20, 8, 0, 0, 0},
+    {21, 8, 0, 3, 4, 0, 0, 0},
 };
 static const FtEntity DZ1_ENTS[] = {
     {FT_ENT_FOE, 9, 4, 9},
@@ -261,7 +267,7 @@ static const FtRoom FT_ROOMS[] = {
     {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2},
     {&FT_MAP_AP1, AP1_EXITS, 3, AP1_ENTS, 2},
     {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 4},
-    {&FT_MAP_EJ1, EJ1_EXITS, 1, EJ1_ENTS, 4},
+    {&FT_MAP_EJ1, EJ1_EXITS, 1, EJ1_ENTS, 3},
 };
 #define ROOM_COUNT (sizeof(FT_ROOMS) / sizeof(FT_ROOMS[0]))
 
@@ -364,9 +370,14 @@ static const int8_t SPREAD[][2] = {
 };
 #define SPREAD_COUNT (sizeof(SPREAD) / sizeof(SPREAD[0]))
 
+static void hale_on_enter(FtWorld* w, uint8_t from, uint8_t to, uint8_t tx, uint8_t ty);
+
 void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
+    const uint8_t from = w->room;
     w->room = (room < ft_room_count()) ? room : 0u;
     w->visits++;
+
+    hale_on_enter(w, from, w->room, tx, ty);
 
     /* Walking into a room repopulates it.
      *
@@ -488,6 +499,20 @@ void ft_world_init(FtWorld* w) {
     ft_pockets_init(&w->pockets);
     w->visits = 0;
     w->escort = false;
+
+    /* Nothing shown yet, and Hale on his gate. Set before the first enter
+     * below, because entering is what moves him between rooms. */
+    w->room = 0;
+    w->revealed = 0;
+    w->revealed_now = false;
+    w->hale = (uint8_t)FT_HALE_POST;
+    w->hale_room = FT_ROOM_WELDHOME;
+    ft_world_hale_post(&w->hale_mv.tx, &w->hale_mv.ty);
+    w->hale_mv.dx = 0;
+    w->hale_mv.dy = 0;
+    w->hale_mv.step_ms = 0;
+    w->hale_facing = FT_FACE_DOWN;
+    w->hale_hurry = false;
 
     /* World stats are authoritative: a battle copies them in rather than
      * building its own. */
@@ -708,6 +733,8 @@ static void foe_think(FtWorld* w, FtFoeWalker* k, bool alert, const FtMap* map) 
 /* Defined with the other tile queries below; the player's step needs it,
  * because an NPC is something you walk into rather than through. */
 static int npc_at_tile(const FtWorld* w, int32_t tx, int32_t ty);
+static bool hale_blocks(const FtWorld* w, int32_t tx, int32_t ty);
+static void hale_update(FtWorld* w, uint32_t dt_ms);
 
 void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     const FtMap* map = ft_world_map(w);
@@ -715,6 +742,7 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     w->area_ms += dt_ms;
     w->arrived = false;
     w->ambushed = false;
+    w->revealed_now = false;
 
     /* --- player --- */
     if(ft_world_moving(w)) {
@@ -741,12 +769,18 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
          * turn and strike something you cannot walk into, and what lets you
          * turn and talk to someone you just bumped into. */
         if(step_target_free(map, w->mv.tx, w->mv.ty, dx, dy) &&
-           npc_at_tile(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) < 0) {
+           npc_at_tile(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) < 0 &&
+           !hale_blocks(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy)) {
             /* She steps into the tile you are leaving on the frame you leave
              * it, so the two move in lockstep and she never falls behind
              * however long the direction is held. It also means every tile
              * she walks is a tile you walked: she can never end up inside a
              * wall, and never cuts a corner through one. */
+            /* Where the last in the line is standing before anybody moves:
+             * that is the tile Hale steps into, if he is in his place. */
+            const int32_t last_x = w->escort ? (int32_t)w->escort_mv.tx : (int32_t)w->mv.tx;
+            const int32_t last_y = w->escort ? (int32_t)w->escort_mv.ty : (int32_t)w->mv.ty;
+
             if(w->escort && !(w->escort_mv.dx || w->escort_mv.dy)) {
                 const int32_t ex = (int32_t)w->mv.tx - (int32_t)w->escort_mv.tx;
                 const int32_t ey = (int32_t)w->mv.ty - (int32_t)w->escort_mv.ty;
@@ -763,12 +797,35 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
                 }
             }
 
+            /* Hale, once he is in his place behind her (or you), joins the
+             * same conga: he steps into the tile the one in front of him is
+             * leaving, on the frame they leave it. Chasing that tile a frame
+             * later instead left him a whole tile out of place all the way
+             * home, because at the same pace a gap never closes. */
+            if(w->hale == (uint8_t)FT_HALE_FOLLOW && ft_world_hale_here(w) &&
+               !(w->hale_mv.dx || w->hale_mv.dy)) {
+                const int32_t hx = (int32_t)last_x - (int32_t)w->hale_mv.tx;
+                const int32_t hy = (int32_t)last_y - (int32_t)w->hale_mv.ty;
+
+                if(abs32(hx) + abs32(hy) == 1) {
+                    w->hale_mv.dx = (int8_t)hx;
+                    w->hale_mv.dy = (int8_t)hy;
+                    w->hale_mv.step_ms = 0;
+                    w->hale_hurry = false;
+                    w->hale_facing = (hx > 0) ? FT_FACE_RIGHT : (hx < 0) ? FT_FACE_LEFT :
+                                     (hy > 0) ? FT_FACE_DOWN : FT_FACE_UP;
+                }
+            }
+
             w->mv.dx = dx;
             w->mv.dy = dy;
             w->mv.step_ms = 0;
             w->walk_ms += dt_ms;
         }
     }
+
+    /* --- Hale, after you, so he reacts to where you are going --- */
+    hale_update(w, dt_ms);
 
     /* --- foes --- */
     const FtRoom* room = ft_room(w->room);
@@ -1027,13 +1084,424 @@ void ft_world_escort_stop(FtWorld* w) {
     w->escort = false;
 }
 
+/* Has this exit been shown to you? Always, for an ordinary one. */
+static bool exit_known(const FtWorld* w, const FtExit* x) {
+    return (w->revealed & x->reveal) == x->reveal;
+}
+
 const FtExit* ft_world_exit_under(const FtWorld* w) {
     const FtRoom* r = ft_room(w->room);
 
     for(uint8_t i = 0; i < r->exit_count; i++) {
-        if(r->exits[i].tx == w->mv.tx && r->exits[i].ty == w->mv.ty) return &r->exits[i];
+        const FtExit* x = &r->exits[i];
+        if(x->tx != w->mv.tx || x->ty != w->mv.ty) continue;
+
+        /* Standing on a way nobody has shown you is standing in grass. */
+        if(!exit_known(w, x)) return NULL;
+        return x;
     }
     return NULL;
+}
+
+bool ft_world_pit_at(const FtWorld* w, int32_t tx, int32_t ty) {
+    const FtRoom* r = ft_room(w->room);
+
+    for(uint8_t i = 0; i < r->exit_count; i++) {
+        const FtExit* x = &r->exits[i];
+        if(x->reveal == 0u || !exit_known(w, x)) continue;
+        if((int32_t)x->tx == tx && (int32_t)x->ty == ty) return true;
+    }
+    return false;
+}
+
+/* ---- Hale ---------------------------------------------------------------
+ *
+ * The other guard on Weldhome's gate, and the one who knows where Wren went.
+ * See FtHalePhase in ft_world.h for what he can be doing. Every change of
+ * phase is caused by where the player goes, never by something they press,
+ * so there is nothing here the player has to learn. */
+
+/* Where he stands on the gate: the other side of it from Coll, so the tile
+ * in front of the gate stays clear for the pair of them. */
+#define HALE_POST_TX 22
+#define HALE_POST_TY 6
+
+/* Leading, he leaves Weldhome by its west door and comes into the Approach
+ * one tile in from its east one — just ahead of where you will arrive. */
+#define HALE_OUT_TX  0
+#define HALE_OUT_TY  5
+#define HALE_IN_TX   21
+#define HALE_IN_TY   5
+
+/* Beside the pit, which is the hidden exit at (11,8). */
+#define HALE_PIT_TX  10
+#define HALE_PIT_TY  8
+
+/* How far behind you can fall before he stops and waits for you. */
+#define HALE_LEASH 3
+
+/* How far from the pit you walk before he decides you are leaving and comes
+ * with you. One wider than the leash, so arriving at the pit right behind
+ * him never reads as walking away from it. */
+#define HALE_FOLLOW_AT 4
+
+/* By the time he decides to follow, you are already that far off, and at
+ * walking pace he would stay that far off all the way home — measured at
+ * seven tiles back, which reads as somebody going the same way as you, not
+ * with you. So he jogs, at twice your pace, while he is more than a step out
+ * of his place. Three-fifths pace was tried first and still had not caught
+ * up by the time you reached the gate. */
+#define HALE_HURRY_MS (FT_STEP_MS / 2u)
+
+void ft_world_hale_post(uint8_t* tx, uint8_t* ty) {
+    *tx = HALE_POST_TX;
+    *ty = HALE_POST_TY;
+}
+
+void ft_world_hale_pitside(uint8_t* tx, uint8_t* ty) {
+    *tx = HALE_PIT_TX;
+    *ty = HALE_PIT_TY;
+}
+
+static void hale_place(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
+    w->hale_hurry = false;
+    w->hale_room = room;
+    w->hale_mv.tx = tx;
+    w->hale_mv.ty = ty;
+    w->hale_mv.dx = 0;
+    w->hale_mv.dy = 0;
+    w->hale_mv.step_ms = 0;
+}
+
+bool ft_world_hale_here(const FtWorld* w) {
+    return w->hale_room == w->room;
+}
+
+uint32_t ft_world_hale_step_ms(const FtWorld* w) {
+    return w->hale_hurry ? HALE_HURRY_MS : FT_STEP_MS;
+}
+
+/* He is solid while he stands and walks through nobody while he walks, which
+ * is the escort's rule too: a person on the move who blocked you would turn
+ * following him into a shoving match. */
+static bool hale_standing(const FtWorld* w) {
+    return w->hale == (uint8_t)FT_HALE_POST || w->hale == (uint8_t)FT_HALE_WAIT;
+}
+
+static bool hale_blocks(const FtWorld* w, int32_t tx, int32_t ty) {
+    if(!ft_world_hale_here(w) || !hale_standing(w)) return false;
+    return (int32_t)w->hale_mv.tx == tx && (int32_t)w->hale_mv.ty == ty;
+}
+
+bool ft_world_hale_ahead(const FtWorld* w) {
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+    return hale_blocks(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy);
+}
+
+void ft_world_hale_lead(FtWorld* w) {
+    if(w->revealed & FT_REVEAL_PIT) return;
+    if(w->hale != (uint8_t)FT_HALE_POST) return;
+
+    w->hale = (uint8_t)FT_HALE_LEAD;
+}
+
+static int32_t tiles_apart(int32_t ax, int32_t ay, int32_t bx, int32_t by) {
+    return abs32(ax - bx) + abs32(ay - by);
+}
+
+/* A breadth-first distance field out from the goal, for one room. Rooms are
+ * small and he recomputes it only when he is about to take a step, so there
+ * is nothing to cache and nothing to go stale. Static rather than on the
+ * stack: core does not allocate, and the stack on the device is small. */
+#define HALE_GRID 512u
+static uint8_t  hale_dist[HALE_GRID];
+static uint16_t hale_queue[HALE_GRID];
+
+static bool hale_passable(const FtWorld* w, const FtMap* m, int32_t tx, int32_t ty) {
+    if(ft_tile_solid(ft_map_tile(m, tx, ty))) return false;
+    if(npc_at_tile(w, tx, ty) >= 0) return false;
+
+    /* He shows you the hole; he does not fall down it. */
+    if(ft_world_pit_at(w, tx, ty)) return false;
+    return true;
+}
+
+/* Is anybody else standing on, or stepping into, this tile? He walks round
+ * the player and whoever is with them rather than through them. */
+static bool hale_crowded(const FtWorld* w, int32_t tx, int32_t ty) {
+    if((int32_t)w->mv.tx == tx && (int32_t)w->mv.ty == ty) return true;
+    if((int32_t)w->mv.tx + w->mv.dx == tx && (int32_t)w->mv.ty + w->mv.dy == ty) return true;
+
+    if(w->escort) {
+        const FtStepper* e = &w->escort_mv;
+        if((int32_t)e->tx == tx && (int32_t)e->ty == ty) return true;
+        if((int32_t)e->tx + e->dx == tx && (int32_t)e->ty + e->dy == ty) return true;
+    }
+    return false;
+}
+
+/* Start one step toward (gx, gy). False when he is there, boxed in, or the
+ * only way on is through somebody. */
+static bool hale_step_toward(FtWorld* w, int32_t gx, int32_t gy) {
+    const FtMap* m = ft_world_map(w);
+    const uint32_t cells = (uint32_t)m->w * (uint32_t)m->h;
+    if(cells == 0u || cells > HALE_GRID) return false;
+    if(gx < 0 || gy < 0 || gx >= (int32_t)m->w || gy >= (int32_t)m->h) return false;
+
+    for(uint32_t i = 0; i < cells; i++) hale_dist[i] = 255u;
+
+    uint32_t head = 0, tail = 0;
+    const uint16_t goal = (uint16_t)((uint32_t)gy * m->w + (uint32_t)gx);
+    hale_dist[goal] = 0u;
+    hale_queue[tail++] = goal;
+
+    static const int8_t STEP[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+    while(head < tail) {
+        const uint16_t at = hale_queue[head++];
+        const int32_t ax = (int32_t)(at % m->w), ay = (int32_t)(at / m->w);
+        const uint8_t d = hale_dist[at];
+        if(d >= 254u) continue;
+
+        for(uint8_t k = 0; k < 4u; k++) {
+            const int32_t nx = ax + STEP[k][0], ny = ay + STEP[k][1];
+            if(nx < 0 || ny < 0 || nx >= (int32_t)m->w || ny >= (int32_t)m->h) continue;
+
+            const uint16_t n = (uint16_t)((uint32_t)ny * m->w + (uint32_t)nx);
+            if(hale_dist[n] != 255u) continue;
+            if(!hale_passable(w, m, nx, ny)) continue;
+
+            hale_dist[n] = (uint8_t)(d + 1u);
+            hale_queue[tail++] = n;
+        }
+    }
+
+    const int32_t hx = w->hale_mv.tx, hy = w->hale_mv.ty;
+    const uint8_t here = hale_dist[(uint32_t)hy * m->w + (uint32_t)hx];
+    if(here == 0u) return false;
+
+    int8_t bx = 0, by = 0;
+    uint8_t best = here;
+    for(uint8_t k = 0; k < 4u; k++) {
+        const int32_t nx = hx + STEP[k][0], ny = hy + STEP[k][1];
+        if(nx < 0 || ny < 0 || nx >= (int32_t)m->w || ny >= (int32_t)m->h) continue;
+
+        const uint8_t d = hale_dist[(uint32_t)ny * m->w + (uint32_t)nx];
+        if(d >= best) continue;
+        if(hale_crowded(w, nx, ny)) continue;
+
+        best = d;
+        bx = STEP[k][0];
+        by = STEP[k][1];
+    }
+    if(!bx && !by) return false;
+
+    w->hale_mv.dx = bx;
+    w->hale_mv.dy = by;
+    w->hale_mv.step_ms = 0;
+    w->hale_hurry = false;
+    w->hale_facing = (bx > 0) ? FT_FACE_RIGHT : (bx < 0) ? FT_FACE_LEFT :
+                     (by > 0) ? FT_FACE_DOWN : FT_FACE_UP;
+    return true;
+}
+
+static void hale_face(FtWorld* w, int32_t tx, int32_t ty) {
+    const int32_t dx = tx - (int32_t)w->hale_mv.tx, dy = ty - (int32_t)w->hale_mv.ty;
+    if(abs32(dx) >= abs32(dy)) {
+        if(dx) w->hale_facing = (dx > 0) ? FT_FACE_RIGHT : FT_FACE_LEFT;
+    } else {
+        w->hale_facing = (dy > 0) ? FT_FACE_DOWN : FT_FACE_UP;
+    }
+}
+
+/* Where leading goes in the room he is in. */
+static void hale_lead_goal(const FtWorld* w, int32_t* gx, int32_t* gy) {
+    if(w->room == FT_ROOM_WELDHOME) {
+        *gx = HALE_OUT_TX;
+        *gy = HALE_OUT_TY;
+    } else {
+        *gx = HALE_PIT_TX;
+        *gy = HALE_PIT_TY;
+    }
+}
+
+/* The end of this room's part of the walk. */
+static void hale_lead_done(FtWorld* w) {
+    if(w->room == FT_ROOM_WELDHOME) {
+        /* Out of the door and on ahead. He waits just inside the next room
+         * for you to come through after him. */
+        hale_place(w, FT_ROOM_APPROACH, HALE_IN_TX, HALE_IN_TY);
+        w->hale_facing = FT_FACE_LEFT;
+    } else if(w->room == FT_ROOM_APPROACH) {
+        /* Here. The pit is right by him, and it has been there the whole
+         * time. */
+        w->revealed |= FT_REVEAL_PIT;
+        w->revealed_now = true;
+        w->hale = (uint8_t)FT_HALE_WAIT;
+        w->hale_facing = FT_FACE_RIGHT;
+    }
+}
+
+/* He has just finished a step. Some tiles are the end of something. */
+static void hale_landed(FtWorld* w) {
+    const uint8_t tx = w->hale_mv.tx, ty = w->hale_mv.ty;
+
+    switch((FtHalePhase)w->hale) {
+    case FT_HALE_LEAD: {
+        int32_t gx, gy;
+        hale_lead_goal(w, &gx, &gy);
+        if((int32_t)tx == gx && (int32_t)ty == gy) hale_lead_done(w);
+        break;
+    }
+
+    case FT_HALE_HOME:
+        if(tx == HALE_POST_TX && ty == HALE_POST_TY) {
+            w->hale = (uint8_t)FT_HALE_POST;
+            w->hale_facing = FT_FACE_DOWN;
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+static void hale_update(FtWorld* w, uint32_t dt_ms) {
+    if(!ft_world_hale_here(w)) return;
+
+    if(w->hale_mv.dx || w->hale_mv.dy) {
+        if(step_advance(&w->hale_mv, dt_ms, ft_world_hale_step_ms(w))) hale_landed(w);
+        return;
+    }
+
+    const int32_t px = w->mv.tx, py = w->mv.ty;
+    const int32_t hx = w->hale_mv.tx, hy = w->hale_mv.ty;
+
+    switch((FtHalePhase)w->hale) {
+    case FT_HALE_LEAD: {
+        /* Too far behind: he stops and looks back for you. */
+        if(tiles_apart(hx, hy, px, py) > HALE_LEASH) {
+            hale_face(w, px, py);
+            return;
+        }
+
+        if(w->room != FT_ROOM_WELDHOME && w->room != FT_ROOM_APPROACH) return;
+
+        int32_t gx, gy;
+        hale_lead_goal(w, &gx, &gy);
+
+        /* The last step of his way can be you. He will not walk through you
+         * and you are waiting for him, so a doorway turns into a standoff —
+         * the first player to reach the gate before him found exactly that.
+         * Nearly there counts as there. */
+        if(!hale_step_toward(w, gx, gy) && tiles_apart(hx, hy, gx, gy) <= 2) {
+            hale_lead_done(w);
+        }
+        return;
+    }
+
+    case FT_HALE_WAIT:
+        /* Walk far enough off and he takes it that you are going home, and
+         * comes too — whether Wren is with you or not. */
+        if(tiles_apart(hx, hy, px, py) >= HALE_FOLLOW_AT) w->hale = (uint8_t)FT_HALE_FOLLOW;
+        return;
+
+    case FT_HALE_FOLLOW: {
+        /* Behind whoever is last in the line. */
+        const int32_t lx = w->escort ? (int32_t)w->escort_mv.tx : px;
+        const int32_t ly = w->escort ? (int32_t)w->escort_mv.ty : py;
+
+        const bool leader_moving = w->escort ? (w->escort_mv.dx || w->escort_mv.dy) :
+                                               ft_world_moving(w);
+        const int32_t gap = tiles_apart(hx, hy, lx, ly);
+
+        /* In his place, and the one in front is moving off: he steps into
+         * the tile they are leaving, at walking pace. The conga in
+         * ft_world_update does the same on the exact frame; this catches
+         * him when he landed a moment too late for it, which otherwise left
+         * him jogging to catch up and stopping, in bursts, all the way home. */
+        if(gap == 1 && leader_moving) {
+            const int8_t sx = (int8_t)(lx - hx), sy = (int8_t)(ly - hy);
+            w->hale_mv.dx = sx;
+            w->hale_mv.dy = sy;
+            w->hale_mv.step_ms = 0;
+            w->hale_hurry = false;
+            w->hale_facing = (sx > 0) ? FT_FACE_RIGHT : (sx < 0) ? FT_FACE_LEFT :
+                             (sy > 0) ? FT_FACE_DOWN : FT_FACE_UP;
+            return;
+        }
+
+        /* Out of his place, so he jogs until he is back in it. Jogging only
+         * when more than two back left him parked exactly two back, walking
+         * at your pace one row over, all the way to the gate. */
+        if(gap > 1 && hale_step_toward(w, lx, ly)) w->hale_hurry = true;
+        return;
+    }
+
+    case FT_HALE_HOME:
+        if(!hale_step_toward(w, HALE_POST_TX, HALE_POST_TY) &&
+           hx == HALE_POST_TX && hy == HALE_POST_TY) {
+            w->hale = (uint8_t)FT_HALE_POST;
+            w->hale_facing = FT_FACE_DOWN;
+        }
+        return;
+
+    case FT_HALE_POST:
+    default:
+        return;
+    }
+}
+
+/* The player has changed room. Where does that leave him? */
+static void hale_on_enter(FtWorld* w, uint8_t from, uint8_t to, uint8_t tx, uint8_t ty) {
+    switch((FtHalePhase)w->hale) {
+    case FT_HALE_LEAD:
+        if(from == FT_ROOM_WELDHOME && to == FT_ROOM_APPROACH) {
+            /* Through the door after him: he is just ahead, whether he got
+             * there first or you did. */
+            hale_place(w, FT_ROOM_APPROACH, HALE_IN_TX, HALE_IN_TY);
+            w->hale_facing = FT_FACE_LEFT;
+        } else if(from == FT_ROOM_APPROACH && to == FT_ROOM_WELDHOME) {
+            /* You turned back. He comes with you, and it will take talking
+             * to him again to set off. */
+            w->hale = (uint8_t)FT_HALE_HOME;
+            hale_place(w, FT_ROOM_WELDHOME, tx, ty);
+        } else if(from == FT_ROOM_APPROACH || from == FT_ROOM_WELDHOME) {
+            /* Off somewhere he was not taking you. He goes back to the gate. */
+            w->hale = (uint8_t)FT_HALE_POST;
+            hale_place(w, FT_ROOM_WELDHOME, HALE_POST_TX, HALE_POST_TY);
+            w->hale_facing = FT_FACE_DOWN;
+        }
+        break;
+
+    case FT_HALE_FOLLOW:
+        if(to == FT_ROOM_WELDHOME) {
+            /* Home, with you. He walks back to his post from the door. */
+            w->hale = (uint8_t)FT_HALE_HOME;
+            hale_place(w, FT_ROOM_WELDHOME, tx, ty);
+        } else {
+            /* Down the pit, or off west: not his way. He goes back to it
+             * and waits. */
+            w->hale = (uint8_t)FT_HALE_WAIT;
+            hale_place(w, FT_ROOM_APPROACH, HALE_PIT_TX, HALE_PIT_TY);
+            w->hale_facing = FT_FACE_RIGHT;
+        }
+        break;
+
+    case FT_HALE_HOME:
+        if(to != FT_ROOM_WELDHOME) {
+            w->hale = (uint8_t)FT_HALE_POST;
+            hale_place(w, FT_ROOM_WELDHOME, HALE_POST_TX, HALE_POST_TY);
+            w->hale_facing = FT_FACE_DOWN;
+        }
+        break;
+
+    case FT_HALE_POST:
+    case FT_HALE_WAIT:
+    default:
+        break;
+    }
 }
 
 bool ft_world_terminal_near(const FtWorld* w) {

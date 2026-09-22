@@ -130,7 +130,7 @@ Named characters so far:
 
 ---
 
-## 6. Chapter 1 — Weldhome, and the kid in the junction
+## 6. Chapter 1 — Weldhome, and the kid under the grass
 
 The first real chapter, and the template for every chapter after it: **a village
 that will not let you through, a reason you cannot fight your way past, and a
@@ -138,27 +138,30 @@ problem only a traveller can solve.**
 
 ### The beats
 
-1. **The turn you cannot take.** Early in the Scrapline approach the corridor
-   forks. One way carries on toward the village. The other drops into a dark
-   side junction. Try it and the Courier says so: *"Nothing down there for me.
-   Keep going."* It is not locked. You simply have no reason.
+1. **The field you walk past.** On the approach to the village there is a patch
+   of long grass beside the path. You can wade through it. Nothing happens.
+   There is nothing there to see, and no reason to look.
 
 2. **The gate.** Weldhome's gate is held by **Warden Coll** and it does not open
    for you. Not a puzzle, not a fee — she has watched machines take three people
    and you are a machine that walks.
 
 3. **The ask.** She names the terms herself, because she would rather be wrong
-   about you than right: *"A kid went into the east junction two days back.
-   Bring her out and I will believe you are not one of them."*
+   about you than right: *"Then prove it. A girl's gone. Wren."* And she does
+   not know where — but **Hale**, the other guard, does: *"Go with him. Bring her
+   back."*
 
-4. **The turn you can take now.** Walk back. The fork is still there. This time
-   the Courier goes in — the line changes, because the reason changed.
+4. **The way you walked past.** Hale walks you out of the gate and back along
+   the path, and into the long grass you already waded through. The pit is
+   right there, and it always was. It took somebody who lives here to show you.
+   He stays beside it: *"Someone has to be here when you're up."*
 
-5. **The junction.** Wren is held by a group at the far end. It is the hardest
-   fight so far and it is guarded the way things guard: a **Blank Wall** in front
-   of two live ones, so you cannot skip to the end.
+5. **The Hollow.** A cave under the grass. Wren is held by a group at the far
+   end, past the one passage through the rock. It is the hardest fight so far
+   and it is guarded the way things guard: a **Blank Wall** in front of two live
+   ones, so you cannot skip to the end.
 
-6. **The walk back.** Wren follows you. She is small, quick, talks constantly,
+6. **The walk back.** Up the ladder, and Hale falls in behind. Wren follows you. She is small, quick, talks constantly,
    and is not scared of you at all — which is the point, and the first time
    anybody in this world isn't.
 
@@ -170,8 +173,9 @@ problem only a traveller can solve.**
 
 - The backtrack **re-uses a room you already walked**, which is cheap to build
   and makes the world feel like a place rather than a corridor.
-- The "I don't need to go there" line is a **soft lock that costs nothing** — no
-  key, no gate art, no new tile. The world opens because your reason changed.
+- The hidden way is a **soft lock that costs nothing** — no key, no gate art,
+  no refusal. The world opens because somebody who lives in it trusts you
+  enough to show you, which is the chapter's whole subject.
 - The escort walk back is a **victory lap with a companion**, which is the only
   time this game is not lonely, and therefore worth doing.
 - Coll's last line is the **first thread of the main plot**. Chapter 1 ends by

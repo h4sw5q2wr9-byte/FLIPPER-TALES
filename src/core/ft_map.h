@@ -102,6 +102,17 @@ typedef enum {
      * place people live before anyone will believe the people. */
     FT_TILE_HUT_DOOR,
 
+    /* Grass up to your knees. Walkable and drawn in front, like a canopy, so
+     * you wade through it with your legs hidden — and nothing happens in it.
+     * It is not an encounter zone and never will be: it is where something
+     * is hidden, which is a different promise. */
+    FT_TILE_TALL_GRASS,
+
+    /* Underground. Rock is a cave's wall — solid, and rough, so a cave never
+     * reads as the same thing as a hull. Cave floor is the ground under it. */
+    FT_TILE_ROCK,
+    FT_TILE_CAVE,
+
     FT_TILE_COUNT
 } FtTile;
 
@@ -139,7 +150,12 @@ typedef enum {
 #define FT_TILE_ART_LEAF_BL   (FT_TILE_COUNT + 9)
 #define FT_TILE_ART_LEAF_BR   (FT_TILE_COUNT + 10)
 
-#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 11)
+/* An opening in the ground, drawn over whatever tile a hidden exit stands on
+ * once somebody has shown you it is there. Art only: the map keeps the tile
+ * it had, so the hole can be hidden in plain sight until then. */
+#define FT_TILE_ART_PIT       (FT_TILE_COUNT + 11)
+
+#define FT_TILE_ART_COUNT     (FT_TILE_COUNT + 12)
 
 /* Maps are stored as one byte per tile, streamed from the SD card. Kept as a
  * borrowed pointer so a map is never copied into RAM wholesale. */

@@ -281,6 +281,23 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
              * ft_map_art_index). */
             const FtTile here = ft_map_tile(map, mx, my);
 
+            /* A way down somebody has shown you. The map still says long
+             * grass here — that is how it stayed hidden — so the hole is
+             * drawn over it, and the grass is not drawn in front of it. */
+            if(ft_world_pit_at(w, mx, my)) {
+                blit_rows(canvas, FT_TILE_ART[FT_TILE_ART_PIT], FT_TILE_PX, sx, sy,
+                          FT_TILE_PX);
+                continue;
+            }
+
+            /* Long grass goes down whole, here, as ground. Only its lower
+             * half is drawn again over the actors, below. */
+            if(here == FT_TILE_TALL_GRASS) {
+                blit_rows(canvas, FT_TILE_ART[FT_TILE_TALL_GRASS], FT_TILE_PX, sx, sy,
+                          FT_TILE_PX);
+                continue;
+            }
+
             if(ft_tile_foreground(here)) {
                 /* A canopy or a roof is drawn last, over the actors. What
                  * goes down here is the ground it is hanging over. */
@@ -378,6 +395,14 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
         }
     }
 
+    /* Hale, wherever he has got to. He is drawn from his own stepper rather
+     * than a room's entity table, because he is the one person who walks
+     * from room to room. */
+    if(ft_world_hale_here(w)) {
+        const FtPos hp = ft_stepper_pos(&w->hale_mv, ft_world_hale_step_ms(w));
+        draw_foe(canvas, FT_SPRITE_GUARD, hp.x - cam.x, hp.y - cam.y);
+    }
+
     /* Whoever is walking with you, behind the avatar so the player is never
      * hidden by their own escort. */
     if(w->escort) {
@@ -405,9 +430,25 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
 
             const FtTile t = ft_map_tile(map, mx, my);
             if(!ft_tile_foreground(t)) continue;
+            if(ft_world_pit_at(w, mx, my)) continue;
 
-            blit_rows(canvas, FT_TILE_ART[t], FT_TILE_PX, tx * FT_TILE_PX - off_x,
-                      ty * FT_TILE_PX - off_y, FT_TILE_PX);
+            /* Knee-high: the bottom half of the blades, over the legs of
+             * whoever is standing in it. The top half is already down. */
+            if(t == FT_TILE_TALL_GRASS) {
+                const int32_t half = FT_TILE_PX / 2;
+                blit_rows(canvas, FT_TILE_ART[FT_TILE_TALL_GRASS] + half, half,
+                          tx * FT_TILE_PX - off_x, ty * FT_TILE_PX - off_y + half,
+                          FT_TILE_PX);
+                continue;
+            }
+
+            /* The art index, not the raw tile. This drew FT_TILE_ART[t] for a
+             * while, which is the square leaf: the rounded canopy corners
+             * showed up in every preview (which draws the whole map through
+             * ft_map_art_index) and in no game, because the one pass that
+             * draws leaves on the device skipped the lookup. */
+            blit_rows(canvas, FT_TILE_ART[ft_map_art_index(map, mx, my)], FT_TILE_PX,
+                      tx * FT_TILE_PX - off_x, ty * FT_TILE_PX - off_y, FT_TILE_PX);
         }
     }
 

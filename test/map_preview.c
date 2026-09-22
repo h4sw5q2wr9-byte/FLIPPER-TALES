@@ -153,10 +153,10 @@ int main(void) {
         FtWorld esc;
         ft_world_init(&esc);
         ft_quest_advance(&esc.quests, FT_QUEST_WREN, FT_QUEST_READY);
-        ft_world_enter(&esc, 11, 8, 1);
+        ft_world_enter(&esc, FT_ROOM_HOLLOW, 6, 3);
         ft_world_escort_start(&esc);
-        esc.escort_mv.tx = 9;
-        esc.escort_mv.ty = 1;
+        esc.escort_mv.tx = 7;
+        esc.escort_mv.ty = 3;
         esc.facing = FT_FACE_LEFT;
 
         ft_overworld_render(canvas, &esc);
@@ -165,6 +165,48 @@ int main(void) {
         const int c = ft_stub_canvas_clipped(canvas);
         clipped_total += c;
         printf("  %-14s %s\n", "escort", c ? "CLIPPED" : "ok");
+    }
+
+    /* Hale. At the gate beside Coll; leading you through the long grass
+     * before anything is there; beside the pit he found; and the cave it
+     * drops you into. */
+    {
+        struct {
+            const char* name;
+            const char* file;
+            uint8_t room, tx, ty, hale, hx, hy, revealed;
+            FtFacing facing;
+        } shots[] = {
+            {"hale-gate", "preview/map_25_hale-gate.pbm", FT_ROOM_WELDHOME, 21, 5,
+             FT_HALE_POST, 22, 6, 0, FT_FACE_RIGHT},
+            {"hale-grass", "preview/map_26_hale-grass.pbm", FT_ROOM_APPROACH, 10, 6,
+             FT_HALE_LEAD, 10, 7, 0, FT_FACE_DOWN},
+            {"pit", "preview/map_27_pit.pbm", FT_ROOM_APPROACH, 12, 7,
+             FT_HALE_WAIT, 10, 8, FT_REVEAL_PIT, FT_FACE_DOWN},
+            {"hollow", "preview/map_28_hollow.pbm", FT_ROOM_HOLLOW, 3, 2,
+             FT_HALE_WAIT, 10, 8, FT_REVEAL_PIT, FT_FACE_DOWN},
+        };
+
+        for(size_t i = 0; i < sizeof(shots) / sizeof(shots[0]); i++) {
+            FtWorld h;
+            ft_world_init(&h);
+            ft_quest_advance(&h.quests, FT_QUEST_WREN, FT_QUEST_ACTIVE);
+            ft_world_enter(&h, shots[i].room, shots[i].tx, shots[i].ty);
+            h.revealed = shots[i].revealed;
+            h.hale = shots[i].hale;
+            h.hale_room = (shots[i].hale == FT_HALE_POST) ? FT_ROOM_WELDHOME : FT_ROOM_APPROACH;
+            h.hale_mv.tx = shots[i].hx;
+            h.hale_mv.ty = shots[i].hy;
+            h.facing = shots[i].facing;
+            h.area_ms = 100000u; /* past the name banner */
+
+            ft_overworld_render(canvas, &h);
+            ft_stub_canvas_write_pbm(canvas, shots[i].file);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            clipped_total += c;
+            printf("  %-14s %s\n", shots[i].name, c ? "CLIPPED" : "ok");
+        }
     }
 
     /* Spotted: the mark over a group that has seen you and has not started
