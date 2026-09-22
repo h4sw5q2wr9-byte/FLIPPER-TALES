@@ -72,43 +72,59 @@ static void append_num(char* out, uint8_t cap, int16_t v) {
     append(out, cap, buf);
 }
 
-void ft_guide_traits(FtEnemyId id, char* out, uint8_t cap) {
+void ft_guide_vitals(FtEnemyId id, char* out, uint8_t cap) {
     if(cap == 0u) return;
     out[0] = '\0';
     if(id >= FT_ENEMY_COUNT) return;
 
     const FtEnemy* en = &FT_ENEMIES[id];
 
+    append(out, cap, "HP ");
+    append_num(out, cap, en->charge);
+
+    /* "SH2" said the same thing in three characters nobody could read. */
     if(en->shielded > 0) {
-        append(out, cap, "SH");
+        append(out, cap, "  Shield ");
         append_num(out, cap, en->shielded);
     }
-    if(en->attrs & FT_ATTR_AIRBORNE) {
-        if(out[0] != '\0') append(out, cap, " ");
-        append(out, cap, "AIR");
-    }
-    if(en->attrs & FT_ATTR_ENCRYPTED) {
-        if(out[0] != '\0') append(out, cap, " ");
-        append(out, cap, "ENC");
-    }
-    if(en->attrs & FT_ATTR_FAST) {
-        if(out[0] != '\0') append(out, cap, " ");
-        append(out, cap, "FST");
-    }
-    if(en->attrs & FT_ATTR_JAMMER) {
-        if(out[0] != '\0') append(out, cap, " ");
-        append(out, cap, "JAM");
-    }
-    if(en->attrs & FT_ATTR_BULWARK) {
-        if(out[0] != '\0') append(out, cap, " ");
-        append(out, cap, "WALL");
-    }
-    if(en->attrs & FT_ATTR_SLEEPER) {
-        if(out[0] != '\0') append(out, cap, " ");
-        append(out, cap, "SLP");
-    }
+}
 
-    if(out[0] == '\0') append(out, cap, "no traits");
+const char* ft_guide_advice(FtEnemyId id) {
+    if(id >= FT_ENEMY_COUNT) return "";
+
+    const uint32_t attrs = FT_ENEMIES[id].attrs;
+
+    /* Order is what to do *first*, not what is most unusual. A wall has to
+     * die before anything else matters; a sleeper has to be left alone. */
+    if(attrs & FT_ATTR_BULWARK)   return "Kill this first";
+    if(attrs & FT_ATTR_SLEEPER)   return "Save it for last";
+
+    /* Reach beats everything else: an attack that cannot land is not a
+     * choice, it is a wasted turn. */
+    if(attrs & FT_ATTR_AIRBORNE)  return "Use Sub-GHz";
+    if(attrs & FT_ATTR_ENCRYPTED) return "Use NFC";
+
+    if(FT_ENEMIES[id].shielded >= 2) return "Pierce it: NFC";
+    if(attrs & FT_ATTR_JAMMER)    return "Kill it, free SP";
+    if(attrs & FT_ATTR_FAST)      return "Drop it early";
+
+    return "Any module works";
+}
+
+const char* ft_guide_tag(FtEnemyId id) {
+    if(id >= FT_ENEMY_COUNT) return "";
+
+    const uint32_t attrs = FT_ENEMIES[id].attrs;
+
+    if(attrs & FT_ATTR_BULWARK)   return "first";
+    if(attrs & FT_ATTR_SLEEPER)   return "last";
+    if(attrs & FT_ATTR_AIRBORNE)  return "Sub-GHz";
+    if(attrs & FT_ATTR_ENCRYPTED) return "NFC";
+    if(FT_ENEMIES[id].shielded >= 2) return "NFC";
+    if(attrs & FT_ATTR_JAMMER)    return "no SP";
+    if(attrs & FT_ATTR_FAST)      return "fast";
+
+    return "any";
 }
 
 const char* ft_guide_note(FtEnemyId id, uint8_t n) {
@@ -119,56 +135,65 @@ const char* ft_guide_note(FtEnemyId id, uint8_t n) {
 
     /* A tag is only useful if you know what it costs you, so each line says
      * what the trait does rather than restating its name. */
-    if(en->attrs & FT_ATTR_AIRBORNE) {
-        if(at == n) return "Airborne: NFC misses";
-        at++;
-    }
-    if(en->attrs & FT_ATTR_ENCRYPTED) {
-        if(at == n) return "Sealed: Sub-GHz dud";
-        at++;
-    }
-    if(en->attrs & FT_ATTR_FAST) {
-        if(at == n) return "Fast: moves first";
-        at++;
-    }
-    if(en->attrs & FT_ATTR_JAMMER) {
-        if(at == n) return "Jams your SP";
-        at++;
-    }
     if(en->attrs & FT_ATTR_BULWARK) {
-        if(at == n) return "Blocks all behind it";
+        if(at == n) return "Nothing gets past it";
         at++;
     }
     if(en->attrs & FT_ATTR_SLEEPER) {
-        if(at == n) return "Wakes up last, hard";
+        if(at == n) return "Idle till it's alone";
         at++;
     }
-    if(en->shielded > 0) {
-        if(at == n) return "Shielded: pierce it";
+    if(en->attrs & FT_ATTR_AIRBORNE) {
+        if(at == n) return "Flies: NFC misses";
+        at++;
+    }
+    if(en->attrs & FT_ATTR_ENCRYPTED) {
+        if(at == n) return "Sealed: Sub-GHz = 0";
+        at++;
+    }
+    if(en->attrs & FT_ATTR_FAST) {
+        if(at == n) return "Moves before you do";
+        at++;
+    }
+    if(en->attrs & FT_ATTR_JAMMER) {
+        if(at == n) return "Locks your SP meter";
         at++;
     }
     return NULL;
+}
+
+uint8_t ft_guide_attack_count(FtEnemyId id) {
+    if(id >= FT_ENEMY_COUNT) return 0u;
+
+    /* A bulwark never takes a turn, so the attack in its table is a
+     * placeholder the resolver needs and the player must never be shown.
+     * Listing it read as a threat that does not exist. */
+    if(FT_ENEMIES[id].attrs & FT_ATTR_BULWARK) return 0u;
+
+    return FT_ENEMIES[id].attack_count;
 }
 
 bool ft_guide_attack_line(FtEnemyId id, uint8_t n, char* out, uint8_t cap) {
     if(cap == 0u) return false;
     out[0] = '\0';
 
-    if(id >= FT_ENEMY_COUNT) return false;
+    if(n >= ft_guide_attack_count(id)) return false;
 
-    const FtEnemy* en = &FT_ENEMIES[id];
-    if(n >= en->attack_count) return false;
+    const FtAttack* atk = &FT_ENEMIES[id].attacks[n];
 
-    const FtAttack* atk = &en->attacks[n];
-
-    append(out, cap, (atk->delivery == FT_DELIVERY_BROADCAST) ? "Wide " : "Close ");
+    /* Power first: it is the number you compare against your own HP. */
     append_num(out, cap, atk->base_power);
 
+    /* How it gets to you. "Close"/"Wide" meant nothing; these are the two
+     * things the player's own modules already do. */
+    append(out, cap, (atk->delivery == FT_DELIVERY_BROADCAST) ? " wave" : " touch");
+
+    /* And what a guard can do about it, in the same words the wind-up uses. */
     switch(atk->klass) {
-    case FT_CLASS_UNDODGEABLE: append(out, cap, " none"); break;
-    case FT_CLASS_GUARDED:     append(out, cap, " jam"); break;
+    case FT_CLASS_UNDODGEABLE: append(out, cap, " no guard"); break;
+    case FT_CLASS_GUARDED:     append(out, cap, " jam only"); break;
     case FT_CLASS_NORMAL:
-    default:                   append(out, cap, " keep"); break;
+    default:                   append(out, cap, " block"); break;
     }
 
     /* What it leaves behind, if anything. Worth a column of its own: an

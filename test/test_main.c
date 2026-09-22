@@ -3087,16 +3087,10 @@ static void test_guide(void) {
         const FtEnemyId id = (FtEnemyId)i;
         char buf[24];
 
-        ft_guide_traits(id, buf, (uint8_t)sizeof(buf));
-        CHECK(buf[0] != '\0', "%s has a trait line", FT_ENEMIES[id].name);
+        ft_guide_vitals(id, buf, (uint8_t)sizeof(buf));
+        CHECK(buf[0] != '\0', "%s has a vitals line", FT_ENEMIES[id].name);
         CHECK(strlen(buf) <= FT_TUTORIAL_MAX_CHARS,
-              "%s's traits fit: \"%s\"", FT_ENEMIES[id].name, buf);
-
-        /* A plain enemy says so rather than showing an empty row. */
-        if(FT_ENEMIES[id].attrs == 0u && FT_ENEMIES[id].shielded == 0) {
-            CHECK(strstr(buf, "no traits") != NULL, "%s reads as plain",
-                  FT_ENEMIES[id].name);
-        }
+              "%s's vitals fit: \"%s\"", FT_ENEMIES[id].name, buf);
 
         /* Every trait it has gets a line explaining what it costs you. */
         uint8_t notes = 0;
@@ -3108,7 +3102,7 @@ static void test_guide(void) {
             CHECK(strlen(note) <= FT_TUTORIAL_MAX_CHARS,
                   "%s note %u fits: \"%s\"", FT_ENEMIES[id].name, n, note);
         }
-        if(FT_ENEMIES[id].attrs != 0u || FT_ENEMIES[id].shielded > 0) {
+        if(FT_ENEMIES[id].attrs != 0u) {
             CHECK(notes > 0, "%s explains its traits", FT_ENEMIES[id].name);
         }
 
@@ -3121,12 +3115,12 @@ static void test_guide(void) {
             CHECK(strlen(buf) <= FT_TUTORIAL_MAX_CHARS,
                   "%s attack %u fits: \"%s\"", FT_ENEMIES[id].name, n, buf);
         }
-        CHECK_EQ(lines, FT_ENEMIES[id].attack_count);
+        CHECK_EQ(lines, ft_guide_attack_count(id));
     }
 
     /* A short buffer truncates rather than running off the end. */
     char tiny[4];
-    ft_guide_traits(FT_ENEMY_NULL_FIELD, tiny, (uint8_t)sizeof(tiny));
+    ft_guide_vitals(FT_ENEMY_NULL_FIELD, tiny, (uint8_t)sizeof(tiny));
     CHECK(strlen(tiny) < sizeof(tiny), "a short buffer stays terminated");
 
     /* The guide survives a save, because it is the run's memory. */
@@ -4196,6 +4190,102 @@ static void test_deflect(void) {
           why ? why : "");
 }
 
+/* ---- The field guide's words ------------------------------------------- */
+
+static void test_guide_words(void) {
+    section("the guide reads");
+
+    char line[40];
+
+    for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+        const FtEnemyId id = (FtEnemyId)i;
+        const FtEnemy*  en = &FT_ENEMIES[id];
+
+        /* Every line has to FIT, not merely be drawn.
+         *
+         * draw_clipped does its job silently: an over-long line is not drawn
+         * off-panel, it is drawn with the end missing, so the layout checker
+         * passes it and the player reads "Sealed. Sub-GHz does". Width is a
+         * test's job, not the preview's. */
+        ft_guide_vitals(id, line, (uint8_t)sizeof(line));
+        CHECK(strlen(line) <= FT_GUIDE_SHORT_MAX, "%s vitals fit: \"%s\"",
+              en->name, line);
+        CHECK(strstr(line, "HP") != NULL, "%s vitals name HP", en->name);
+
+        const char* advice = ft_guide_advice(id);
+        CHECK(advice && advice[0], "%s has advice", en->name);
+        CHECK(advice && strlen(advice) <= FT_GUIDE_SHORT_MAX,
+              "%s advice fits: \"%s\"", en->name, advice ? advice : "");
+
+        const char* tag = ft_guide_tag(id);
+        CHECK(tag && strlen(tag) <= 8u, "%s tag fits: \"%s\"", en->name,
+              tag ? tag : "");
+
+        for(uint8_t k = 0; k < 6u; k++) {
+            const char* note = ft_guide_note(id, k);
+            if(!note) break;
+            CHECK(strlen(note) <= FT_GUIDE_LINE_MAX, "%s note %u fits: \"%s\"",
+                  en->name, k, note);
+        }
+
+        for(uint8_t k = 0; k < FT_ENEMY_MAX_ATTACKS; k++) {
+            if(!ft_guide_attack_line(id, k, line, (uint8_t)sizeof(line))) break;
+            CHECK(strlen(line) <= FT_GUIDE_LINE_MAX, "%s attack %u fits: \"%s\"",
+                  en->name, k, line);
+        }
+
+        /* And the whole page has to fit the six rows the entry screen has. */
+        uint8_t rows = 2u; /* vitals and advice */
+        for(uint8_t k = 0; k < 6u; k++) {
+            if(!ft_guide_note(id, k)) break;
+            rows++;
+        }
+        rows = (uint8_t)(rows + ft_guide_attack_count(id));
+        CHECK(rows <= 6u, "%s fits the page (%u rows)", en->name, rows);
+    }
+
+    /* A bulwark never takes a turn, so it must never list an attack. Its
+     * table carries one because the resolver needs the slot; showing it read
+     * as a threat that does not exist. */
+    CHECK_EQ(ft_guide_attack_count(FT_ENEMY_BLANK_WALL), 0);
+    CHECK(!ft_guide_attack_line(FT_ENEMY_BLANK_WALL, 0, line, (uint8_t)sizeof(line)),
+          "and refuses to describe one");
+
+    /* Everything else does. */
+    for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+        if(FT_ENEMIES[i].attrs & FT_ATTR_BULWARK) continue;
+        CHECK(ft_guide_attack_count((FtEnemyId)i) > 0u, "%s lists what it does",
+              FT_ENEMIES[i].name);
+    }
+
+    /* The advice has to actually match the enemy: an airborne one must not be
+     * told to use the module that cannot reach it. */
+    for(uint8_t i = 0; i < FT_ENEMY_COUNT; i++) {
+        const char* a = ft_guide_advice((FtEnemyId)i);
+        const uint32_t attrs = FT_ENEMIES[i].attrs;
+
+        if((attrs & FT_ATTR_AIRBORNE) && !(attrs & FT_ATTR_BULWARK) &&
+           !(attrs & FT_ATTR_SLEEPER)) {
+            CHECK(strstr(a, "Sub-GHz") != NULL,
+                  "%s flies, so the advice is the broadcast: \"%s\"",
+                  FT_ENEMIES[i].name, a);
+        }
+        if((attrs & FT_ATTR_ENCRYPTED) && !(attrs & FT_ATTR_AIRBORNE) &&
+           !(attrs & FT_ATTR_BULWARK) && !(attrs & FT_ATTR_SLEEPER)) {
+            CHECK(strstr(a, "NFC") != NULL,
+                  "%s is sealed, so the advice is contact: \"%s\"",
+                  FT_ENEMIES[i].name, a);
+        }
+    }
+
+    /* And an attack line says all four things it is meant to. */
+    ft_guide_attack_line(FT_ENEMY_SEALED_LOCK, 1, line, (uint8_t)sizeof(line));
+    CHECK(strstr(line, "4") != NULL, "power: \"%s\"", line);
+    CHECK(strstr(line, "touch") != NULL, "how it reaches you: \"%s\"", line);
+    CHECK(strstr(line, "no guard") != NULL, "that nothing stops it: \"%s\"", line);
+    CHECK(strstr(line, "MP-") != NULL, "and what it leaves: \"%s\"", line);
+}
+
 int main(void) {
     printf("\nFlipper Tales — core tests\n\n");
 
@@ -4245,6 +4335,7 @@ int main(void) {
     test_fast_turn_order();
     test_enemy_roster();
     test_guide();
+    test_guide_words();
     test_defend_is_worth_it();
     test_losing_costs();
     test_levelup();

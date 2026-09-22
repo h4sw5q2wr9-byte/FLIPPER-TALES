@@ -1382,14 +1382,16 @@ void ft_render_guide_list(Canvas* canvas, const FtGuide* g, uint8_t selected) {
 
         draw_centred(canvas, FT_SCREEN_W / 2, 8, "FIELD GUIDE");
         canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
-        draw_centred(canvas, FT_SCREEN_W / 2, 32, "Nothing met yet.");
-        draw_centred(canvas, FT_SCREEN_W / 2, 44, "Fight something.");
+        draw_centred(canvas, FT_SCREEN_W / 2, 30, "Nothing met yet.");
+        draw_centred(canvas, FT_SCREEN_W / 2, 42, "Everything you fight");
+        draw_centred(canvas, FT_SCREEN_W / 2, 52, "writes itself here.");
         return;
     }
 
-    /* Names and traits, built into buffers the list can borrow. */
+    /* Names, and what to hit each one with. The value column used to be
+     * empty, so the list was ten names and no information — you had to open
+     * every page to find the one you wanted. */
     static char names[FT_ENEMY_COUNT][20];
-    static char traits[FT_ENEMY_COUNT][14];
     const char* items[FT_ENEMY_COUNT];
     const char* values[FT_ENEMY_COUNT];
 
@@ -1397,10 +1399,8 @@ void ft_render_guide_list(Canvas* canvas, const FtGuide* g, uint8_t selected) {
         const FtEnemyId id = ft_guide_nth(g, i);
 
         snprintf(names[i], sizeof(names[i]), "%s", FT_ENEMIES[id].name);
-        ft_guide_traits(id, traits[i], (uint8_t)sizeof(traits[i]));
-
         items[i] = names[i];
-        values[i] = NULL; /* the traits need the whole width on the entry page */
+        values[i] = ft_guide_tag(id);
     }
 
     ft_render_menu_list(canvas, "FIELD GUIDE", items, values, n, selected);
@@ -1421,20 +1421,21 @@ void ft_render_guide_entry(Canvas* canvas, FtEnemyId id) {
     /* The sprite, so the page and the thing in the corridor match. */
     draw_sprite(canvas, ft_enemy_art(id), FT_SCREEN_W - 18, 14);
 
-    char line[24];
-    snprintf(line, sizeof(line), "HP %d", (int)en->charge);
-    canvas_draw_str(canvas, 2, 20, line);
+    char line[28];
 
-    ft_guide_traits(id, line, (uint8_t)sizeof(line));
-    draw_clipped(canvas, 2, 28, line, FT_SCREEN_W - 24);
+    /* Six rows of eight, which is what fits and what the busiest entry needs:
+     * vitals, the advice, two traits and two attacks. */
+    ft_guide_vitals(id, line, (uint8_t)sizeof(line));
+    draw_clipped(canvas, 2, 20, line, FT_SCREEN_W - 24);
 
-    /* What those traits actually do, one line each, then the attacks. Four
-     * rows of eight from here, which is exactly what the busiest enemy needs
-     * — two notes and two attacks. At nine the Sealed Lock lost its second
-     * attack off the bottom, which is the half of its moveset you most need
-     * to look up. */
-    int32_t y = 36;
-    for(uint8_t i = 0; i < 2u; i++) {
+    /* The advice gets a marker, because it is the only line on this page the
+     * player can act on and the rest is background. */
+    const char* advice = ft_guide_advice(id);
+    canvas_draw_box(canvas, 2, 24, 3, 6);
+    draw_clipped(canvas, 8, 29, advice, FT_SCREEN_W - 30);
+
+    int32_t y = 38;
+    for(uint8_t i = 0; i < 2u && y <= 62; i++) {
         const char* note = ft_guide_note(id, i);
         if(!note) break;
 
@@ -1447,6 +1448,12 @@ void ft_render_guide_entry(Canvas* canvas, FtEnemyId id) {
 
         draw_clipped(canvas, 2, y, line, FT_SCREEN_W - 4);
         y += 8;
+    }
+
+    /* Something that never takes a turn says so, rather than leaving the
+     * bottom of the page blank and the player wondering what it hits for. */
+    if(ft_guide_attack_count(id) == 0u && y <= 62) {
+        draw_clipped(canvas, 2, y, "Never attacks.", FT_SCREEN_W - 4);
     }
 }
 
