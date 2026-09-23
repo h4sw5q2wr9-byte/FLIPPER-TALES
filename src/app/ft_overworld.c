@@ -203,6 +203,20 @@ static void draw_avatar(Canvas* c, int32_t x, int32_t y, FtFacing facing, int32_
 /* Foes, at their full battle resolution. They used to be sampled down to 8x8
  * to sit beside an 8x12 player; at 2x there is room for all sixteen rows, so
  * the thing in the corridor is the thing you are about to fight. */
+/* Echo is built like you, so it is your height: bottom-aligned on its tile
+ * the way the avatar is, not the way a 16px foe is. */
+static void draw_echo(Canvas* c, int32_t x, int32_t y) {
+    const int32_t sx = x * FT_ZOOM;
+    const int32_t sy = y * FT_ZOOM + (FT_TILE_PX * FT_ZOOM - FT_HERO_H);
+
+    if(sx + FT_HERO_W < 0 || sx >= FT_PANEL_W) return;
+    if(sy + FT_HERO_H < 0 || sy >= FT_PANEL_H) return;
+
+    uint32_t rows[FT_HERO_H];
+    for(int32_t i = 0; i < FT_HERO_H; i++) rows[i] = FT_SPRITE_ECHO[i];
+    blit_keyed(c, rows, FT_HERO_H, sx, sy, FT_HERO_W);
+}
+
 static void draw_foe(Canvas* c, const uint16_t* rows, int32_t x, int32_t y) {
     const int32_t sx = x * FT_ZOOM;
     const int32_t sy = y * FT_ZOOM + (FT_TILE_PX * FT_ZOOM - FT_SPRITE_H);
@@ -455,6 +469,11 @@ static void render_world(Canvas* canvas, const FtWorld* w, FtPos focus, bool tal
         draw_foe(canvas, FT_SPRITE_GUARD, hp.x - cam.x, hp.y - cam.y);
     }
 
+    /* Echo, across the gap, for as long as it is looking at you. */
+    if(ft_world_echo_here(w)) {
+        draw_echo(canvas, FT_ECHO_TX * FT_TILE_PX - cam.x, FT_ECHO_TY * FT_TILE_PX - cam.y);
+    }
+
     /* Whoever is walking with you, behind the avatar so the player is never
      * hidden by their own escort. */
     if(w->escort) {
@@ -517,7 +536,7 @@ static void render_world(Canvas* canvas, const FtWorld* w, FtPos focus, bool tal
         } else if(w->bark_who == FT_BARK_BY_WREN && w->escort) {
             const FtPos ep = ft_stepper_pos(&w->escort_mv, FT_STEP_MS);
             draw_bark(canvas, line, ep.x - cam.x, ep.y - cam.y);
-        } else if(w->bark_who == FT_BARK_BY_TERMINAL) {
+        } else if(w->bark_who == FT_BARK_BY_TERMINAL || w->bark_who == FT_BARK_BY_ECHO) {
             draw_bark(canvas, line, (int32_t)w->bark_tx * FT_TILE_PX - cam.x,
                       (int32_t)w->bark_ty * FT_TILE_PX - cam.y);
         }

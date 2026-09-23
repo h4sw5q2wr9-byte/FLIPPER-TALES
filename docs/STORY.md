@@ -158,15 +158,21 @@ wrong — which is also why beating one never feels like killing anything.
 You do not have one until Wren gives you one, on the walk home from the
 Hollow in Chapter 1. Before that, people call you "robot", "you" or worse.
 
-> **Wren:** You need a name.
-> **Wren:** I'm calling you... Bolt.
+Every name is what a kid sees when she looks at you: a **box** on two
+**short legs**, a **screen** for a face, a little **nub** of an antenna on
+top. (The first list — Bolt, Beep, Sprocket, Buttons, Tin Can — was swapped
+for this one because "the names should be more how I look".)
+
+> **Wren:** You need a name. Robot's rude.
+> **Wren:** You're a box. With legs. So... Boxy.
 > *[That's me] [No]*
 
-Say no and she tries again — **Bolt, Beep, Sprocket, Buttons** — and if you
+Say no and she tries again — **Boxy, Telly, Stumpy, Nubbin** — and if you
 turn all of them down:
 
-> **Wren:** FINE. You're Tin Can.
+> **Wren:** FINE. You're Lunchbox.
 > **Wren:** Forever.
+> **Wren:** I'm SO hungry. It's a compliment.
 
 Whatever you end up with sticks: Coll uses it (grudgingly), Hale gets it
 wrong on purpose, and the ending says it. Five names, saved as one number.
@@ -177,16 +183,16 @@ press Back and it counts as a no, so she cannot be walked away from forever.
 Once you have a name, the talk box says it over your own lines instead of
 "You".
 
-| Name | What Hale calls you |
-|---|---|
-| Bolt | Colt |
-| Beep | Boop |
-| Sprocket | Pocket |
-| Buttons | Mittens |
-| Tin Can | Tin Cup |
+| Name | Why | What Hale calls you |
+|---|---|---|
+| Boxy | You are a box with legs | Roxy |
+| Telly | Your face is a screen | Kelly |
+| Stumpy | Your legs are very short | Grumpy |
+| Nubbin | The nub on your head | Muffin |
+| Lunchbox | You turned everything down, and she is hungry | Lunchbag |
 
-> **Hale:** Nice one, Mittens.
-> **Buttons:** It's Buttons.
+> **Hale:** Nice one, Muffin.
+> **Nubbin:** It's Nubbin.
 > **Hale:** That's what I said.
 
 ---
@@ -212,7 +218,23 @@ two levels: the upper caves, full of parcel heaps and the machines that sort
 them, and under them **Dead Letters** — where undeliverable parcels end up,
 and where Wren is, guarded by machines that "returned" her. You bring her home; on the
 way she **names you**. Coll opens the gate and says the first real thing
-anyone has told you: *"You're not the first one through here."*
+anyone has told you *(built)*:
+
+> **Coll:** You're not the first one through here.
+> **You:** Who was?
+> **Coll:** One like you. Same box head.
+> **Coll:** Didn't talk. Just said 'Please hold.'
+> **Coll:** Went east. Never came back.
+
+Ask her again later and she only says: *"Please hold. That's all it ever
+said."*
+
+**First sight of Echo** *(built)*. Go east through the gate she has just
+opened, and at the edge of the Scrapline's gap — the one you cannot cross
+yet — something is standing on the far side. It is you: the same box, the
+same legs, but the screen is dark with two holes for eyes. It says *"Please
+hold."* in Hush's voice, and it is gone. That is the whole scene: once, never
+again, and nobody explains it until the relay.
 
 **The Scrapline** *(to build)*. A wreck-pickers' town living on the spans
 that fell on the Loud Day. **Ma Rivet** runs it and wants the relay back on
@@ -341,7 +363,8 @@ conversation where there is room for it.
 | The machines' jobs, names and attack names (§4b) | Built |
 | Weldhome: Coll, Hale, Wren, the pit, the Hollow (two levels) | Built |
 | Wren naming you | Built: Coll, Hale and Wren use it |
-| Coll's "not the first one through" | Built as a line; Echo not yet |
+| Echo, first sight across the Scrapline gap | Built |
+| Coll's "not the first one through" | Built: she describes Echo |
 | The Scrapline (Ma Rivet, Infrared, relay, Echo) | One sample room only |
 | Relays and calling the Keeper from terminals | Not built |
 | The sealed message shown anywhere in the menus | Not built |

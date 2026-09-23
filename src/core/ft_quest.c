@@ -266,13 +266,19 @@ static const FtBeat COLL_PAID[] = {
     {FT_SAY_YOU,  "She named me.", "I'm @."},
     {FT_SAY_THEM, "Course she did.", NULL},
     {FT_SAY_THEM, "Gate's open. You've", "earned it."},
+
+    /* The first real thing anybody tells you, and the set-up for Echo
+     * (STORY.md §7): it looked like you, it only said Hush's words, and it
+     * went the way you are about to go. */
     {FT_SAY_THEM, "You're not the first", "one through here."},
     {FT_SAY_YOU,  "Who was?", NULL},
-    {FT_SAY_THEM, "Ask me after the", "Scrapline."},
+    {FT_SAY_THEM, "One like you. Same", "box head."},
+    {FT_SAY_THEM, "Didn't talk. Just", "said 'Please hold.'"},
+    {FT_SAY_THEM, "Went east. Never", "came back."},
 };
 
 static const FtBeat COLL_DONE_1[] = {
-    {FT_SAY_THEM, "Gate's open.", "Go on, @."},
+    {FT_SAY_THEM, "East gate's open.", "Go on, @."},
 };
 static const FtBeat COLL_DONE_2[] = {
     {FT_SAY_THEM, "Wren's grounded.", "Forever."},
@@ -284,8 +290,12 @@ static const FtBeat COLL_DONE_3[] = {
 static const FtBeat COLL_DONE_4[] = {
     {FT_SAY_THEM, "Still watching you,", "you know."},
 };
-static const FtLines COLL_DONE_MORE[] = {LINES(COLL_DONE_2), LINES(COLL_DONE_3),
-                                         LINES(COLL_DONE_4)};
+static const FtBeat COLL_DONE_5[] = {
+    {FT_SAY_YOU,  "The other one...", NULL},
+    {FT_SAY_THEM, "Please hold. That's", "all it ever said."},
+};
+static const FtLines COLL_DONE_MORE[] = {LINES(COLL_DONE_2), LINES(COLL_DONE_5),
+                                         LINES(COLL_DONE_3), LINES(COLL_DONE_4)};
 
 /* ---- Hale, the other guard on the gate ---- */
 
@@ -401,14 +411,16 @@ static const FtLines WREN_HOME_MORE[] = {LINES(WREN_HOME_2), LINES(WREN_HOME_3),
 
 /* ---- Your name ---- */
 
-/* STORY.md §5. Five names, and the last is the one you get for being fussy. */
-static const char* const NAMES[FT_NAME_COUNT] = {"Bolt", "Beep", "Sprocket", "Buttons",
-                                                 "Tin Can"};
+/* STORY.md §5. Five names, all of them what a kid sees when she looks at
+you — a box, a screen for a face, short legs, the nub on top — and the last
+is the one you get for being fussy. */
+static const char* const NAMES[FT_NAME_COUNT] = {"Boxy", "Telly", "Stumpy", "Nubbin",
+                                                 "Lunchbox"};
 
 /* Hale's, one each. Close enough to be a joke and never close enough to be
  * a mistake. */
-static const char* const HALE_NAMES[FT_NAME_COUNT] = {"Colt", "Boop", "Pocket", "Mittens",
-                                                      "Tin Cup"};
+static const char* const HALE_NAMES[FT_NAME_COUNT] = {"Roxy", "Kelly", "Grumpy", "Muffin",
+                                                      "Lunchbag"};
 
 const char* ft_quest_name(uint8_t name) {
     return (name < FT_NAME_COUNT) ? NAMES[name] : "robot";
@@ -442,27 +454,27 @@ static const FtBeat NAMING_0[] = {
     {FT_SAY_THEM, "Hey. Robot.", NULL},
     {FT_SAY_YOU,  "Yes?", NULL},
     {FT_SAY_THEM, "You need a name.", "Robot's rude."},
-    {FT_SAY_THEM, "I'm calling you...", "Bolt."},
+    {FT_SAY_THEM, "You're a box. With", "legs. So... Boxy."},
 };
 static const FtBeat NAMING_1[] = {
     {FT_SAY_THEM, "Okay. Um.", NULL},
-    {FT_SAY_THEM, "Beep! Because you", "go beep."},
-    {FT_SAY_YOU,  "I don't beep.", NULL},
-    {FT_SAY_THEM, "You DO beep.", NULL},
+    {FT_SAY_THEM, "Your face is a TV.", "Telly!"},
+    {FT_SAY_YOU,  "It's a screen.", NULL},
+    {FT_SAY_THEM, "TELLY.", NULL},
 };
 static const FtBeat NAMING_2[] = {
     {FT_SAY_THEM, "Fine. FINE.", NULL},
-    {FT_SAY_THEM, "Sprocket! That's", "a GOOD one."},
+    {FT_SAY_THEM, "Your legs are SO", "short. Stumpy!"},
 };
 static const FtBeat NAMING_3[] = {
     {FT_SAY_THEM, "You're SO picky.", NULL},
-    {FT_SAY_THEM, "Buttons. You've got", "loads of buttons."},
+    {FT_SAY_THEM, "You've got a nub on", "your head. Nubbin."},
 };
 static const FtBeat NAMING_4[] = {
-    {FT_SAY_THEM, "FINE. You're", "Tin Can."},
+    {FT_SAY_THEM, "FINE. You're", "Lunchbox."},
     {FT_SAY_THEM, "Forever.", NULL},
-    {FT_SAY_YOU,  "...Tin Can.", NULL},
-    {FT_SAY_THEM, "I LOVE it.", NULL},
+    {FT_SAY_YOU,  "...Lunchbox.", NULL},
+    {FT_SAY_THEM, "I'm SO hungry.", "It's a compliment."},
 };
 static const FtBeat NAMED[] = {
     {FT_SAY_THEM, "Hi, @!", NULL},
@@ -517,6 +529,9 @@ static const char* const BARKS[FT_BARK_COUNT] = {
     [FT_BARK_HUSH + 1] = "Please stay home.",
     [FT_BARK_HUSH + 2] = "Lines are closed.",
     [FT_BARK_HUSH + 3] = "We value you.",
+
+    /* Echo, the first time you see it. The only words it has. */
+    [FT_BARK_ECHO] = "Please hold.",
 };
 
 const char* ft_quest_bark(uint8_t bark) {

@@ -371,6 +371,31 @@ SPRITES["hero"] = """
 ................
 """
 
+# Echo: the Courier the Keeper sent before you, caught by Hush. The same
+# body — you are meant to see that first — with the screen gone dark and
+# only two holes where the eyes are. No mouth: all it has left to say is
+# Hush's.
+SPRITES["echo"] = """
+.......##.......
+.......##.......
+..############..
+.##############.
+.##############.
+.###..####..###.
+.###..####..###.
+.##############.
+.##############.
+.##############.
+.##############.
+..############..
+...##########...
+....##....##....
+....##....##....
+....##....##....
+...####..####...
+................
+"""
+
 # Parcel Runner. A tied parcel on two wheels, with eyes either side of the
 # string: it carried the mail, and now it "returns" anyone it finds
 # wandering. Boxy but wheeled, so it is never mistaken for the footed hero.
@@ -619,12 +644,14 @@ def parse(art, height=16):
     return out
 
 
-# The hero is taller than the foes; everything else is 16x16.
+# The hero is taller than the foes, and so is the one built like him;
+# everything else is 16x16.
 HERO_H = 18
+TALL = ("hero", "echo")
 
 
 def main():
-    data = {k: parse(v, HERO_H if k == "hero" else 16) for k, v in SPRITES.items()}
+    data = {k: parse(v, HERO_H if k in TALL else 16) for k, v in SPRITES.items()}
 
     # Contact sheet so the art can actually be looked at.
     scale, pad = 6, 8
@@ -675,7 +702,7 @@ def main():
 
 """ % HERO_H)
         for name, rows in data.items():
-            dim = "FT_HERO_H" if name == "hero" else "FT_SPRITE_H"
+            dim = "FT_HERO_H" if name in TALL else "FT_SPRITE_H"
             fh.write(f"static const uint16_t FT_SPRITE_{name.upper()}[{dim}] = {{\n")
             for r in rows:
                 fh.write("    0x%04X,\n" % r)

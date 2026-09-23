@@ -97,6 +97,18 @@ typedef struct {
 /* Things that have been shown to you, one bit each. Saved. */
 #define FT_REVEAL_PIT 0x01u
 
+/* Not a way anywhere: Echo, seen once across the gap in the Scrapline. It
+ * lives in the same saved byte because it is the same kind of fact — a
+ * thing that has been shown to you and must not be shown twice. */
+#define FT_REVEAL_ECHO 0x02u
+
+/* Where: the Scrapline's room, on the far edge of the gap where you cannot
+ * follow. It notices you when it is on your screen, with room over its head
+ * for what it says — never from off the edge of the view. */
+#define FT_ECHO_ROOM FT_ROOM_SLICE_FIRST
+#define FT_ECHO_TX   15
+#define FT_ECHO_TY   4
+
 typedef struct {
     const FtMap*    map;
     const FtExit*   exits;
@@ -271,6 +283,9 @@ typedef struct {
      * a sound without watching the bits itself. */
     bool revealed_now;
 
+    /* The same, for the moment Echo sees you. */
+    bool echo_now;
+
     /* The tree being shaken, and for how much longer. Not saved. */
     uint8_t  shake_tree;
     uint16_t shake_ms;
@@ -311,7 +326,8 @@ typedef enum {
     FT_BARK_NOBODY = 0,
     FT_BARK_BY_HALE,
     FT_BARK_BY_WREN,
-    FT_BARK_BY_TERMINAL /* at (bark_tx, bark_ty) */
+    FT_BARK_BY_TERMINAL, /* at (bark_tx, bark_ty) */
+    FT_BARK_BY_ECHO      /* at (bark_tx, bark_ty) too */
 } FtBarkWho;
 
 /* How long a remark hangs over somebody's head, and how long Wren leaves
@@ -428,6 +444,11 @@ void ft_world_hale_pitside(uint8_t* tx, uint8_t* ty);
 bool ft_world_pit_at(const FtWorld* w, int32_t tx, int32_t ty);
 
 /* Start and stop somebody walking with you. */
+/* Whether Echo is standing across the gap right now: in the Scrapline, once
+ * Wren is home (Coll has told you about it by then), until it has said its
+ * line and gone. Never again after that. */
+bool ft_world_echo_here(const FtWorld* w);
+
 /* True for the one update in which Wren should stop you and name you: she
  * is walking you home, you have no name yet, and you have just finished a
  * step with her out of the hole and out of the long grass behind you — in

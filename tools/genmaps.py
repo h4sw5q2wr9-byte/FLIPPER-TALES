@@ -263,14 +263,16 @@ RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 # [5] The Scrapline. Heaped wreckage and a gap in the floor. Infrared is
 # line-of-sight, so the chapter's verb is triggering a receiver across a span
 # you cannot walk — here the void, with the terminal stranded past it.
+# Two tiles wide: enough that nobody walks it, narrow enough that whoever
+# stands on the far edge is on screen with you. Echo does, once.
 MAPS["sl1"] = ("The Scrapline", 24, """
 ######################
-#...............######
-D......SS....~~~~..T.#
-#.....SSSS...~~~~....#
-#...S..SS....~~~~....#
-#.........S..~~~~....#
-#..S.........~~~~....#
+#..............#######
+D......SS....~~....T.#
+#.....SSSS...~~......#
+#...S..SS....~~......#
+#.........S..~~......#
+#..S.........~~......#
 #....SS......L########
 #....................D
 ######################

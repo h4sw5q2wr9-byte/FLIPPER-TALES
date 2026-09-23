@@ -1026,7 +1026,7 @@ static void ft_finish_naming(FlipperTales* app, bool yes) {
         ft_sound_play(&app->sound, FT_SFX_LEVEL);
         ft_save_now(app);
 
-        /* Tin Can already ends on her loving it; the others get a hello. */
+        /* Lunchbox already ends on her deciding; the others get a hello. */
         if(last) {
             app->talk_is_naming = false;
             app->mode = FT_MODE_OVERWORLD;
@@ -1736,6 +1736,13 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
     if(app->world.revealed_now) {
         ft_sound_play(&app->sound, FT_SFX_REVEAL);
         ft_toast(app, "A way down!");
+        ft_save_now(app);
+    }
+
+    /* Echo sees you. It speaks in Hush's voice, because that is all it has
+     * left, and it is kept on the card so it is only ever seen once. */
+    if(app->world.echo_now) {
+        ft_sound_play(&app->sound, FT_SFX_VOICE_HUSH);
         ft_save_now(app);
     }
 

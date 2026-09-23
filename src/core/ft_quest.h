@@ -89,7 +89,7 @@ typedef struct {
     const char* b;   /* a second line, or NULL */
 } FtBeat;
 
-#define FT_TALK_MAX_BEATS 8
+#define FT_TALK_MAX_BEATS 10
 
 /* Whose voice the text types out in. Every character gets a short blip of
  * their own pitch as their words appear, the way the genre has always done
@@ -160,7 +160,7 @@ FtQuestOutcome ft_quest_hale_answer(const FtQuests* q, bool pit_found, bool by_t
  *
  * You do not have one until Wren gives you one, on the walk home from the
  * Hollow (STORY.md §5). She offers four and you can turn each down; turn
- * them all down and you are Tin Can, forever. Saved as one number. */
+ * them all down and you are Lunchbox, forever. Saved as one number. */
 #define FT_NAME_COUNT 5
 #define FT_NAME_NONE  255u
 
@@ -179,8 +179,8 @@ FtTalk ft_quest_naming_talk(uint8_t tries);
  * Writes at most cap-1 characters and always terminates. Returns `out`. */
 char* ft_quest_expand(const char* line, uint8_t name, char* out, uint8_t cap);
 
-/* The longest either can come out, so the tests can measure every line with
- * the worst name in it rather than with a single '@'. */
+/* The longest either can come out ("Lunchbox", "Lunchbag"), so the tests can
+ * measure every line with the worst name in it rather than with a single '@'. */
 #define FT_NAME_MAX_CHARS 8
 
 /* ---- The opening ----------------------------------------------------------
@@ -225,7 +225,10 @@ typedef enum {
 #define FT_BARK_HUSH   ((uint8_t)FT_BARK_WREN_CHATTER + FT_BARK_WREN_CHATTER_N)
 #define FT_BARK_HUSH_N 4
 
-#define FT_BARK_COUNT (FT_BARK_HUSH + FT_BARK_HUSH_N)
+/* Echo, across the gap in the Scrapline. */
+#define FT_BARK_ECHO   (FT_BARK_HUSH + FT_BARK_HUSH_N)
+
+#define FT_BARK_COUNT (FT_BARK_ECHO + 1)
 
 /* A bubble is narrower than the talk box: it sits over somebody's head. */
 #define FT_BARK_MAX_CHARS 18

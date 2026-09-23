@@ -564,6 +564,7 @@ void ft_world_init(FtWorld* w) {
     w->banner = false;
     w->revealed = 0;
     w->revealed_now = false;
+    w->echo_now = false;
     w->hale = (uint8_t)FT_HALE_POST;
     w->hale_room = FT_ROOM_WELDHOME;
     ft_world_hale_post(&w->hale_mv.tx, &w->hale_mv.ty);
@@ -808,6 +809,7 @@ static bool hale_blocks(const FtWorld* w, int32_t tx, int32_t ty);
 static void hale_update(FtWorld* w, uint32_t dt_ms);
 static void say_aloud(FtWorld* w, FtBarkWho who, uint8_t bark);
 static void chatter(FtWorld* w, uint32_t dt_ms);
+static void echo_update(FtWorld* w);
 
 void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     const FtMap* map = ft_world_map(w);
@@ -818,6 +820,7 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     w->arrived = false;
     w->ambushed = false;
     w->revealed_now = false;
+    w->echo_now = false;
 
     /* --- player --- */
     if(ft_world_moving(w)) {
@@ -902,6 +905,7 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     /* --- Hale, after you, so he reacts to where you are going --- */
     hale_update(w, dt_ms);
     chatter(w, dt_ms);
+    echo_update(w);
 
     /* --- foes --- */
     const FtRoom* room = ft_room(w->room);
@@ -1283,6 +1287,50 @@ static void chatter(FtWorld* w, uint32_t dt_ms) {
     say_aloud(w, FT_BARK_BY_WREN,
               (uint8_t)(FT_BARK_WREN_CHATTER + (w->chatter_at % FT_BARK_WREN_CHATTER_N)));
     w->chatter_at++;
+}
+
+/* ---- Echo -------------------------------------------------------------
+ *
+ * The Courier before you, seen once: across a gap you cannot cross, it
+ * looks at you, says Hush's line, and is gone. That is all of it for now —
+ * the fight is at the Scrapline's relay (STORY.md §6). */
+
+static bool echo_due(const FtWorld* w) {
+    return w->room == FT_ECHO_ROOM &&
+           ft_quest_state(&w->quests, FT_QUEST_WREN) == FT_QUEST_DONE;
+}
+
+bool ft_world_echo_here(const FtWorld* w) {
+    if(!echo_due(w)) return false;
+    if(!(w->revealed & FT_REVEAL_ECHO)) return true;
+
+    /* Seen: it stays exactly as long as it is still talking. */
+    return w->bark_who == (uint8_t)FT_BARK_BY_ECHO && w->bark_ms > 0u;
+}
+
+/* Whether Echo, and a tile of air over it for its line, is inside the view
+ * the camera would show with you standing where you are. */
+static bool echo_in_view(const FtWorld* w) {
+    const FtPos focus = {(int32_t)w->mv.tx * FT_TILE_PX, (int32_t)w->mv.ty * FT_TILE_PX};
+    const FtPos cam = ft_map_camera(ft_world_map(w), focus);
+    const int32_t ex = FT_ECHO_TX * FT_TILE_PX, ey = FT_ECHO_TY * FT_TILE_PX;
+
+    return ex >= cam.x && ex + FT_TILE_PX <= cam.x + FT_VIEW_W * FT_TILE_PX &&
+           ey - FT_TILE_PX >= cam.y && ey + FT_TILE_PX <= cam.y + FT_VIEW_H * FT_TILE_PX;
+}
+
+static void echo_update(FtWorld* w) {
+    if(!echo_due(w) || (w->revealed & FT_REVEAL_ECHO)) return;
+    if(ft_world_moving(w) || !echo_in_view(w)) return;
+
+    w->revealed |= FT_REVEAL_ECHO;
+    w->echo_now = true;
+    w->bark_tx = FT_ECHO_TX;
+    w->bark_ty = FT_ECHO_TY;
+    say_aloud(w, FT_BARK_BY_ECHO, (uint8_t)FT_BARK_ECHO);
+
+    /* A beat longer than anybody else's line. It is looking at you. */
+    w->bark_ms = (uint16_t)(FT_BARK_MS + FT_BARK_MS / 2u);
 }
 
 /* ---- Hale ---------------------------------------------------------------

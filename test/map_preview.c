@@ -386,6 +386,48 @@ int main(void) {
         }
     }
 
+    /* Echo, across the gap in the Scrapline: standing there, then saying
+     * its line. And Coll telling you about it first. */
+    {
+        FtWorld ec;
+        ft_world_init(&ec);
+        ft_quest_advance(&ec.quests, FT_QUEST_WREN, FT_QUEST_DONE);
+        ec.name = 0;
+        ft_world_enter(&ec, FT_ECHO_ROOM, 12, 4);
+        ec.area_ms = 100000u;
+        ec.facing = FT_FACE_RIGHT;
+        for(uint8_t k = 0; k < FT_MAX_ROOM_ENTS; k++) ec.foes[k].alive = false;
+
+        ft_overworld_render(canvas, &ec);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_70_echo.pbm");
+        int c = ft_stub_canvas_clipped(canvas);
+
+        ft_world_update(&ec, 0, 0, 10);
+        ft_overworld_render(canvas, &ec);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_71_echo-hold.pbm");
+        c += ft_stub_canvas_clipped(canvas);
+        clipped_total += c;
+        printf("  %-18s %s%s\n", "echo", c ? "CLIPPED" : "ok",
+               ec.echo_now ? "" : "  (DID NOT SPEAK)");
+        if(!ec.echo_now) clipped_total++;
+
+        FtWorld cw;
+        ft_world_init(&cw);
+        ft_quest_advance(&cw.quests, FT_QUEST_WREN, FT_QUEST_READY);
+        ft_world_enter(&cw, FT_ROOM_WELDHOME, 22, 5);
+        cw.area_ms = 100000u;
+        cw.facing = FT_FACE_UP;
+        const FtTalk coll = with_name(ft_quest_talk(&cw.quests, FT_QUEST_WREN, 0), 0);
+        for(uint8_t b = 7; b < 10 && b < coll.count; b++) {
+            ft_overworld_render_talk(canvas, &cw, 22, 4);
+            ft_render_talk(canvas, &coll, b, UINT16_MAX, false, true);
+            char path[96];
+            snprintf(path, sizeof(path), "preview/map_%02u_coll-echo.pbm", 72u + b - 7u);
+            ft_stub_canvas_write_pbm(canvas, path);
+            clipped_total += ft_stub_canvas_clipped(canvas);
+        }
+    }
+
     /* Spotted: the mark over a group that has seen you and has not started
      * moving yet. It is the only thing drawn above a sprite, so it is also
      * the only thing that can run off the top of the panel. */

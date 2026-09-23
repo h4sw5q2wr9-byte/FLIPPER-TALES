@@ -4782,7 +4782,7 @@ static void check_talk(const FtTalk* c, const char* who, unsigned st, unsigned a
     CHECK(c->voice < FT_VOICE_COUNT, "%s %u/%u has a voice", who, st, again);
 
     /* Measured with every name written in, and before there is one: a
-     * line that fits as "@" can run off the panel as "Sprocket". */
+     * line that fits as "@" can run off the panel as "Lunchbox". */
     for(uint8_t i = 0; i < c->count; i++) {
         CHECK(c->beats[i].a != NULL, "%s %u/%u beat %u says something", who, st, again, i);
         if(!c->beats[i].a) continue;
@@ -4827,19 +4827,19 @@ static void test_naming(void) {
         CHECK(strcmp(ft_quest_name(n), ft_quest_hale_name(n)) != 0,
               "Hale gets %s wrong", ft_quest_name(n));
     }
-    CHECK(strcmp(ft_quest_name(0), "Bolt") == 0, "she starts with Bolt");
-    CHECK(strcmp(ft_quest_name(FT_NAME_COUNT - 1u), "Tin Can") == 0, "and ends on Tin Can");
+    CHECK(strcmp(ft_quest_name(0), "Boxy") == 0, "she starts with Boxy");
+    CHECK(strcmp(ft_quest_name(FT_NAME_COUNT - 1u), "Lunchbox") == 0, "and ends on Lunchbox");
 
     char out[32];
-    CHECK(strcmp(ft_quest_expand("Hi, @!", 2, out, sizeof(out)), "Hi, Sprocket!") == 0,
+    CHECK(strcmp(ft_quest_expand("Hi, @!", 2, out, sizeof(out)), "Hi, Stumpy!") == 0,
           "@ is your name (%s)", out);
-    CHECK(strcmp(ft_quest_expand("Nice one, #.", 3, out, sizeof(out)), "Nice one, Mittens.") == 0,
+    CHECK(strcmp(ft_quest_expand("Nice one, #.", 3, out, sizeof(out)), "Nice one, Muffin.") == 0,
           "# is what Hale calls you (%s)", out);
     CHECK(strcmp(ft_quest_expand("Hi, @!", FT_NAME_NONE, out, sizeof(out)), "Hi, robot!") == 0,
           "and before there is one, you are a robot (%s)", out);
     CHECK(strlen(ft_quest_expand("@@@@@@@@", 2, out, 10)) == 9u, "a small buffer is not overrun");
 
-    /* Four offers, each a question; then Tin Can, which is not; then her
+    /* Four offers, each a question; then Lunchbox, which is not; then her
      * saying it back. Every line fits with every name. */
     for(uint8_t t = 0; t <= FT_NAME_COUNT; t++) {
         const FtTalk c = ft_quest_naming_talk(t);
@@ -4933,6 +4933,105 @@ static void test_naming(void) {
     back.name = 77;
     ft_save_to_world(&back, &r, NULL, NULL);
     CHECK_EQ(r.name, FT_NAME_NONE);
+}
+
+static void test_echo(void) {
+    section("Echo, across the gap");
+
+    /* Coll tells you about it first: one like you, and all it said. */
+    {
+        FtQuests q;
+        ft_quests_init(&q);
+        q.state[FT_QUEST_WREN] = FT_QUEST_READY;
+        const FtTalk c = ft_quest_talk(&q, FT_QUEST_WREN, 0);
+        bool hold = false, like = false;
+        for(uint8_t i = 0; i < c.count; i++) {
+            const char* l[2] = {c.beats[i].a, c.beats[i].b};
+            for(int k = 0; k < 2; k++) {
+                if(l[k] && strstr(l[k], "Please hold")) hold = true;
+                if(l[k] && strstr(l[k], "like you")) like = true;
+            }
+        }
+        CHECK(hold && like, "Coll says it looked like you and said 'Please hold'");
+    }
+
+    /* Before Wren is home, nobody is there. */
+    FtWorld w;
+    ft_world_init(&w);
+    ft_world_enter(&w, FT_ECHO_ROOM, 1, 2);
+    CHECK(!ft_world_echo_here(&w), "not before Coll has told you");
+    for(int t = 0; t < 3000; t++) {
+        int8_t dx = 0, dy = 0;
+        if(!ft_world_moving(&w)) chase(&w, 12, 4, &dx, &dy);
+        ft_world_update(&w, dx, dy, 10);
+    }
+    CHECK(w.mv.tx == 12 && w.mv.ty == 4, "walking right up to the gap (%u,%u)", w.mv.tx, w.mv.ty);
+    CHECK(!(w.revealed & FT_REVEAL_ECHO), "does not show it");
+
+    /* After: it is there when you come in, and sees you once you are in. */
+    ft_world_init(&w);
+    w.quests.state[FT_QUEST_WREN] = FT_QUEST_DONE;
+    ft_world_enter(&w, FT_ECHO_ROOM, 1, 2);
+    CHECK(ft_world_echo_here(&w), "after, it is standing across the gap");
+
+    int seen = 0;
+    for(int t = 0; t < 3000 && !(w.mv.tx == 12 && w.mv.ty == 4); t++) {
+        int8_t dx = 0, dy = 0;
+        if(!ft_world_moving(&w)) chase(&w, 12, 4, &dx, &dy);
+        ft_world_update(&w, dx, dy, 10);
+        if(w.echo_now) seen++;
+    }
+    CHECK_EQ(seen, 1);
+    CHECK(w.revealed & FT_REVEAL_ECHO, "and it is remembered");
+
+    /* It says its line, and it is gone when it has. */
+    bool said = false;
+    for(int t = 0; t < 600 && ft_world_echo_here(&w); t++) {
+        if(w.bark_who == FT_BARK_BY_ECHO && strcmp(ft_quest_bark(w.bark), "Please hold.") == 0) {
+            said = true;
+        }
+        ft_world_update(&w, 0, 0, 10);
+    }
+    CHECK(said, "it says 'Please hold.'");
+    CHECK(!ft_world_echo_here(&w), "and then it is gone");
+
+    /* Gone for good: back in the room, and after a reload. */
+    ft_world_enter(&w, FT_ECHO_ROOM, 1, 2);
+    CHECK(!ft_world_echo_here(&w), "coming back, it is not there");
+    FtSaveData d;
+    ft_save_from_world(&w, true, true, &d);
+    FtWorld r;
+    ft_save_to_world(&d, &r, NULL, NULL);
+    ft_world_enter(&r, FT_ECHO_ROOM, 1, 2);
+    CHECK(!ft_world_echo_here(&r), "or after loading");
+
+    /* You cannot get to it: it is across the gap. Flood the room from the
+     * door you come in by. */
+    {
+        const FtMap* m = ft_room(FT_ECHO_ROOM)->map;
+        static uint8_t seen_tile[1024];
+        static uint16_t q[1024];
+        memset(seen_tile, 0, sizeof(seen_tile));
+        uint32_t head = 0, tail = 0;
+        const int32_t W = (int32_t)m->w, H = (int32_t)m->h;
+        q[tail++] = (uint16_t)(2 * W + 1);
+        seen_tile[2 * W + 1] = 1;
+        while(head < tail) {
+            const int32_t at = q[head++], ax = at % W, ay = at / W;
+            const int32_t nx[4] = {ax + 1, ax - 1, ax, ax}, ny[4] = {ay, ay, ay + 1, ay - 1};
+            for(int k = 0; k < 4; k++) {
+                if(nx[k] < 0 || ny[k] < 0 || nx[k] >= W || ny[k] >= H) continue;
+                const int32_t n = ny[k] * W + nx[k];
+                if(seen_tile[n] || ft_tile_solid(ft_map_tile(m, nx[k], ny[k]))) continue;
+                seen_tile[n] = 1;
+                q[tail++] = (uint16_t)n;
+            }
+        }
+        CHECK(!ft_tile_solid(ft_map_tile(m, FT_ECHO_TX, FT_ECHO_TY)), "it stands on floor");
+        CHECK(!seen_tile[FT_ECHO_TY * W + FT_ECHO_TX], "that you cannot walk to");
+        /* Seen, and not only from the one tile the test walked to. */
+        CHECK(seen_tile[4 * W + 12], "the gap's edge is somewhere you can stand");
+    }
 }
 
 static void test_talk_repeats(void) {
@@ -5802,6 +5901,7 @@ int main(void) {
     test_long_grass();
     test_talk_repeats();
     test_naming();
+    test_echo();
     test_dead_stay_dead();
     test_area_names();
     test_items();
