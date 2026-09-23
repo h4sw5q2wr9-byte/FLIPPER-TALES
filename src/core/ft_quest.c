@@ -16,6 +16,10 @@ static const FtQuestDef FT_QUESTS[FT_QUEST_COUNT] = {
      * room 11. The goal is not a room, because getting there is not what
      * finishes it — you have to talk her into coming out. */
     [FT_QUEST_WREN] = {"The Kid", 10u, FT_QUEST_NO_ROOM, false, 3},
+
+    /* Ma Rivet in the Scrapline, room 13. The goal is not a room either:
+     * waking the relay is something you do to it, past Echo. */
+    [FT_QUEST_RIVET] = {"Wake the Relay", 13u, FT_QUEST_NO_ROOM, false, 3},
 };
 
 const FtQuestDef* ft_quest_def(FtQuestId id) {
@@ -409,6 +413,95 @@ static const FtBeat WREN_HOME_4[] = {
 static const FtLines WREN_HOME_MORE[] = {LINES(WREN_HOME_2), LINES(WREN_HOME_3),
                                          LINES(WREN_HOME_4)};
 
+/* ---- Ma Rivet, in the Scrapline ---- */
+
+/* Grumpy, loud, and secretly kind (the player's pick): she shouts at you,
+ * she shouts at Coll, and every so often something soft gets out before she
+ * can stop it. */
+static const char* RIVET = "Ma Rivet";
+
+static const FtBeat RIVET_OFFER[] = {
+    {FT_SAY_THEM, "OI! Robot! Off my", "span!"},
+    {FT_SAY_YOU,  "Sorry.", NULL},
+    {FT_SAY_THEM, "Sorry, it says. HA.", NULL},
+    {FT_SAY_THEM, "I'm Ma Rivet. All", "this scrap is MINE."},
+    {FT_SAY_THEM, "Relay's been dead", "since the Silence."},
+    {FT_SAY_THEM, "No relay, no trade.", "No trade, no dinner."},
+    {FT_SAY_THEM, "Wake it. East, past", "the broken spans."},
+    {FT_SAY_THEM, "Take this clicker.", "Point it at stuff."},
+};
+static const FtBeat RIVET_OFFER_2[] = {
+    {FT_SAY_THEM, "Back? Relay's still", "dead. Going or not?"},
+};
+static const FtLines RIVET_OFFER_MORE[] = {LINES(RIVET_OFFER_2)};
+
+static const FtBeat RIVET_ON[] = {
+    {FT_SAY_THEM, "WHY are you here?", "Relay! East! GO!"},
+};
+static const FtBeat RIVET_ON_2[] = {
+    {FT_SAY_THEM, "Point the clicker at", "the posts. Bridges."},
+};
+static const FtBeat RIVET_ON_3[] = {
+    {FT_SAY_THEM, "Don't fall in. I'm", "not fishing you out."},
+    {FT_SAY_THEM, "...I would. Don't.", NULL},
+};
+static const FtLines RIVET_ON_MORE[] = {LINES(RIVET_ON_2), LINES(RIVET_ON_3)};
+
+/* Nothing fails her job, but a state with no lines is a bug waiting. */
+static const FtBeat RIVET_FAILED[] = {
+    {FT_SAY_THEM, "Well? Relay?", NULL},
+};
+
+/* The relay is awake, the line is open, and the first thing anybody does
+ * with it is argue (STORY.md §6: noisy, and wonderful). */
+static const FtBeat RIVET_PAID[] = {
+    {FT_SAY_THEM, "Hear that? Line's", "OPEN!"},
+    {FT_SAY_THEM, "COLL! Is that you?", NULL},
+    {FT_SAY_THEM, "Your offer's a JOKE,", "Coll!"},
+    {FT_SAY_THEM, "...Yes, I missed you", "too. SHUT UP."},
+    {FT_SAY_YOU,  "Should I go?", NULL},
+    {FT_SAY_THEM, "Stay. Coll says your", "name's @."},
+    {FT_SAY_THEM, "Suits you.", NULL},
+    {FT_SAY_THEM, "Three orbs. Don't", "spend 'em on junk."},
+};
+
+static const FtBeat RIVET_DONE_1[] = {
+    {FT_SAY_THEM, "Line's open. LOUD,", "isn't it? Lovely."},
+};
+static const FtBeat RIVET_DONE_2[] = {
+    {FT_SAY_THEM, "Coll owes me a crate", "of bolts. Ha!"},
+};
+static const FtBeat RIVET_DONE_3[] = {
+    {FT_SAY_YOU,  "Thanks, Ma.", NULL},
+    {FT_SAY_THEM, "Don't get soppy.", "...@."},
+};
+static const FtBeat RIVET_DONE_4[] = {
+    {FT_SAY_THEM, "Go on. Somebody's", "got to fix the rest."},
+};
+static const FtLines RIVET_DONE_MORE[] = {LINES(RIVET_DONE_2), LINES(RIVET_DONE_3),
+                                          LINES(RIVET_DONE_4)};
+
+/* ---- The Keeper, on the phone ---- */
+
+/* The first call. He knows what you met, and he will not say more yet. */
+static const FtBeat KEEPER_CALL[] = {
+    {FT_SAY_THEM, "...Hello? Is this", "thing on?"},
+    {FT_SAY_YOU,  "Keeper?", NULL},
+    {FT_SAY_THEM, "Ha! It works. The", "relay's awake."},
+    {FT_SAY_THEM, "You met the other", "one."},
+    {FT_SAY_YOU,  "It looked like me.", NULL},
+    {FT_SAY_THEM, "Yes. Well.", NULL},
+    {FT_SAY_THEM, "Not now. Keep going.", "I'll call again."},
+};
+
+FtTalk ft_quest_keeper_call(void) {
+    return say(KEEPER, FT_VOICE_KEEPER, (FtLines)LINES(KEEPER_CALL), NULL, 0u, 0u);
+}
+
+bool ft_quest_has_infrared(const FtQuests* q) {
+    return ft_quest_at_least(q, FT_QUEST_RIVET, FT_QUEST_ACTIVE);
+}
+
 /* ---- Your name ---- */
 
 /* STORY.md §5. Five names, all of them what a kid sees when she looks at
@@ -579,12 +672,30 @@ static FtTalk coll_talk(FtQuestState at, uint8_t again) {
     }
 }
 
+static FtTalk rivet_talk(FtQuestState at, uint8_t again) {
+    switch(at) {
+    case FT_QUEST_UNKNOWN:
+        return ask(say(RIVET, FT_VOICE_RIVET, WITH(RIVET_OFFER, RIVET_OFFER_MORE), again),
+                   "I'll go", "Later");
+    case FT_QUEST_ACTIVE:
+        return say(RIVET, FT_VOICE_RIVET, WITH(RIVET_ON, RIVET_ON_MORE), again);
+    case FT_QUEST_FAILED:
+        return say(RIVET, FT_VOICE_RIVET, ONLY(RIVET_FAILED), again);
+    case FT_QUEST_READY:
+        return say(RIVET, FT_VOICE_RIVET, ONLY(RIVET_PAID), again);
+    case FT_QUEST_DONE:
+    default:
+        return say(RIVET, FT_VOICE_RIVET, WITH(RIVET_DONE_1, RIVET_DONE_MORE), again);
+    }
+}
+
 FtTalk ft_quest_talk(const FtQuests* q, FtQuestId id, uint8_t again) {
     const FtQuestState at = ft_quest_state(q, id);
 
     switch(id) {
     case FT_QUEST_CLEAN_RUN: return keeper_talk(at, again);
     case FT_QUEST_WREN:      return coll_talk(at, again);
+    case FT_QUEST_RIVET:     return rivet_talk(at, again);
     default:                 return say("", FT_VOICE_YOU, ONLY(WREN_WAIT), again);
     }
 }
@@ -619,7 +730,7 @@ FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit, ui
 /* ---- What a finished conversation did ---------------------------------- */
 
 static FtQuestOutcome nothing(void) {
-    FtQuestOutcome o = {0, false, false, false};
+    FtQuestOutcome o = {0, false, false, false, false};
     return o;
 }
 
@@ -638,6 +749,9 @@ FtQuestOutcome ft_quest_answer(FtQuests* q, FtQuestId id, bool yes) {
              * the moment you say yes, and following him is the next thing
              * the game asks of you. */
             if(id == FT_QUEST_WREN) o.leads = true;
+
+            /* "Take this clicker. Point it at stuff." */
+            if(id == FT_QUEST_RIVET) o.infrared = true;
         }
         break;
 

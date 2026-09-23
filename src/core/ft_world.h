@@ -102,6 +102,12 @@ typedef struct {
  * thing that has been shown to you and must not be shown twice. */
 #define FT_REVEAL_ECHO 0x02u
 
+/* The Scrapline's two drawbridges, down, and the Keeper's first call,
+ * heard. The same kind of fact again: something that happened for good. */
+#define FT_REVEAL_BRIDGE_SPANS 0x04u
+#define FT_REVEAL_BRIDGE_RELAY 0x08u
+#define FT_REVEAL_KEEPER_CALL  0x10u
+
 /* Where: the Scrapline's room, on the far edge of the gap where you cannot
  * follow. It notices you when it is on your screen, with room over its head
  * for what it says — never from off the edge of the view. */
@@ -119,6 +125,11 @@ typedef struct {
     /* The area this room belongs to, whose name comes up when you walk in
      * from a different one. NULL for a path, which has no name of its own. */
     const char*     area;
+
+    /* The FT_REVEAL_* bit that says this room's drawbridge is down, or 0 for
+     * a room without one. One bridge a room: every FT_TILE_BRIDGE in it
+     * comes down together, when you point Infrared at its receiver. */
+    uint8_t         bridge;
 } FtRoom;
 
 /* A roster is what one visible foe fights as. The whole group also *walks*
@@ -147,13 +158,16 @@ typedef struct {
 #define FT_ROOM_WELDHOME  (FT_ROOM_CH1_FIRST + 1)
 #define FT_ROOM_HOLLOW    (FT_ROOM_CH1_FIRST + 2)
 #define FT_ROOM_DEAD_LETTERS (FT_ROOM_CH1_FIRST + 3)
+#define FT_ROOM_SCRAPLINE    (FT_ROOM_CH1_FIRST + 4)
+#define FT_ROOM_SPANS        (FT_ROOM_CH1_FIRST + 5)
+#define FT_ROOM_RELAY        (FT_ROOM_CH1_FIRST + 6)
 
 const FtRoom*   ft_room(uint8_t index);
 uint8_t         ft_room_count(void);
 const FtRoster* ft_roster(uint8_t index);
 
 /* How many there are. The balance simulator walks all of them. */
-#define FT_ROSTER_COUNT 17
+#define FT_ROSTER_COUNT 18
 uint8_t ft_roster_count(void);
 
 /* A tile-aligned actor mid-step. */
@@ -444,6 +458,29 @@ void ft_world_hale_pitside(uint8_t* tx, uint8_t* ty);
 bool ft_world_pit_at(const FtWorld* w, int32_t tx, int32_t ty);
 
 /* Start and stop somebody walking with you. */
+/* ---- The Scrapline ----------------------------------------------------- */
+
+/* Whether this room's drawbridge is down (always false in a room without
+ * one). A bridge tile is a gap until then, and floor after. */
+bool ft_world_bridge_down(const FtWorld* w);
+
+/* Pointing Infrared: true when you are facing a receiver across a gap —
+ * one or more tiles of void or raised bridge, then the receiver — and the
+ * bridge it works is not down yet. Whether you HAVE Infrared is the
+ * caller's question (ft_quest_has_infrared), so this can say "you could"
+ * and the app can say "but you can't yet". */
+bool ft_world_ir_target(const FtWorld* w);
+
+/* Bring the bridge down. False if there was nothing to point at. */
+bool ft_world_ir_fire(FtWorld* w);
+
+/* Facing the relay mast. */
+bool ft_world_relay_ahead(const FtWorld* w);
+
+/* The Keeper's first call is waiting on the Relay's terminal: the relay is
+ * awake and you have not heard it yet. */
+bool ft_world_call_due(const FtWorld* w);
+
 /* Whether Echo is standing across the gap right now: in the Scrapline, once
  * Wren is home (Coll has told you about it by then), until it has said its
  * line and gone. Never again after that. */

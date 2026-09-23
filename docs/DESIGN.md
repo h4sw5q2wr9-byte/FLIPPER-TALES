@@ -1079,6 +1079,38 @@ Scrapline with Wren home, it is standing on the far edge of the gap.
   two holes for eyes: your height, drawn bottom-aligned like you, so the
   first thing you read is that it is the same thing as you.
 
+### 5.4g The Scrapline
+
+Three rooms appended after Dead Letters (13 town, 14 Fallen Spans, 15 the
+Relay). The gap room where Echo is first seen now leads east into the town;
+the chapter samples that used to follow it are reached from the debug menu
+until their chapters replace them.
+
+- **Ma Rivet** is quest `FT_QUEST_RIVET`, her own voice (a low, short, loud
+  E4), and her own sprite: tall, welding goggles pushed up, mouth open. Her
+  offer hands you Infrared (`FtQuestOutcome.infrared`); having it is simply
+  her quest being at least ACTIVE, so nothing new is saved.
+- **Infrared** is one verb. OK while facing along a line of one or more gap
+  tiles (void, or a raised bridge) that ends in `FT_TILE_RECEIVER` lowers
+  that room's drawbridge (`FtRoom.bridge`, a bit in `revealed`). Without
+  Infrared the same press says "Out of reach." A raised `FT_TILE_BRIDGE` is
+  solid and drawn as void; lowered, it is floor — for the player only, so a
+  crew on the far side stays there. The gaps are two tiles wide because the
+  view is eight: at three the receiver was cut in half at the screen edge
+  while you stood pointing at it.
+- **Echo** (`FT_ENEMY_ECHO`) has two new attributes. `FT_ATTR_BOSS`: stands
+  still in the overworld, and is the one foe that stays beaten when you
+  re-enter the room (every other foe comes back). `FT_ATTR_RETREATS`: at
+  half Charge it leaves the board as if beaten, and the fight records
+  `retreated` so the toast says "Echo got away!" instead of "Cleared.".
+  Measured with 30 Charge it went down in two turns, which is no boss; at 52
+  it takes about four and still wins 98/99/100% — easy, as asked, but a
+  fight.
+- **The relay** is `FT_TILE_RELAY`; OK facing it with the job on wakes it
+  (quest READY). The Relay room's terminal then plays the Keeper's call once
+  instead of the save toast (`FT_REVEAL_KEEPER_CALL`), still saving and
+  healing.
+
 ### 5.4c Pockets
 
 The only healing used to be a terminal you walked back to and Protect, which

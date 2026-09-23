@@ -22,6 +22,7 @@ static const uint16_t* ft_enemy_art(FtEnemyId id) {
     case FT_ENEMY_SHUSHER:       return FT_SPRITE_SHUSHER;
     case FT_ENEMY_QUEUE_BARRIER: return FT_SPRITE_BARRIER;
     case FT_ENEMY_NIGHT_SHIFT:   return FT_SPRITE_NIGHTSHIFT;
+    case FT_ENEMY_ECHO:          return FT_SPRITE_ECHO_FOE;
     case FT_ENEMY_PARCEL_RUNNER:
     default:                     return FT_SPRITE_RUNNER;
     }

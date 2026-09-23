@@ -79,6 +79,11 @@ typedef enum {
     FT_ENEMY_QUEUE_BARRIER, /* kept the queue orderly — BULWARK */
     FT_ENEMY_NIGHT_SHIFT,   /* works when nobody else is — SLEEPER */
 
+    /* The Courier before you, and a boss rather than a machine (STORY.md
+     * §4). It fights like you — one attack that reaches everyone, one that
+     * hits hard up close — and the first time, it gets away. */
+    FT_ENEMY_ECHO,          /* BOSS, RETREATS */
+
     FT_ENEMY_COUNT
 } FtEnemyId;
 

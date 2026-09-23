@@ -16,6 +16,9 @@ bool ft_tile_solid(FtTile t) {
     case FT_TILE_HUT:
     case FT_TILE_HUT_DOOR:
     case FT_TILE_ROCK:
+    case FT_TILE_BRIDGE: /* until it is down; the world decides that */
+    case FT_TILE_RECEIVER:
+    case FT_TILE_RELAY:
         return true;
     default:
         return false;

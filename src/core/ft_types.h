@@ -147,6 +147,14 @@ typedef enum {
  * hardest thing on the board. Clearing the room is what starts the fight. */
 #define FT_ATTR_SLEEPER   (1u << 5)
 
+/* Somebody, not something: stands its ground in the overworld instead of
+ * wandering or chasing, so a boss is where the story put it. */
+#define FT_ATTR_BOSS      (1u << 6)
+
+/* Leaves the fight at half Charge rather than going down: it counts as
+ * beaten, and it gets away. Echo, the first two times you meet it. */
+#define FT_ATTR_RETREATS  (1u << 7)
+
 /* ---- Status payloads ------------------------------------------------- */
 
 typedef enum {

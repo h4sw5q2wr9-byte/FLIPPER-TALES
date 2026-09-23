@@ -21,6 +21,10 @@ typedef enum {
      * taking their people. Bring the kid back and it will. See STORY.md 6. */
     FT_QUEST_WREN,
 
+    /* The Scrapline has no line out, so it has no trade. Wake the relay,
+     * east past the broken spans. Ma Rivet gives you Infrared to do it. */
+    FT_QUEST_RIVET,
+
     FT_QUEST_COUNT
 } FtQuestId;
 
@@ -101,6 +105,7 @@ typedef enum {
     FT_VOICE_WREN,
     FT_VOICE_YOU,
     FT_VOICE_HUSH, /* smooth, level, and much too calm */
+    FT_VOICE_RIVET,
     FT_VOICE_COUNT
 } FtVoice;
 
@@ -142,6 +147,7 @@ typedef struct {
     bool    follows; /* somebody just started walking with you */
     bool    ended;   /* the quest is now done */
     bool    leads;   /* somebody just set off to show you the way */
+    bool    infrared; /* you were just handed Infrared */
 } FtQuestOutcome;
 
 /* Apply the outcome of a finished conversation. `yes` is only read by a
@@ -155,6 +161,13 @@ FtQuestOutcome ft_quest_wren_answer(FtQuests* q);
  * standing beside it. Pure, like the others. */
 FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit, uint8_t again);
 FtQuestOutcome ft_quest_hale_answer(const FtQuests* q, bool pit_found, bool by_the_pit);
+
+/* Having Infrared: Ma Rivet gave it to you with her job, and it is the job
+ * that remembers it. */
+bool ft_quest_has_infrared(const FtQuests* q);
+
+/* The Keeper, on the Relay's terminal, once it is awake (STORY.md §6). */
+FtTalk ft_quest_keeper_call(void);
 
 /* ---- Your name -----------------------------------------------------------
  *

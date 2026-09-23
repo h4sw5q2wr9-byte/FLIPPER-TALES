@@ -256,6 +256,7 @@ void ft_encounter_init(
     e->last_player_hit = blank;
     e->last_enemy_hit = blank;
     e->last_total_damage = 0;
+    e->retreated = false;
 
     e->deflect_armed = false;
     e->last_deflect_fired = false;
@@ -636,6 +637,14 @@ static void strike_foe(FtEncounter* e, uint8_t i, const FtAttack* atk, FtRating 
         e->foes[i].charge = (int16_t)(e->foes[i].charge - r.damage);
         if(e->foes[i].charge < 0) e->foes[i].charge = 0;
         e->last_total_damage = (int16_t)(e->last_total_damage + r.damage);
+
+        /* Half gone, and it leaves: off the board as if beaten, and the
+         * fight remembers that it got away rather than went down. */
+        if((proto->attrs & FT_ATTR_RETREATS) && e->foes[i].charge > 0 &&
+           e->foes[i].charge * 2 <= e->foes[i].charge_max) {
+            e->foes[i].charge = 0;
+            e->retreated = true;
+        }
     }
 }
 

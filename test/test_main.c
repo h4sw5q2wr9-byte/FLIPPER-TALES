@@ -471,6 +471,20 @@ static void test_enemy_table(void) {
     CHECK_EQ(ft_resolve_hit(nfc, &lock, &p).outcome, FT_HIT_OK);
 }
 
+/* For the map floods: a drawbridge is a gap until you point Infrared at its
+ * receiver, and floor after, so a room is only "connected" through one if
+ * the bridge can be brought down — which ft_world_ir_* tests prove. */
+static bool blocks_walk(FtTile t) {
+    return ft_tile_solid(t) && t != FT_TILE_BRIDGE;
+}
+
+/* The chapter samples past the first one used to be chained on from the
+ * Scrapline's gap room. That exit leads to the real Scrapline now, so the
+ * rest are reached from the debug menu until their chapters replace them. */
+static bool debug_only_room(uint8_t r) {
+    return r > FT_ROOM_SLICE_FIRST && r <= FT_ROOM_SLICE_LAST;
+}
+
 static void test_world_tour(void) {
     section("the chain is walkable");
 
@@ -500,6 +514,7 @@ static void test_world_tour(void) {
     }
 
     for(uint8_t r = 0; r < ft_room_count(); r++) {
+        if(debug_only_room(r)) continue;
         CHECK(seen[r], "room %u (%s) is reachable", r, ft_room(r)->map->name);
     }
 
@@ -550,7 +565,7 @@ static void test_world_tour(void) {
                         continue;
                     }
                     const uint32_t n = (uint32_t)ny * m->w + (uint32_t)nx;
-                    if(reach[n] || ft_tile_solid(ft_map_tile(m, nx, ny))) continue;
+                    if(reach[n] || blocks_walk(ft_map_tile(m, nx, ny))) continue;
 
                     reach[n] = true;
                     queue[tail++] = (uint16_t)n;
@@ -1605,8 +1620,12 @@ static void test_world(void) {
         ft_world_enter(&again, r, room->exits[0].tx, room->exits[0].ty);
         for(uint8_t i = 0; i < room->ent_count; i++) {
             if(room->ents[i].kind != FT_ENT_FOE) continue;
-            CHECK(!ft_world_entity_gone(&again, i),
-                  "room %u entity %u comes back", r, i);
+
+            /* Except a boss, which is beaten for good. */
+            const FtRoster* ro = ft_roster(room->ents[i].roster);
+            const bool boss = (FT_ENEMIES[ro->foes[0]].attrs & FT_ATTR_BOSS) != 0u;
+            CHECK(ft_world_entity_gone(&again, i) == boss,
+                  "room %u entity %u %s", r, i, boss ? "stays beaten" : "comes back");
         }
     }
 }
@@ -1711,6 +1730,12 @@ static void test_foe_ai(void) {
             }
         }
         if(which < 0) continue;
+
+        /* A boss does not chase: it stands where the story put it. */
+        {
+            const FtRoster* ro = ft_roster(rr->ents[which].roster);
+            if(FT_ENEMIES[ro->foes[0]].attrs & FT_ATTR_BOSS) continue;
+        }
 
         FtWorld hunt;
         ft_world_init(&hunt);
@@ -3402,8 +3427,8 @@ static void test_world_links(void) {
 
     /* The chain must be connected both ways: every room reachable from the
      * first, and no exit leading into a room that cannot get back. */
-    bool seen[16] = {false};
-    uint8_t stack[16];
+    bool seen[32] = {false};
+    uint8_t stack[32];
     uint8_t top = 0;
     stack[top++] = 0;
     seen[0] = true;
@@ -3420,6 +3445,7 @@ static void test_world_links(void) {
         }
     }
     for(uint8_t r = 0; r < ft_room_count(); r++) {
+        if(debug_only_room(r)) continue;
         CHECK(seen[r], "room %u is reachable from the start", r);
     }
 }
@@ -4462,7 +4488,13 @@ static void chase(const FtWorld* w, int32_t tx, int32_t ty, int8_t* dx, int8_t* 
             const int32_t nx = ax + STEP[k][0], ny = ay + STEP[k][1];
             if(nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
             if(dist[ny * W + nx] != 0xFFFFu) continue;
-            if(ft_tile_solid(ft_map_tile(m, nx, ny))) continue;
+            {
+                /* A drawbridge is a gap until it is down, and floor after. */
+                const FtTile tt = ft_map_tile(m, nx, ny);
+                if(ft_tile_solid(tt) && !(tt == FT_TILE_BRIDGE && ft_world_bridge_down(w))) {
+                    continue;
+                }
+            }
 
             /* Somebody standing still is in the way; walk round them. */
             if(ft_world_hale_here(w) &&
@@ -5032,6 +5064,205 @@ static void test_echo(void) {
         /* Seen, and not only from the one tile the test walked to. */
         CHECK(seen_tile[4 * W + 12], "the gap's edge is somewhere you can stand");
     }
+}
+
+/* Walk to a tile in the current room with the player's own rules, taking no
+ * exits. Returns whether you got there. */
+static bool walk_here(FtWorld* w, int32_t tx, int32_t ty) {
+    for(int t = 0; t < 6000 && !(w->mv.tx == tx && w->mv.ty == ty); t++) {
+        int8_t dx = 0, dy = 0;
+        if(!ft_world_moving(w)) {
+            chase(w, tx, ty, &dx, &dy);
+            if(dx == 0 && dy == 0) break; /* no way there */
+        }
+        ft_world_update(w, dx, dy, 10);
+    }
+    return w->mv.tx == tx && w->mv.ty == ty;
+}
+
+static void face(FtWorld* w, FtFacing f) {
+    w->facing = f;
+}
+
+static void test_scrapline(void) {
+    section("the Scrapline");
+
+    /* The gap room leads on to the town now, not to the next sample. */
+    const FtRoom* gap = ft_room(FT_ECHO_ROOM);
+    bool to_town = false;
+    for(uint8_t i = 0; i < gap->exit_count; i++) {
+        if(gap->exits[i].dest_room == FT_ROOM_SCRAPLINE) to_town = true;
+    }
+    CHECK(to_town, "east of the gap is the Scrapline");
+
+    /* Everything anybody says here fits, with every name. */
+    for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+        for(uint8_t again = 0; again < 5u; again++) {
+            FtQuests q;
+            ft_quests_init(&q);
+            q.state[FT_QUEST_RIVET] = st;
+            const FtTalk c = ft_quest_talk(&q, FT_QUEST_RIVET, again);
+            check_talk(&c, "Rivet", st, again);
+            CHECK_EQ(c.voice, FT_VOICE_RIVET);
+        }
+    }
+    {
+        const FtTalk k = ft_quest_keeper_call();
+        check_talk(&k, "Keeper call", 0, 0);
+        bool other = false;
+        for(uint8_t i = 0; i < k.count; i++) {
+            if(strstr(k.beats[i].a, "other") || (k.beats[i].b && strstr(k.beats[i].b, "other")))
+                other = true;
+        }
+        CHECK(other, "the Keeper says you met the other one");
+    }
+
+    /* Ma Rivet: the job, and the clicker with it. */
+    FtQuests q;
+    ft_quests_init(&q);
+    CHECK(!ft_quest_has_infrared(&q), "no Infrared before Ma Rivet");
+    const FtTalk offer = ft_quest_talk(&q, FT_QUEST_RIVET, 0);
+    CHECK(offer.ask, "she asks");
+    FtQuestOutcome o = ft_quest_answer(&q, FT_QUEST_RIVET, false);
+    CHECK(!o.infrared && !ft_quest_has_infrared(&q), "saying later changes nothing");
+    o = ft_quest_answer(&q, FT_QUEST_RIVET, true);
+    CHECK(o.infrared, "saying yes hands you Infrared");
+    CHECK(ft_quest_has_infrared(&q), "and you have it");
+    CHECK_EQ(ft_quest_for_room(FT_ROOM_SCRAPLINE), FT_QUEST_RIVET);
+
+    /* The Fallen Spans: the far side is out of reach until the bridge is
+     * down, and pointing across the gap brings it down. */
+    FtWorld w;
+    ft_world_init(&w);
+    w.quests = q;
+    ft_world_enter(&w, FT_ROOM_SPANS, 1, 4);
+    for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) w.foes[i].alive = false;
+
+    CHECK(!ft_world_bridge_down(&w), "the bridge starts folded away");
+    CHECK(walk_here(&w, 9, 5), "you can walk to the near end of it");
+    face(&w, FT_FACE_RIGHT);
+    walk(&w, 1, 0);
+    CHECK_EQ(w.mv.tx, 9);
+    CHECK(!ft_world_ir_target(&w), "pointing at the gap with nothing across it does nothing");
+
+    CHECK(walk_here(&w, 9, 4), "to the edge, level with the receiver");
+    face(&w, FT_FACE_RIGHT);
+    CHECK(ft_world_ir_target(&w), "the receiver is in your sights");
+    face(&w, FT_FACE_UP);
+    CHECK(!ft_world_ir_target(&w), "and only when you face it");
+    face(&w, FT_FACE_RIGHT);
+    CHECK(ft_world_ir_fire(&w), "click");
+    CHECK(ft_world_bridge_down(&w), "the bridge comes down");
+    CHECK(!ft_world_ir_target(&w), "and there is nothing more to point at");
+    CHECK(walk_here(&w, 13, 5), "and you can walk across it");
+
+    /* Down for good: in the save, and coming back. */
+    {
+        FtSaveData d;
+        ft_save_from_world(&w, true, true, &d);
+        FtWorld r;
+        ft_save_to_world(&d, &r, NULL, NULL);
+        CHECK(ft_world_bridge_down(&r), "the bridge stays down after loading");
+    }
+
+    /* The Relay: another gap, then Echo on the spit, standing its ground. */
+    ft_world_enter(&w, FT_ROOM_RELAY, 1, 4);
+    CHECK(!ft_world_bridge_down(&w), "the relay's bridge is its own");
+    CHECK(walk_here(&w, 8, 3), "to the edge");
+    face(&w, FT_FACE_RIGHT);
+    CHECK(ft_world_ir_fire(&w), "click again");
+    CHECK(walk_here(&w, 13, 4), "across");
+
+    int echo = -1;
+    const FtRoom* relay = ft_room(FT_ROOM_RELAY);
+    for(uint8_t i = 0; i < relay->ent_count; i++) {
+        if(relay->ents[i].kind == FT_ENT_FOE &&
+           ft_roster(relay->ents[i].roster)->foes[0] == FT_ENEMY_ECHO) {
+            echo = (int)i;
+        }
+    }
+    CHECK(echo >= 0, "Echo is at the relay");
+    if(echo < 0) return;
+    const uint8_t ex = w.foes[echo].w[0].mv.tx, ey = w.foes[echo].w[0].mv.ty;
+    for(int t = 0; t < 1000; t++) ft_world_update(&w, 0, 0, 10);
+    CHECK(w.foes[echo].w[0].mv.tx == ex && w.foes[echo].w[0].mv.ty == ey,
+          "it stands its ground with you in the room");
+
+    /* Nothing gets round it: the spit is one tile wide, so any way to the
+     * mast walks into Echo — and walking into a foe is the fight. */
+    {
+        FtWorld p2 = w;
+        bool met = false;
+        for(int t = 0; t < 6000 && !(p2.mv.tx == 21 && p2.mv.ty == 4); t++) {
+            int8_t dx = 0, dy = 0;
+            if(!ft_world_moving(&p2)) chase(&p2, 21, 4, &dx, &dy);
+            ft_world_update(&p2, dx, dy, 10);
+            if(ft_world_foe_contact(&p2) == echo) met = true;
+        }
+        CHECK(met, "the relay is behind it");
+    }
+
+    /* The fight: it fights like you, and at half it goes. */
+    {
+        static const FtEnemyId ONE[1] = {FT_ENEMY_ECHO};
+        const FtEnemy* en = &FT_ENEMIES[FT_ENEMY_ECHO];
+        CHECK(en->attrs & FT_ATTR_BOSS, "Echo is a boss");
+        CHECK(en->attrs & FT_ATTR_RETREATS, "that gets away");
+        bool bcast = false, contact = false;
+        for(uint8_t a = 0; a < en->attack_count; a++) {
+            if(en->attacks[a].delivery == FT_DELIVERY_BROADCAST) bcast = true;
+            if(en->attacks[a].delivery == FT_DELIVERY_CONTACT) contact = true;
+        }
+        CHECK(bcast && contact, "one attack like your Sub-GHz, one like your NFC");
+
+        int won = 0, fled = 0, halfway = 0;
+        for(uint32_t seed = 1; seed <= 8u; seed++) {
+            FtEncounter e;
+            ft_encounter_init(&e, ONE, 1, seed);
+            e.stats.charge_max = 400;
+            e.stats.charge = 400;
+            e.roll.current = 400;
+            e.roll.target = 400;
+            int16_t lowest = e.foes[0].charge;
+            for(int t = 0; t < 40000 && !ft_encounter_over(&e); t++) {
+                if(e.phase == FT_PHASE_MENU) {
+                    e.menu_index = FT_ACTION_BROADCAST;
+                    ft_encounter_press_ok(&e);
+                } else if(e.phase == FT_PHASE_PLAYER_ACT && !e.action_pressed &&
+                          e.phase_ms >= FT_READY_MS + FT_ACTION_WINDOW_MS / 2) {
+                    ft_encounter_press_ok(&e);
+                }
+                ft_encounter_tick(&e, 10);
+                if(e.foes[0].charge > 0 && e.foes[0].charge < lowest) lowest = e.foes[0].charge;
+            }
+            if(e.phase == FT_PHASE_WIN) won++;
+            if(e.retreated) fled++;
+            if(lowest * 2 > e.foes[0].charge_max) halfway++;
+        }
+        CHECK_EQ(won, 8);
+        CHECK_EQ(fled, 8);
+        CHECK_EQ(halfway, 8);
+    }
+
+    /* Beaten, it is gone for good, and the relay is yours to wake. */
+    ft_world_clear_entity(&w, (uint8_t)echo);
+    ft_world_enter(&w, FT_ROOM_RELAY, 13, 4);
+    CHECK(!w.foes[echo].alive, "Echo does not come back");
+    CHECK(walk_here(&w, 21, 4), "the spit is clear");
+    face(&w, FT_FACE_RIGHT);
+    CHECK(ft_world_relay_ahead(&w), "the relay is in front of you");
+
+    CHECK(!ft_world_call_due(&w), "nobody calls before it is awake");
+    ft_quest_advance(&w.quests, FT_QUEST_RIVET, FT_QUEST_READY);
+    CHECK(ft_world_call_due(&w), "and once it is, the Keeper does");
+    w.revealed |= FT_REVEAL_KEEPER_CALL;
+    CHECK(!ft_world_call_due(&w), "once");
+
+    /* Home to Ma Rivet, who pays, between shouting at Coll. */
+    o = ft_quest_answer(&w.quests, FT_QUEST_RIVET, true);
+    CHECK_EQ(o.orbs, 3);
+    CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_RIVET), FT_QUEST_DONE);
+    CHECK(ft_quest_has_infrared(&w.quests), "and you keep the clicker");
 }
 
 static void test_talk_repeats(void) {
@@ -5819,7 +6050,7 @@ static void test_ways_out(void) {
 
                 const uint32_t to = (uint32_t)ny * m->w + (uint32_t)nx;
                 if(seen[to]) continue;
-                if(ft_tile_solid(ft_map_tile(m, nx, ny))) continue;
+                if(blocks_walk(ft_map_tile(m, nx, ny))) continue;
 
                 seen[to] = 1u;
                 queue[tail++] = (uint16_t)to;
@@ -5902,6 +6133,7 @@ int main(void) {
     test_talk_repeats();
     test_naming();
     test_echo();
+    test_scrapline();
     test_dead_stay_dead();
     test_area_names();
     test_items();

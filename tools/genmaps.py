@@ -32,6 +32,9 @@ LEGEND = {
     "w": 20, # tall grass (walkable, drawn in front, hides things)
     "R": 21, # rock     (a cave's wall)
     ",": 22, # cave floor
+    "b": 23, # drawbridge (a gap until its receiver is pointed at)
+    "x": 24, # Infrared receiver
+    "M": 25, # relay mast
 }
 
 MAPS = {}
@@ -343,7 +346,62 @@ Dss~~ssssCsss~~~sssss#
 """)
 
 
-SOLID = {1, 2, 8, 10, 12, 15, 17, 19, 21}  # wall, void, crate, scrap, pylon, trunk, hut, hut door, rock
+# ---- Chapter 1, part 2: the Scrapline ------------------------------------
+#
+# A wreck-pickers' town on the spans that fell on the Loud Day (STORY.md §6).
+# Three rooms appended after Dead Letters, so nothing before them moved.
+
+# [13] The Scrapline. Two shacks knocked together out of the wreck, Ma
+# Rivet's in front of the left one, a terminal, and the road straight
+# through: west back to the gap where Echo stood, east to the broken spans.
+MAPS["sc1"] = ("The Scrapline", 0, """
+##########################
+#..rrrr.......rrrr..SS...#
+#..rrrr.......rrrr...S...#
+#..hhdh.......hhdh.......#
+#........................#
+D........................D
+#...SS..........T....S...#
+#.S.......SSS............#
+#..........S.......S.....#
+##########################
+""")
+
+# [14] The Fallen Spans. One gap, two tiles wide, with a receiver on the
+# far edge level with where you stand and the drawbridge folded away one
+# row down. Two wide rather than three so the receiver is fully on screen
+# while you stand at the edge pointing at it: the view is eight tiles. Point Infrared across the gap and the bridge comes down — the
+# chapter's verb, and the whole of it.
+MAPS["sc2"] = ("Fallen Spans", 0, """
+##########################
+#.....S...~~......S......#
+#..S......~~............S#
+#.........~~.............#
+D.........~~x............D
+#.........bb.............#
+#....SS...~~......SS.....#
+#.........~~.............#
+#..S......~~........S....#
+##########################
+""")
+
+# [15] The Relay. A terminal before anything else, because there is a fight
+# ahead you can lose. Another gap and receiver, then a platform, then a
+# spit one tile wide out to the mast: Echo stands on the spit, so there is
+# no way round it.
+MAPS["sc3"] = ("The Relay", 0, """
+#########################
+#........~~~~~~~~~~~~~~~#
+#..T.....~~.......~~~~~~#
+#........~~x......~~~~~~#
+D........bb...........M~#
+#........~~.......~~~~~~#
+#...S....~~....S..~~~~~~#
+#........~~.......~~~~~~#
+#########################
+""")
+
+SOLID = {1, 2, 8, 10, 12, 15, 17, 19, 21, 23, 24, 25}  # wall, void, crate, scrap, pylon, trunk, hut, hut door, rock
 DOOR = 5
 GATE = 14  # a way out, like a door, and allowed on a border
 

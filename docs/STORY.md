@@ -236,19 +236,39 @@ same legs, but the screen is dark with two holes for eyes. It says *"Please
 hold."* in Hush's voice, and it is gone. That is the whole scene: once, never
 again, and nobody explains it until the relay.
 
-**The Scrapline** *(to build)*. A wreck-pickers' town living on the spans
-that fell on the Loud Day. **Ma Rivet** runs it and wants the relay back on
-so she can sell scrap to Weldhome again. Crossing the gaps needs **Infrared**
-(line of sight: trigger things across a gap you cannot walk). You wake the
-Scrapline's relay — and for the first time since the Silence two villages
-can hear each other. Weldhome and the Scrapline immediately start arguing
-over the phone. That is the point: it is noisy, and it is wonderful.
+**The Scrapline** *(built)*. A wreck-pickers' town living on the spans
+that fell on the Loud Day. **Ma Rivet** runs it — grumpy, loud, secretly
+kind (the player's pick) — and wants the relay back on so she can sell scrap
+to Weldhome again.
 
-**Boss: Echo**, first meeting, at the relay. It looks like you, it fights
-like you, and all it says is *"Please hold."* It retreats when beaten.
+> **Ma Rivet:** OI! Robot! Off my span!
+> **You:** Sorry.
+> **Ma Rivet:** Sorry, it says. HA.
+> **Ma Rivet:** Relay's been dead since the Silence. No relay, no trade. No
+> trade, no dinner.
+> **Ma Rivet:** Take this clicker. Point it at stuff.
 
-*The Keeper calls* on the newly woken terminal: *"You met the other one."*
-He will not say more yet.
+The clicker is **Infrared**: line of sight. At the edge of a gap, face the
+receiver post on the far side and press OK, and a drawbridge comes down.
+That is the whole verb. Two gaps: the Fallen Spans, and the one in front of
+the relay.
+
+**Boss: Echo**, first meeting, on the one-tile spit in front of the relay.
+It looks like you (a dark copy: the same box and legs, the screen black with
+two holes for eyes), it fights like you — **Hold Music**, which reaches you
+anywhere like your Sub-GHz, and **Please Hold**, up close like your NFC — and
+at half its health it **gets away** ("Echo got away!"). It is easy on purpose
+(the player's pick): the first meeting is a warning, not a wall. Beaten once,
+it is gone from the spit for good.
+
+Then you wake the relay, and the terminal by the door rings: *the Keeper
+calls* — *"Hello? Is this thing on?"* — and says *"You met the other one."*
+He will not say more yet: *"Not now. Keep going. I'll call again."*
+
+Back in town, the line is open and Ma Rivet is already shouting down it at
+Coll — *"Your offer's a JOKE, Coll!"*, *"...Yes, I missed you too. SHUT
+UP."* — which is the point: it is noisy, and it is wonderful. Coll has told
+her your name. She pays three orbs.
 
 ### Chapter 2 — Cold Storage and the Turnstile
 
@@ -365,8 +385,9 @@ conversation where there is room for it.
 | Wren naming you | Built: Coll, Hale and Wren use it |
 | Echo, first sight across the Scrapline gap | Built |
 | Coll's "not the first one through" | Built: she describes Echo |
-| The Scrapline (Ma Rivet, Infrared, relay, Echo) | One sample room only |
-| Relays and calling the Keeper from terminals | Not built |
+| The Scrapline (Ma Rivet, Infrared, relay, Echo) | Built: town, Fallen Spans, the Relay |
+| The Keeper's first call | Built |
+| Relays and calling the Keeper from terminals | The Scrapline's relay and the first call; calling him yourself is not built |
 | The sealed message shown anywhere in the menus | Not built |
 | Chapter 2 (Cold Storage, the Turnstile) | One sample room each |
 | Chapter 3 (Signal Hill, the Deadzone, Hush) | One sample room each |

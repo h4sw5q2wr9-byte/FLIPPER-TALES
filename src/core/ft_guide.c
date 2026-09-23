@@ -98,6 +98,7 @@ const char* ft_guide_advice(FtEnemyId id) {
      * die before anything else matters; a sleeper has to be left alone. */
     if(attrs & FT_ATTR_BULWARK)   return "Kill this first";
     if(attrs & FT_ATTR_SLEEPER)   return "Save it for last";
+    if(attrs & FT_ATTR_RETREATS)  return "Half is enough";
 
     /* Reach beats everything else: an attack that cannot land is not a
      * choice, it is a wasted turn. */
@@ -118,6 +119,7 @@ const char* ft_guide_tag(FtEnemyId id) {
 
     if(attrs & FT_ATTR_BULWARK)   return "first";
     if(attrs & FT_ATTR_SLEEPER)   return "last";
+    if(attrs & FT_ATTR_RETREATS)  return "boss";
     if(attrs & FT_ATTR_AIRBORNE)  return "Sub-GHz";
     if(attrs & FT_ATTR_ENCRYPTED) return "NFC";
     if(FT_ENEMIES[id].shielded >= 2) return "NFC";
@@ -157,6 +159,10 @@ const char* ft_guide_note(FtEnemyId id, uint8_t n) {
     }
     if(en->attrs & FT_ATTR_JAMMER) {
         if(at == n) return "Locks your SP meter";
+        at++;
+    }
+    if(en->attrs & FT_ATTR_RETREATS) {
+        if(at == n) return "Flees at half HP";
         at++;
     }
     return NULL;

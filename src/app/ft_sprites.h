@@ -337,6 +337,44 @@ static const uint16_t FT_SPRITE_ECHO[FT_HERO_H] = {
     0x0000,
 };
 
+static const uint16_t FT_SPRITE_RIVET[FT_SPRITE_H] = {
+    0x0FF0,
+    0x1998,
+    0x1998,
+    0x1FF8,
+    0x1008,
+    0x1668,
+    0x1008,
+    0x13C8,
+    0x0FF0,
+    0x3FFC,
+    0x67E6,
+    0x6426,
+    0x67E6,
+    0x3FFC,
+    0x1C38,
+    0x1C38,
+};
+
+static const uint16_t FT_SPRITE_ECHO_FOE[FT_SPRITE_H] = {
+    0x0180,
+    0x3FFC,
+    0x7FFE,
+    0x7FFE,
+    0x73CE,
+    0x73CE,
+    0x7FFE,
+    0x7FFE,
+    0x7FFE,
+    0x7FFE,
+    0x3FFC,
+    0x1FF8,
+    0x0C30,
+    0x0C30,
+    0x0C30,
+    0x1E78,
+};
+
 static const uint16_t FT_SPRITE_RUNNER[FT_SPRITE_H] = {
     0x0180,
     0x0660,

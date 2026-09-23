@@ -378,6 +378,12 @@ static void render_world(Canvas* canvas, const FtWorld* w, FtPos focus, bool tal
                 continue;
             }
 
+            /* A drawbridge still folded away is the gap it will cross. */
+            if(here == FT_TILE_BRIDGE && !ft_world_bridge_down(w)) {
+                blit_rows(canvas, FT_TILE_ART[FT_TILE_VOID], FT_TILE_PX, sx, sy, FT_TILE_PX);
+                continue;
+            }
+
             blit_rows(
                 canvas, FT_TILE_ART[ft_map_art_index(map, mx, my)], FT_TILE_PX, sx, sy,
                 FT_TILE_PX);

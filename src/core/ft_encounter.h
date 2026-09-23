@@ -139,6 +139,10 @@ typedef struct {
     FtHitResult last_enemy_hit;
     int16_t     last_total_damage;
 
+    /* A foe with FT_ATTR_RETREATS got away this fight. The app says so
+     * instead of "Cleared.", because it will be back. */
+    bool        retreated;
+
     bool coach;
 
     /* What you brought with you. Copied in and out like the stats, so a

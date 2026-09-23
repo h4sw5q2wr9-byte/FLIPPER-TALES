@@ -23,6 +23,7 @@ static const uint16_t* ft_person_art(FtQuestId id) {
     switch(id) {
     case FT_QUEST_CLEAN_RUN: return FT_SPRITE_KEEPER;
     case FT_QUEST_WREN:      return FT_SPRITE_WARDEN;
+    case FT_QUEST_RIVET:     return FT_SPRITE_RIVET;
     default:                 return FT_SPRITE_FOLK;
     }
 }

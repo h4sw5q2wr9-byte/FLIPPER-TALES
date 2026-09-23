@@ -206,6 +206,9 @@ int main(void) {
         {"impact-capture",  FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,    1100,  0, 0, 0, false},
         {"impact-jam",      FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,    1100,  0, 1, 0, false},
         {"group3-menu",     FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    0, 0, 3, false},
+        /* Echo, at the relay: you, facing a dark copy of you. */
+        {"echo-menu",       FT_ENEMY_ECHO,         FT_PHASE_MENU,       0,    0, 0, 0, false},
+        {"echo-telegraph",  FT_ENEMY_ECHO,         FT_PHASE_TELEGRAPH,  900,  0, 1, 0, false},
         {"group3-target",   FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    1, 0, 3, false},
         {"group2-signal",   FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    4, 0, 2, false},
         {"anim-bcast",      FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     560,  0, 0, 3, false},

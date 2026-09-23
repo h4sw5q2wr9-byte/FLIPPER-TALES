@@ -113,6 +113,14 @@ typedef enum {
     FT_TILE_ROCK,
     FT_TILE_CAVE,
 
+    /* The Scrapline. A drawbridge is solid here — a gap — and the world lets
+     * you onto it once its room's bridge is down (ft_world_bridge_down). A
+     * receiver is what you point Infrared at to bring it down. A relay is
+     * the district's mast, which Hush switched off. */
+    FT_TILE_BRIDGE,
+    FT_TILE_RECEIVER,
+    FT_TILE_RELAY,
+
     FT_TILE_COUNT
 } FtTile;
 

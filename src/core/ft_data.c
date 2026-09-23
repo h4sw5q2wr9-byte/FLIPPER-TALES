@@ -22,6 +22,8 @@
 #define FT_ATK_PLEASE_QUEUE  29
 #define FT_ATK_SNORE         30
 #define FT_ATK_CLOCK_IN      31
+#define FT_ATK_HOLD_MUSIC    40
+#define FT_ATK_PLEASE_HOLD   41
 
 const FtModule FT_MODULES[FT_MODULE_COUNT] = {
     [FT_MOD_SUBGHZ] =
@@ -256,6 +258,26 @@ const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT] = {
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
                      {FT_ATK_CLOCK_IN, 8, 1, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_NORMAL, FT_PAYLOAD_CORRUPT}}},
+
+    /* Echo. Your two attacks, in Hush's words: Hold Music is its Sub-GHz,
+     * reaching you wherever you stand and making you wait; Please Hold is
+     * its NFC, up close and hard. Neither AIRBORNE nor ENCRYPTED, because
+     * it is built like you and both your modules reach it.
+     *
+     * Its Charge is a boss's, but it only has to lose half of it — then it
+     * is gone (FT_ATTR_RETREATS). */
+    [FT_ENEMY_ECHO] =
+        {.name = "Echo",
+         .charge = 52,
+         .shielded = 1,
+         .attrs = FT_ATTR_BOSS | FT_ATTR_RETREATS,
+         .level = 4,
+         .xp = 50,
+         .attack_count = 2,
+         .attacks = {{FT_ATK_HOLD_MUSIC, 3, 0, false, FT_DELIVERY_BROADCAST,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_STALL},
+                     {FT_ATK_PLEASE_HOLD, 5, 0, true, FT_DELIVERY_CONTACT,
+                      FT_CLASS_NORMAL, FT_PAYLOAD_NONE}}},
 };
 
 /* Every attack is named for what the machine used to do — a Lamplighter's
@@ -283,6 +305,8 @@ static const struct {
     {FT_ATK_PLEASE_QUEUE, "Please Queue"},
     {FT_ATK_SNORE, "Snore"},
     {FT_ATK_CLOCK_IN, "Clock In"},
+    {FT_ATK_HOLD_MUSIC, "Hold Music"},
+    {FT_ATK_PLEASE_HOLD, "Please Hold"},
 };
 
 const char* ft_attack_name(uint16_t id) {

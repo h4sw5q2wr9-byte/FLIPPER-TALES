@@ -428,6 +428,81 @@ int main(void) {
         }
     }
 
+    /* The Scrapline: Ma Rivet, pointing across the gap before and after,
+     * Echo on the spit, and the Keeper's call. */
+    {
+        int c = 0;
+
+        FtWorld mr;
+        ft_world_init(&mr);
+        ft_world_enter(&mr, FT_ROOM_SCRAPLINE, 10, 5);
+        mr.area_ms = 100000u;
+        mr.facing = FT_FACE_UP;
+        mr.name = 2;
+        {
+            const FtTalk t = with_name(ft_quest_talk(&mr.quests, FT_QUEST_RIVET, 0), 2);
+            ft_overworld_render_talk(canvas, &mr, 10, 4);
+            ft_render_talk(canvas, &t, 0, UINT16_MAX, false, true);
+            ft_stub_canvas_write_pbm(canvas, "preview/map_80_rivet-oi.pbm");
+            c += ft_stub_canvas_clipped(canvas);
+            ft_overworld_render_talk(canvas, &mr, 10, 4);
+            ft_render_talk(canvas, &t, 7, UINT16_MAX, false, true);
+            ft_stub_canvas_write_pbm(canvas, "preview/map_81_rivet-clicker.pbm");
+            c += ft_stub_canvas_clipped(canvas);
+        }
+        ft_quest_advance(&mr.quests, FT_QUEST_RIVET, FT_QUEST_READY);
+        {
+            const FtTalk t = with_name(ft_quest_talk(&mr.quests, FT_QUEST_RIVET, 0), 2);
+            ft_overworld_render_talk(canvas, &mr, 10, 4);
+            ft_render_talk(canvas, &t, 3, UINT16_MAX, false, true);
+            ft_stub_canvas_write_pbm(canvas, "preview/map_82_rivet-coll.pbm");
+            c += ft_stub_canvas_clipped(canvas);
+        }
+        ft_overworld_render(canvas, &mr);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_83_scrapline.pbm");
+        c += ft_stub_canvas_clipped(canvas);
+
+        FtWorld sp;
+        ft_world_init(&sp);
+        ft_quest_advance(&sp.quests, FT_QUEST_RIVET, FT_QUEST_ACTIVE);
+        ft_world_enter(&sp, FT_ROOM_SPANS, 9, 4);
+        sp.area_ms = 100000u;
+        sp.facing = FT_FACE_RIGHT;
+        for(uint8_t k = 0; k < FT_MAX_ROOM_ENTS; k++) sp.foes[k].alive = false;
+        ft_overworld_render(canvas, &sp);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_84_spans-up.pbm");
+        c += ft_stub_canvas_clipped(canvas);
+        (void)ft_world_ir_fire(&sp);
+        ft_overworld_render(canvas, &sp);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_85_spans-down.pbm");
+        c += ft_stub_canvas_clipped(canvas);
+
+        FtWorld rl;
+        ft_world_init(&rl);
+        rl.revealed |= FT_REVEAL_BRIDGE_RELAY;
+        ft_world_enter(&rl, FT_ROOM_RELAY, 16, 4);
+        rl.area_ms = 100000u;
+        rl.facing = FT_FACE_RIGHT;
+        ft_overworld_render(canvas, &rl);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_86_relay-echo.pbm");
+        c += ft_stub_canvas_clipped(canvas);
+
+        rl.name = 2;
+        {
+            const FtTalk t = with_name(ft_quest_keeper_call(), 2);
+            ft_world_enter(&rl, FT_ROOM_RELAY, 3, 3);
+            rl.area_ms = 100000u;
+            rl.facing = FT_FACE_UP;
+            ft_overworld_render_talk(canvas, &rl, 3, 3);
+            ft_render_talk(canvas, &t, 3, UINT16_MAX, false, true);
+            ft_stub_canvas_write_pbm(canvas, "preview/map_87_keeper-call.pbm");
+            c += ft_stub_canvas_clipped(canvas);
+        }
+
+        clipped_total += c;
+        printf("  %-18s %s\n", "scrapline", c ? "CLIPPED" : "ok");
+    }
+
     /* Spotted: the mark over a group that has seen you and has not started
      * moving yet. It is the only thing drawn above a sprite, so it is also
      * the only thing that can run off the top of the panel. */
@@ -488,6 +563,9 @@ int main(void) {
     write_whole_map(&FT_MAP_EJ1, "preview/whole_c_ej1.pbm");
     write_whole_map(&FT_MAP_EJ2, "preview/whole_d_ej2.pbm");
     write_whole_map(&FT_MAP_SL1, "preview/whole_5_sl1.pbm");
+    write_whole_map(&FT_MAP_SC1, "preview/whole_e_sc1.pbm");
+    write_whole_map(&FT_MAP_SC2, "preview/whole_f_sc2.pbm");
+    write_whole_map(&FT_MAP_SC3, "preview/whole_g_sc3.pbm");
     write_whole_map(&FT_MAP_CS1, "preview/whole_6_cs1.pbm");
     write_whole_map(&FT_MAP_TS1, "preview/whole_7_ts1.pbm");
     write_whole_map(&FT_MAP_SH1, "preview/whole_8_sh1.pbm");

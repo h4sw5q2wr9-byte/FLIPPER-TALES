@@ -363,7 +363,8 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
         app->levelled = (levels > 0);
         if(app->levelled) ft_sound_play(&app->sound, FT_SFX_LEVEL);
 
-        ft_toast(app, "Cleared.");
+        /* Echo does not go down the first time. It goes. */
+        ft_toast(app, app->encounter.retreated ? "Echo got away!" : "Cleared.");
     } else {
         /* Downed: the run goes back to the last save, in full.
          *
@@ -1057,6 +1058,12 @@ static void ft_finish_talk(FlipperTales* app, bool yes) {
 
     if(out.follows) ft_world_escort_start(&app->world);
 
+    /* Ma Rivet's clicker. */
+    if(out.infrared) {
+        ft_toast(app, "Got Infrared!");
+        ft_sound_play(&app->sound, FT_SFX_LEVEL);
+    }
+
     /* Somebody setting off to show you the way. It is Hale either way: Coll
      * says "go with him", and he goes. */
     if(out.leads) ft_world_hale_lead(&app->world);
@@ -1071,7 +1078,7 @@ static void ft_finish_talk(FlipperTales* app, bool yes) {
 
     /* Anything a conversation changed is progress worth keeping even if the
      * walk home goes badly. */
-    if(out.orbs > 0 || out.follows || out.ended || out.leads) ft_save_now(app);
+    if(out.orbs > 0 || out.follows || out.ended || out.leads || out.infrared) ft_save_now(app);
 
     /* Heard it. Next time they say something shorter, and different. */
     if(app->talk_again[app->talk_slot] < 250u) app->talk_again[app->talk_slot]++;
@@ -1199,10 +1206,61 @@ static void ft_overworld_ok(FlipperTales* app) {
          * saving would mean the thing you walked across the room for did only
          * half of what it is for. */
         ft_save_here(app);
+
+        /* The relay is awake, so this terminal can reach somebody other than
+         * Hush — and the first time, somebody is already calling. */
+        if(ft_world_call_due(&app->world)) {
+            app->world.revealed |= FT_REVEAL_KEEPER_CALL;
+            ft_save_now(app);
+
+            app->talk = ft_quest_keeper_call();
+            app->talk_quest = FT_QUEST_COUNT; /* nobody's quest: it changes nothing */
+            app->talk_is_wren = false;
+            app->talk_is_hale = false;
+            app->talk_is_naming = false;
+            ft_start_talk(app, app->world.mv.tx, app->world.mv.ty);
+            return;
+        }
+
         ft_toast(app, ft_save_now(app) ? "Saved. Healed." : "Healed. No card.");
 
         /* It is Hush's terminal, and it is very polite about it. */
         ft_world_terminal_speaks(&app->world);
+        return;
+    }
+
+    /* Infrared: a receiver across a gap. Pointing needs the clicker Ma Rivet
+     * hands you; without it, the post is just something over there. */
+    if(ft_world_ir_target(&app->world)) {
+        if(!ft_quest_has_infrared(&app->world.quests)) {
+            ft_toast(app, "Out of reach.");
+            ft_sound_play(&app->sound, FT_SFX_DENY);
+            return;
+        }
+        (void)ft_world_ir_fire(&app->world);
+        ft_toast(app, "Click! Bridge down.");
+        ft_sound_play(&app->sound, FT_SFX_REVEAL);
+        ft_save_now(app);
+        return;
+    }
+
+    /* The relay. Waking it is the job; once it is awake it just hums. */
+    if(ft_world_relay_ahead(&app->world)) {
+        FtQuests* q = &app->world.quests;
+        const FtQuestState at = ft_quest_state(q, FT_QUEST_RIVET);
+
+        if(at == FT_QUEST_ACTIVE) {
+            ft_quest_advance(q, FT_QUEST_RIVET, FT_QUEST_READY);
+            ft_toast(app, "The relay wakes up!");
+            ft_sound_play(&app->sound, FT_SFX_LEVEL);
+            ft_save_now(app);
+        } else if(at == FT_QUEST_UNKNOWN) {
+            ft_toast(app, "A dead relay.");
+            ft_sound_play(&app->sound, FT_SFX_MOVE);
+        } else {
+            ft_toast(app, "It hums. Loudly.");
+            ft_sound_play(&app->sound, FT_SFX_MOVE);
+        }
         return;
     }
 

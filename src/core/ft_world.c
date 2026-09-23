@@ -63,6 +63,9 @@ static const FtRoster FT_ROSTERS[] = {
     {2, {FT_ENEMY_LAMPLIGHTER, FT_ENEMY_PARCEL_RUNNER, 0}},
     {2, {FT_ENEMY_LAMPLIGHTER, FT_ENEMY_LAMPLIGHTER, 0}},
     {3, {FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_NIGHT_SHIFT}},
+
+    /* [17] Echo, alone, on the spit in front of the Scrapline's relay. */
+    {1, {FT_ENEMY_ECHO, 0, 0}},
 };
 #define ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
 
@@ -218,6 +221,42 @@ static const FtEntity EJ2_ENTS[] = {
     {FT_ENT_CACHE, 22, 12, FT_ITEM_CELL},
 };
 
+/* ---- Chapter 1, part 2: the Scrapline ------------------------------------
+ *
+ * STORY.md §6. A town, a room of broken spans, and the relay. */
+
+/* [13] The Scrapline. Ma Rivet stands in front of her shack, beside the
+ * road, where nobody can walk through town without being shouted at. */
+static const FtExit SC1_EXITS[] = {
+    {0, 5, FT_ECHO_ROOM, 20, 8, 0, 0, 0},
+    {25, 5, FT_ROOM_SPANS, 1, 4, 0, 0, 0},
+};
+static const FtEntity SC1_ENTS[] = {
+    {FT_ENT_NPC, 10, 4, FT_QUEST_RIVET},
+    {FT_ENT_CACHE, 23, 8, FT_ITEM_RATION},
+};
+
+/* [14] The Fallen Spans. A Sweeper crew either side of the gap: the one on
+ * this side is between you and the edge, the one on the far side is what
+ * the bridge lets you meet. */
+static const FtExit SC2_EXITS[] = {
+    {0, 4, FT_ROOM_SCRAPLINE, 24, 5, 0, 0, 0},
+    {25, 4, FT_ROOM_RELAY, 1, 4, 0, 0, 0},
+};
+static const FtEntity SC2_ENTS[] = {
+    {FT_ENT_FOE, 5, 2, 4},
+    {FT_ENT_FOE, 19, 3, 5},
+    {FT_ENT_CACHE, 22, 7, FT_ITEM_CELL},
+};
+
+/* [15] The Relay. Echo stands on the spit, the only way to the mast. */
+static const FtExit SC3_EXITS[] = {
+    {0, 4, FT_ROOM_SPANS, 24, 4, 0, 0, 0},
+};
+static const FtEntity SC3_ENTS[] = {
+    {FT_ENT_FOE, 19, 4, 17},
+};
+
 
 /* ---- Concept slices ---------------------------------------------------
  *
@@ -235,7 +274,11 @@ static const FtEntity EJ2_ENTS[] = {
  * buys you here is reaching across a gap you cannot walk. */
 static const FtExit SL1_EXITS[] = {
     {0, 2, 3, 16, 8, 0, 0, 0},
-    {21, 8, 5, 1, 2, 0, 0, 0},
+
+    /* On to the Scrapline itself. This used to lead to the next sample
+     * room; the samples after it are only reachable from the debug menu
+     * now, until their chapters replace them. */
+    {21, 8, FT_ROOM_SCRAPLINE, 1, 5, 0, 0, 0},
 };
 static const FtEntity SL1_ENTS[] = {
     {FT_ENT_FOE, 8, 6, 4},
@@ -299,21 +342,25 @@ static const FtEntity DZ1_ENTS[] = {
 static const char* const AREA_COLD_BOOT = "Cold Boot";
 static const char* const AREA_WELDHOME = "Weldhome";
 static const char* const AREA_HOLLOW = "The Hollow";
+static const char* const AREA_SCRAPLINE = "The Scrapline";
 
 static const FtRoom FT_ROOMS[] = {
-    {&FT_MAP_CB1, CB1_EXITS, 1, CB1_ENTS, 2, AREA_COLD_BOOT},
-    {&FT_MAP_CB2, CB2_EXITS, 2, CB2_ENTS, 1, AREA_COLD_BOOT},
-    {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 3, AREA_COLD_BOOT},
-    {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 2, AREA_COLD_BOOT},
-    {&FT_MAP_SL1, SL1_EXITS, 2, SL1_ENTS, 2, "The Scrapline"},
-    {&FT_MAP_CS1, CS1_EXITS, 2, CS1_ENTS, 2, "Cold Storage"},
-    {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2, "The Turnstile"},
-    {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2, "Signal Hill"},
-    {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2, "The Deadzone"},
-    {&FT_MAP_AP1, AP1_EXITS, 3, AP1_ENTS, 2, NULL}, /* a path */
-    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 5, AREA_WELDHOME},
-    {&FT_MAP_EJ1, EJ1_EXITS, 2, EJ1_ENTS, 4, AREA_HOLLOW},
-    {&FT_MAP_EJ2, EJ2_EXITS, 1, EJ2_ENTS, 4, AREA_HOLLOW},
+    {&FT_MAP_CB1, CB1_EXITS, 1, CB1_ENTS, 2, AREA_COLD_BOOT, 0},
+    {&FT_MAP_CB2, CB2_EXITS, 2, CB2_ENTS, 1, AREA_COLD_BOOT, 0},
+    {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 3, AREA_COLD_BOOT, 0},
+    {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 2, AREA_COLD_BOOT, 0},
+    {&FT_MAP_SL1, SL1_EXITS, 2, SL1_ENTS, 2, AREA_SCRAPLINE, 0},
+    {&FT_MAP_CS1, CS1_EXITS, 2, CS1_ENTS, 2, "Cold Storage", 0},
+    {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2, "The Turnstile", 0},
+    {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2, "Signal Hill", 0},
+    {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2, "The Deadzone", 0},
+    {&FT_MAP_AP1, AP1_EXITS, 3, AP1_ENTS, 2, NULL, 0}, /* a path */
+    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 5, AREA_WELDHOME, 0},
+    {&FT_MAP_EJ1, EJ1_EXITS, 2, EJ1_ENTS, 4, AREA_HOLLOW, 0},
+    {&FT_MAP_EJ2, EJ2_EXITS, 1, EJ2_ENTS, 4, AREA_HOLLOW, 0},
+    {&FT_MAP_SC1, SC1_EXITS, 2, SC1_ENTS, 2, AREA_SCRAPLINE, 0},
+    {&FT_MAP_SC2, SC2_EXITS, 2, SC2_ENTS, 3, AREA_SCRAPLINE, FT_REVEAL_BRIDGE_SPANS},
+    {&FT_MAP_SC3, SC3_EXITS, 1, SC3_ENTS, 1, AREA_SCRAPLINE, FT_REVEAL_BRIDGE_RELAY},
 };
 #define ROOM_COUNT (sizeof(FT_ROOMS) / sizeof(FT_ROOMS[0]))
 
@@ -358,6 +405,20 @@ FtPos ft_stepper_pos(const FtStepper* s, uint32_t step_ms_total) {
 
 static bool step_target_free(const FtMap* m, uint8_t tx, uint8_t ty, int8_t dx, int8_t dy) {
     return !ft_tile_solid(ft_map_tile(m, (int32_t)tx + dx, (int32_t)ty + dy));
+}
+
+/* The player's own rule: the same as everybody's, except that a drawbridge
+ * that has come down is floor. Only for the player — a foe on the far side
+ * of a gap stays on the far side, bridge or no bridge. */
+static bool bridge_down_in(const FtWorld* w) {
+    const uint8_t bit = ft_room(w->room)->bridge;
+    return bit != 0u && (w->revealed & bit) == bit;
+}
+
+static bool player_step_free(const FtWorld* w, const FtMap* m, int8_t dx, int8_t dy) {
+    const FtTile t = ft_map_tile(m, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy);
+    if(t == FT_TILE_BRIDGE) return bridge_down_in(w);
+    return !ft_tile_solid(t);
 }
 
 /* Advance a step, returning true on the tick it completes. */
@@ -440,6 +501,14 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
          * somebody left is a reason to have gone there once. */
         const FtEntKind k = fresh->ents[i].kind;
         if(k != FT_ENT_FOE && k != FT_ENT_TREE) continue;
+
+        /* A boss is the one foe that is permanent: beaten once is beaten.
+         * Echo standing back on the spit every time you came to the relay
+         * would undo the scene where it got away. */
+        if(k == FT_ENT_FOE) {
+            const FtRoster* ro = ft_roster(fresh->ents[i].roster);
+            if(ro->count > 0u && (FT_ENEMIES[ro->foes[0]].attrs & FT_ATTR_BOSS)) continue;
+        }
 
         const uint16_t bit = cleared_bit(w->room, i);
         if(bit < sizeof(w->cleared) * 8u) {
@@ -846,7 +915,7 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
         /* Facing always updates, even into a wall — that is what lets you
          * turn and strike something you cannot walk into, and what lets you
          * turn and talk to someone you just bumped into. */
-        if(step_target_free(map, w->mv.tx, w->mv.ty, dx, dy) &&
+        if(player_step_free(w, map, dx, dy) &&
            npc_at_tile(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) < 0 &&
            !hale_blocks(w, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy)) {
             /* She steps into the tile you are leaving on the frame you leave
@@ -950,6 +1019,14 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
         FtFoeState* f = &w->foes[i];
         if(!f->alive) continue;
+
+        /* A boss stands where the story put it: it does not wander off, and
+         * it does not come for you. You go to it. */
+        const FtRoster* ro = ft_roster(room->ents[i].roster);
+        if(room->ents[i].kind == FT_ENT_FOE && ro->count > 0u &&
+           (FT_ENEMIES[ro->foes[0]].attrs & FT_ATTR_BOSS)) {
+            continue;
+        }
 
         /* Every walker steps and thinks on its own clock. */
         for(uint8_t m = 0; m < f->count; m++) {
@@ -1331,6 +1408,60 @@ static void echo_update(FtWorld* w) {
 
     /* A beat longer than anybody else's line. It is looking at you. */
     w->bark_ms = (uint16_t)(FT_BARK_MS + FT_BARK_MS / 2u);
+}
+
+/* ---- The Scrapline ------------------------------------------------------ */
+
+bool ft_world_bridge_down(const FtWorld* w) {
+    return bridge_down_in(w);
+}
+
+/* Infrared is line of sight: straight ahead, across whatever gap is there,
+ * to the first thing that is not a gap. Far enough for any gap a map draws,
+ * and never so far that you point at something off the screen. */
+#define FT_IR_RANGE 4
+
+bool ft_world_ir_target(const FtWorld* w) {
+    if(ft_room(w->room)->bridge == 0u || bridge_down_in(w)) return false;
+
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+
+    const FtMap* m = ft_world_map(w);
+    int32_t x = w->mv.tx, y = w->mv.ty;
+    uint8_t gap = 0;
+
+    for(uint8_t i = 0; i <= FT_IR_RANGE; i++) {
+        x += dx;
+        y += dy;
+        const FtTile t = ft_map_tile(m, x, y);
+
+        if(t == FT_TILE_VOID || t == FT_TILE_BRIDGE) {
+            gap++;
+            continue;
+        }
+        return t == FT_TILE_RECEIVER && gap > 0u;
+    }
+    return false;
+}
+
+bool ft_world_ir_fire(FtWorld* w) {
+    if(!ft_world_ir_target(w)) return false;
+    w->revealed |= ft_room(w->room)->bridge;
+    return true;
+}
+
+bool ft_world_relay_ahead(const FtWorld* w) {
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+    return ft_map_tile(ft_world_map(w), (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) ==
+           FT_TILE_RELAY;
+}
+
+bool ft_world_call_due(const FtWorld* w) {
+    return w->room == FT_ROOM_RELAY &&
+           ft_quest_at_least(&w->quests, FT_QUEST_RIVET, FT_QUEST_READY) &&
+           !(w->revealed & FT_REVEAL_KEEPER_CALL);
 }
 
 /* ---- Hale ---------------------------------------------------------------

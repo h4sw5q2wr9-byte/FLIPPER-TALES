@@ -286,6 +286,46 @@ TILES["cave"] = """
 ........
 """
 
+# The Scrapline's drawbridge: a span that swings down across a gap once you
+# point Infrared at the receiver on the far side. Until then the renderer
+# draws the void it is folded away over. Rails top and bottom, plank seams
+# across, because it is walked left to right.
+TILES["bridge"] = """
+########
+.#..#..#
+.#..#..#
+.#..#..#
+.#..#..#
+.#..#..#
+.#..#..#
+########
+"""
+
+# An Infrared receiver: a post with one round eye, which is what you point
+# at. Solid. It has to read as "look at me" from across a gap.
+TILES["receiver"] = """
+..####..
+.#....#.
+.#.##.#.
+.#.##.#.
+.#....#.
+..####..
+...##...
+..####..
+"""
+
+# A relay: the mast every district has, that Hush switched off. Solid.
+TILES["relay"] = """
+#..##..#
+.#.##.#.
+..####..
+...##...
+..#..#..
+..#..#..
+.#....#.
+########
+"""
+
 # The pit, once Hale has found it. Drawn over the long grass it was hidden in.
 TILES["pit"] = """
 ........
@@ -533,7 +573,7 @@ static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
     order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock",
              "crate", "ladder", "scrap", "frost", "pylon", "static", "gate",
              "trunk", "leaf", "hut", "roof", "hut_door", "tall_grass", "rock",
-             "cave",
+             "cave", "bridge", "receiver", "relay",
              "door_side", "lock_side", "cable_v", "wall_top", "shadow", "tuft",
              "gate_side", "leaf_tl", "leaf_tr", "leaf_bl", "leaf_br", "pit"]
     for name in order:
