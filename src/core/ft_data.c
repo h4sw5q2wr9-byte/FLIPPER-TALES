@@ -5,24 +5,23 @@
 #define FT_ATK_NFC     2
 #define FT_ATK_PAYLOAD 3
 
-#define FT_ATK_PACKET_BURST 10
-#define FT_ATK_BEACON_PING  11
-#define FT_ATK_BEACON_SWEEP 12
-#define FT_ATK_LOCK_CLAMP   13
-#define FT_ATK_LOCK_SEAL    14
-
-#define FT_ATK_CRAWLER_RIP  20
-#define FT_ATK_RIME_CRUSH   21
-#define FT_ATK_RIME_FREEZE  22
-#define FT_ATK_DRONE_STRAFE 23
-#define FT_ATK_DRONE_DIVE   24
-#define FT_ATK_RELAY_HUM    25
-#define FT_ATK_RELAY_SURGE  26
-#define FT_ATK_NULL_WASH    27
-#define FT_ATK_NULL_COLLAPSE 28
-#define FT_ATK_WALL_NONE     29
-#define FT_ATK_BOOT_STIR     30
-#define FT_ATK_BOOT_WAKE     31
+#define FT_ATK_STAMP         10
+#define FT_ATK_FLICKER       11
+#define FT_ATK_GLARE         12
+#define FT_ATK_CLAMP         13
+#define FT_ATK_LOCK_UP       14
+#define FT_ATK_SCOOP         20
+#define FT_ATK_SLAM          21
+#define FT_ATK_FROSTBITE     22
+#define FT_ATK_TICKET        23
+#define FT_ATK_REFUSED       24
+#define FT_ATK_ANNOUNCE      25
+#define FT_ATK_FEEDBACK      26
+#define FT_ATK_SHH           27
+#define FT_ATK_MUTE          28
+#define FT_ATK_PLEASE_QUEUE  29
+#define FT_ATK_SNORE         30
+#define FT_ATK_CLOCK_IN      31
 
 const FtModule FT_MODULES[FT_MODULE_COUNT] = {
     [FT_MOD_SUBGHZ] =
@@ -55,21 +54,30 @@ uint8_t ft_module_ram_cost(FtModuleId id) {
     return FT_MODULES[id].ram_cost;
 }
 
+/* The Carrier's maintenance machines. Each one still does the job it was built
+ * for, for Hush — whose one new rule is that everybody stays home — and the
+ * job is the reason for the fight: a lamp glares, a lock locks you up, a
+ * loudspeaker is too loud to think over. When a mechanic needs a reason, the
+ * job is where it comes from. */
 const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT] = {
-    [FT_ENEMY_STRAY_PACKET] =
-        {.name = "Stray Packet",
+    /* Carried the mail between villages. Now it "returns" anything it finds
+     * wandering, stamped and to the wrong address. The plain one. */
+    [FT_ENEMY_PARCEL_RUNNER] =
+        {.name = "Parcel Runner",
          .charge = 8,
          .shielded = 0,
          .attrs = 0,
          .level = 1,
          .xp = 12,
          .attack_count = 1,
-         .attacks = {{FT_ATK_PACKET_BURST, 3, 0, false, FT_DELIVERY_BROADCAST,
+         .attacks = {{FT_ATK_STAMP, 3, 0, false, FT_DELIVERY_BROADCAST,
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE}}},
 
-    /* Airborne: contact modules cannot reach it, so Sub-GHz is the answer. */
-    [FT_ENEMY_DRIFT_BEACON] =
-        {.name = "Drift Beacon",
+    /* A floating lamp that lit the night roads for travellers. It floats,
+     * so contact cannot reach it — Sub-GHz is the answer — and its Glare is
+     * the lamp turned full on you: you may lose the turn blinking. */
+    [FT_ENEMY_LAMPLIGHTER] =
+        {.name = "Lamplighter",
          .charge = 10,
          /* Deliberately unshielded: AIRBORNE already forces the player onto
           * the broadcast module, and shielding it too would tax the same
@@ -79,35 +87,37 @@ const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT] = {
          .level = 2,
          .xp = 18,
          .attack_count = 2,
-         .attacks = {{FT_ATK_BEACON_PING, 4, 0, false, FT_DELIVERY_BROADCAST,
+         .attacks = {{FT_ATK_FLICKER, 4, 0, false, FT_DELIVERY_BROADCAST,
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
                      /* Guarded: jammable, but its secrets stay locked. */
-                     {FT_ATK_BEACON_SWEEP, 5, 0, false, FT_DELIVERY_BROADCAST,
+                     {FT_ATK_GLARE, 5, 0, false, FT_DELIVERY_BROADCAST,
                       FT_CLASS_GUARDED, FT_PAYLOAD_STALL}}},
 
-    /* Encrypted and shielded: broadcast is refunded, so contact and piercing
-     * are the answer. */
-    [FT_ENEMY_SEALED_LOCK] =
-        {.name = "Sealed Lock",
+    /* Locked the doors at curfew. A lock cannot be picked from across the
+     * room (ENCRYPTED: broadcast is refunded), so it is a hands-on fight; and
+     * Lock Up locks your memory, draining MP. */
+    [FT_ENEMY_CURFEW_LOCK] =
+        {.name = "Curfew Lock",
          .charge = 14,
          .shielded = 2,
          .attrs = FT_ATTR_ENCRYPTED | FT_ATTR_FAST,
          .level = 3,
          .xp = 26,
          .attack_count = 2,
-         .attacks = {{FT_ATK_LOCK_CLAMP, 5, 0, false, FT_DELIVERY_CONTACT,
+         .attacks = {{FT_ATK_CLAMP, 5, 0, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
                      /* Undodgeable: neither jammable nor capturable. */
-                     {FT_ATK_LOCK_SEAL, 4, 1, false, FT_DELIVERY_CONTACT,
+                     {FT_ATK_LOCK_UP, 4, 1, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_UNDODGEABLE, FT_PAYLOAD_DRAIN}}},
 
     /* ---- The Scrapline ------------------------------------------------
      *
-     * FAST and fragile. It gets the first word every round, so the lesson is
-     * that initiative is a stat: kill it before it is a problem, or spend a
-     * turn bracing for a hit you cannot out-race. */
-    [FT_ENEMY_SCRAP_CRAWLER] =
-        {.name = "Scrap Crawler",
+     * Swept debris off the spans. To a Sweeper, you are debris. FAST, because
+     * it scurries: it gets the first word every round, so initiative is a
+     * stat — kill it before it is a problem, or brace for a hit you cannot
+     * out-race. */
+    [FT_ENEMY_SWEEPER] =
+        {.name = "Sweeper",
          /* Tough enough to survive one good hit, or FAST never gets to be
           * true of it: at 7 Charge it died before it ever acted and the
           * Scrapline was a 100% walkover at every skill level. */
@@ -117,95 +127,101 @@ const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT] = {
          .level = 2,
          .xp = 16,
          .attack_count = 1,
-         .attacks = {{FT_ATK_CRAWLER_RIP, 6, 0, false, FT_DELIVERY_CONTACT,
+         .attacks = {{FT_ATK_SCOOP, 6, 0, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE}}},
 
     /* ---- Cold Storage --------------------------------------------------
      *
-     * The Sealed Lock's lesson with the volume up: shield 3 on top of
-     * ENCRYPTED. Broadcast is refunded and unpierced contact barely scratches
+     * Kept the archive vaults cold. Heavy insulated shell — the Curfew Lock's
+     * lesson with the volume up: shield 3 on top of ENCRYPTED. Broadcast is refunded and unpierced contact barely scratches
      * it, so this is the fight that makes Payload's half-pierce worth its
      * Flash. Slow and low-damage to compensate — it is a wall, not a threat. */
-    [FT_ENEMY_RIME_SHELL] =
-        {.name = "Rime Shell",
+    [FT_ENEMY_CHILLER] =
+        {.name = "Chiller",
          .charge = 16,
          .shielded = 3,
          .attrs = FT_ATTR_ENCRYPTED,
          .level = 3,
          .xp = 28,
          .attack_count = 2,
-         .attacks = {{FT_ATK_RIME_CRUSH, 4, 0, false, FT_DELIVERY_CONTACT,
+         .attacks = {{FT_ATK_SLAM, 4, 0, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
-                     {FT_ATK_RIME_FREEZE, 3, 0, false, FT_DELIVERY_CONTACT,
+                     {FT_ATK_FROSTBITE, 3, 0, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_NORMAL, FT_PAYLOAD_STALL}}},
 
     /* ---- The Turnstile --------------------------------------------------
      *
-     * AIRBORNE and FAST together: contact cannot touch it and it moves before
+     * Checked tickets at the Turnstile. It asks "Ticket?" and then Refuses
+     * you, which is a joke and also the whole district. AIRBORNE and FAST: contact cannot touch it and it moves before
      * you do. Broadcast is the only answer, which is the point — the area is
      * about routes that are closed until you hold the right thing. */
-    [FT_ENEMY_GATE_DRONE] =
-        {.name = "Gate Drone",
+    [FT_ENEMY_TICKET_DRONE] =
+        {.name = "Ticket Drone",
          .charge = 9,
          .shielded = 1,
          .attrs = FT_ATTR_AIRBORNE | FT_ATTR_FAST,
          .level = 3,
          .xp = 24,
          .attack_count = 2,
-         .attacks = {{FT_ATK_DRONE_STRAFE, 3, 0, false, FT_DELIVERY_BROADCAST,
+         .attacks = {{FT_ATK_TICKET, 3, 0, false, FT_DELIVERY_BROADCAST,
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
-                     {FT_ATK_DRONE_DIVE, 5, 0, false, FT_DELIVERY_CONTACT,
+                     {FT_ATK_REFUSED, 5, 0, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_GUARDED, FT_PAYLOAD_NONE}}},
 
     /* ---- Signal Hill ----------------------------------------------------
      *
-     * A JAMMER: the Signal meter is locked for the whole fight, so Focus and
+     * The mast loudspeaker that made the announcements, now playing Hush's
+     * "please stay home" on a loop. So loud you cannot think — that is what
+     * JAMMER means here. Its Feedback is the sound of the Loud Day. A JAMMER: the Signal meter is locked for the whole fight, so Focus and
      * every captured replay are off the table and the two base modules have
      * to carry it. Tanky and slow, because a fight you have fewer tools for
      * should be long rather than sharp. */
-    [FT_ENEMY_MAST_RELAY] =
-        {.name = "Mast Relay",
+    [FT_ENEMY_LOUDHAILER] =
+        {.name = "Loudhailer",
          .charge = 18,
          .shielded = 1,
          .attrs = FT_ATTR_JAMMER,
          .level = 4,
          .xp = 32,
          .attack_count = 2,
-         .attacks = {{FT_ATK_RELAY_HUM, 3, 0, false, FT_DELIVERY_BROADCAST,
+         .attacks = {{FT_ATK_ANNOUNCE, 3, 0, false, FT_DELIVERY_BROADCAST,
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
-                     {FT_ATK_RELAY_SURGE, 5, 0, false, FT_DELIVERY_BROADCAST,
+                     {FT_ATK_FEEDBACK, 5, 0, false, FT_DELIVERY_BROADCAST,
                       FT_CLASS_GUARDED, FT_PAYLOAD_CORRUPT}}},
 
     /* ---- The Deadzone ---------------------------------------------------
      *
+     * Hush's own quiet-maker, from where the Silence started. It shushes:
      * ENCRYPTED and a JAMMER, and both its attacks are GUARDED — jammable,
      * never capturable. Nothing about this fight gives you anything back:
      * no broadcast damage, no meter, no new signals. Contact and timing, or
      * nothing. The area is named for what it takes away. */
-    [FT_ENEMY_NULL_FIELD] =
-        {.name = "Null Field",
+    [FT_ENEMY_SHUSHER] =
+        {.name = "Shusher",
          .charge = 15,
          .shielded = 2,
          .attrs = FT_ATTR_ENCRYPTED | FT_ATTR_JAMMER,
          .level = 5,
          .xp = 40,
          .attack_count = 2,
-         .attacks = {{FT_ATK_NULL_WASH, 4, 0, false, FT_DELIVERY_BROADCAST,
+         .attacks = {{FT_ATK_SHH, 4, 0, false, FT_DELIVERY_BROADCAST,
                       FT_CLASS_GUARDED, FT_PAYLOAD_NONE},
-                     {FT_ATK_NULL_COLLAPSE, 6, 0, false, FT_DELIVERY_CONTACT,
+                     {FT_ATK_MUTE, 6, 0, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_GUARDED, FT_PAYLOAD_DRAIN}}},
 
     /* ---- Shape-changers -------------------------------------------------
      *
-     * Blank Wall never attacks and nothing behind it can be touched while it
+     * Kept the Turnstile's queue orderly. "Please queue" is all it ever
+     * does, so you fight the others in line, in order. Queue Barrier never
+     * attacks and nothing behind it can be touched while it
      * stands — a broadcast included, because a way round would make it
      * scenery. All it does is decide the order you fight in, which turns a
      * row of foes into a queue. Tough, but worth little: it is a delay, not
      * a threat, and paying full XP for a punching bag would make it farm
      * bait. Its attack entry exists only because every enemy has one; it is
      * never chosen, because a BULWARK never takes a turn. */
-    [FT_ENEMY_BLANK_WALL] =
-        {.name = "Blank Wall",
+    [FT_ENEMY_QUEUE_BARRIER] =
+        {.name = "Queue Barrier",
          /* A gate, not a boss. At 20 Charge behind a shield, with two foes
           * hitting you freely the whole time it stands, the fight was 15% at
           * low skill: the mechanic was doing all the work and the numbers
@@ -216,15 +232,17 @@ const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT] = {
          .level = 3,
          .xp = 14,
          .attack_count = 1,
-         .attacks = {{FT_ATK_WALL_NONE, 1, 0, false, FT_DELIVERY_CONTACT,
+         .attacks = {{FT_ATK_PLEASE_QUEUE, 1, 0, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE}}},
 
-    /* Cold Booter sits the fight out while anything else lives, then wakes
+    /* Works the night shift: asleep while the others are busy, and clocks
+     * in when the room goes quiet. Night Shift sits the fight out while
+     * anything else lives, then wakes
      * up as the hardest thing on the board. Clearing the room is what starts
      * the fight, which inverts the usual read: the safe-looking one in the
      * corner is the reason you should have kept something alive. */
-    [FT_ENEMY_COLD_BOOTER] =
-        {.name = "Cold Booter",
+    [FT_ENEMY_NIGHT_SHIFT] =
+        {.name = "Night Shift",
          .charge = 14,
          .shielded = 2,
          .attrs = FT_ATTR_SLEEPER,
@@ -234,11 +252,45 @@ const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT] = {
          /* The first is never used — a sleeper leads with its last — but a
           * captured replay needs somewhere sane to land if one is ever
           * taken from it. */
-         .attacks = {{FT_ATK_BOOT_STIR, 3, 0, false, FT_DELIVERY_CONTACT,
+         .attacks = {{FT_ATK_SNORE, 3, 0, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_NORMAL, FT_PAYLOAD_NONE},
-                     {FT_ATK_BOOT_WAKE, 8, 1, false, FT_DELIVERY_CONTACT,
+                     {FT_ATK_CLOCK_IN, 8, 1, false, FT_DELIVERY_CONTACT,
                       FT_CLASS_NORMAL, FT_PAYLOAD_CORRUPT}}},
 };
+
+/* Every attack is named for what the machine used to do — a Lamplighter's
+ * Glare is its lamp turned on you, a Ticket Drone asks "Ticket?" and then
+ * Refuses you. Named here rather than in FtAttack so the enemy table keeps
+ * its shape. */
+static const struct {
+    uint16_t    id;
+    const char* name;
+} ATTACK_NAMES[] = {
+    {FT_ATK_STAMP, "Stamp"},
+    {FT_ATK_FLICKER, "Flicker"},
+    {FT_ATK_GLARE, "Glare"},
+    {FT_ATK_CLAMP, "Clamp"},
+    {FT_ATK_LOCK_UP, "Lock Up"},
+    {FT_ATK_SCOOP, "Scoop"},
+    {FT_ATK_SLAM, "Slam"},
+    {FT_ATK_FROSTBITE, "Frostbite"},
+    {FT_ATK_TICKET, "Ticket?"},
+    {FT_ATK_REFUSED, "Refused"},
+    {FT_ATK_ANNOUNCE, "Announcement"},
+    {FT_ATK_FEEDBACK, "Feedback"},
+    {FT_ATK_SHH, "Shh"},
+    {FT_ATK_MUTE, "Mute"},
+    {FT_ATK_PLEASE_QUEUE, "Please Queue"},
+    {FT_ATK_SNORE, "Snore"},
+    {FT_ATK_CLOCK_IN, "Clock In"},
+};
+
+const char* ft_attack_name(uint16_t id) {
+    for(size_t i = 0; i < sizeof(ATTACK_NAMES) / sizeof(ATTACK_NAMES[0]); i++) {
+        if(ATTACK_NAMES[i].id == id) return ATTACK_NAMES[i].name;
+    }
+    return "Attack";
+}
 
 const FtAttack* ft_attack_by_id(uint16_t id) {
     if(id == 0u) return NULL;

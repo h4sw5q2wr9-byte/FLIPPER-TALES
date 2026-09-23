@@ -29,22 +29,59 @@
 
 #define FT_HELP_PAGES 4
 
-/* The pause menu, opened with Back. */
+/* The pause menu, opened with Back: a grid of icons, four across and two
+ * down, read left to right. Back again resumes, which is why there is no
+ * Resume icon. The settings and the testing tools are behind their own doors
+ * so this screen is only the things you reach for while playing. */
 typedef enum {
-    FT_PAUSE_RESUME = 0,
-    FT_PAUSE_POCKETS,
+    FT_PAUSE_POCKETS = 0,
     FT_PAUSE_ORBS,
     FT_PAUSE_QUESTS,
-    FT_PAUSE_SAVE,
     FT_PAUSE_GUIDE,
+    FT_PAUSE_SAVE,
     FT_PAUSE_HELP,
-    FT_PAUSE_TIPS,
-    FT_PAUSE_SOUND,
-    FT_PAUSE_DEBUG,
-    FT_PAUSE_NEWGAME,
+    FT_PAUSE_SETTINGS,
     FT_PAUSE_QUIT,
     FT_PAUSE_COUNT
 } FtPauseItem;
+
+#define FT_PAUSE_COLS 4
+
+/* The start screen. Continue is only offered when there is a save to go back
+ * to; `has_save` hides it and the others move up. */
+typedef enum {
+    FT_TITLE_CONTINUE = 0,
+    FT_TITLE_NEW,
+    FT_TITLE_SETTINGS,
+    FT_TITLE_COUNT
+} FtTitleItem;
+
+void ft_render_title(Canvas* canvas, uint8_t selected, bool has_save);
+
+/* The opening: Hush's announcement on a terminal, one card at a time, then
+ * static, then dark. `card` runs 0..FT_INTRO_CARDS-1 for the words, then
+ * FT_INTRO_STATIC, then FT_INTRO_DARK. `ms` is time spent on it. */
+#define FT_INTRO_STATIC   FT_INTRO_CARDS
+#define FT_INTRO_DARK     (FT_INTRO_CARDS + 1)
+#define FT_INTRO_CHAR_MS  45u
+#define FT_INTRO_HOLD_MS  1000u
+#define FT_INTRO_STATIC_MS 700u
+#define FT_INTRO_DARK_MS  600u
+
+void ft_render_intro(Canvas* canvas, uint8_t card, uint32_t ms);
+
+/* Settings, from the start screen or the pause menu. */
+typedef enum {
+    FT_SET_SOUND = 0,
+    FT_SET_VOICES,
+    FT_SET_TIPS,
+    FT_SET_NEWGAME,
+    FT_SET_BACK,
+    FT_SET_COUNT
+} FtSettingsItem;
+
+void ft_render_settings(Canvas* canvas, uint8_t selected, bool sound_on, bool voices_on,
+                        bool tips_on);
 
 /* How many rows of a list fit under the title. */
 #define FT_MENU_VISIBLE 5
@@ -59,11 +96,9 @@ void ft_render_menu_list(
     uint8_t            count,
     uint8_t            selected);
 
-/* `orbs` is what is in hand, shown on the Orbs row so the player never has to
- * open the screen to find out there is nothing to place. */
-void ft_render_pause(
-    Canvas* canvas, uint8_t selected, bool tips_on, bool sound_on, int16_t orbs,
-    bool in_battle);
+/* `orbs` is what is in hand, shown under the Orbs icon so the player never
+ * has to open the screen to find out there is nothing to place. */
+void ft_render_pause(Canvas* canvas, uint8_t selected, int16_t orbs, bool in_battle);
 
 /* Everything that exists to test the game rather than to play it. Kept
  * together behind one door so the pause menu stays the player's. */

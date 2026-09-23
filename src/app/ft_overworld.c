@@ -517,6 +517,9 @@ static void render_world(Canvas* canvas, const FtWorld* w, FtPos focus, bool tal
         } else if(w->bark_who == FT_BARK_BY_WREN && w->escort) {
             const FtPos ep = ft_stepper_pos(&w->escort_mv, FT_STEP_MS);
             draw_bark(canvas, line, ep.x - cam.x, ep.y - cam.y);
+        } else if(w->bark_who == FT_BARK_BY_TERMINAL) {
+            draw_bark(canvas, line, (int32_t)w->bark_tx * FT_TILE_PX - cam.x,
+                      (int32_t)w->bark_ty * FT_TILE_PX - cam.y);
         }
     }
 

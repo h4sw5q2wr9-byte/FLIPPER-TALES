@@ -12,47 +12,49 @@ SPRITES = {}
 # interior, and dark features at least 2x2 inside it. Mixing thin outline with
 # fill turns to mush at this size.
 
-# Blank Wall (BULWARK). A slab. It has to read as an obstacle rather than a
-# creature, so: no face, no legs, and the widest silhouette in the game.
-SPRITES["wall"] = """
-################
-#..............#
-#.############.#
-#.#..........#.#
-#.#.########.#.#
-#.#.#......#.#.#
-#.#.#.####.#.#.#
-#.#.#.#..#.#.#.#
-#.#.#.#..#.#.#.#
-#.#.#.####.#.#.#
-#.#.#......#.#.#
-#.#.########.#.#
-#.#..........#.#
-#.############.#
-#..............#
-################
+# Queue Barrier (BULWARK). Two posts and a belt between them — the thing that
+# made people queue at the Turnstile, with its sign hanging off the belt. It
+# never attacks; it makes you fight the others in line. No face, and the
+# widest footprint in the game.
+SPRITES["barrier"] = """
+................
+.####......####.
+.####......####.
+..##........##..
+..############..
+..##.######.##..
+..##.#....#.##..
+..##.#.##.#.##..
+..##.#.##.#.##..
+..##.#....#.##..
+..##.######.##..
+..##........##..
+..##........##..
+.####......####.
+######....######
+######....######
 """
 
-# Cold Booter (SLEEPER). Shut down: a closed shell with a dormant indicator.
-# Rounded and low, so it looks like something switched off rather than
-# something waiting.
-SPRITES["booter"] = """
-................
-................
-....########....
-..############..
+# Night Shift (SLEEPER). Asleep in a nightcap, eyes shut, until the room goes
+# quiet and it clocks in. It has to look harmless, because the point is that
+# it is not.
+SPRITES["nightshift"] = """
+...........###..
+.........####...
+.......#####....
+....#######.....
+..###########...
 .##############.
-##..##....##..##
+##............##
+#..####..####..#
 #...##....##...#
 #..............#
+#......##......#
 #..............#
-#....######....#
-#...##....##...#
 .##############.
 ..############..
-....########....
-................
-................
+....##....##....
+....##....##....
 """
 
 
@@ -227,30 +229,31 @@ SPRITES["kid"] = """
 # Each has to be told apart from the prologue three at a glance, on a 1-bit
 # panel, at 16x16. Silhouette does that work: legs, round, blocky, tall, wide.
 
-# Scrap Crawler (The Scrapline). FAST. Low and many-legged, so "this thing
-# moves first" is readable before it proves it.
-SPRITES["crawler"] = """
+# Sweeper (The Scrapline). FAST. A dome on a skirt of bristles that cleared
+# debris off the spans — low and wide, so "this scurries" reads before it
+# proves it. To a Sweeper, you are debris.
+SPRITES["sweeper"] = """
 ................
 ................
-..#..######..#..
-..##########.#..
-.#.##########.#.
-.###.##..##.###.
-.############.#.
-#.############.#
+.....######.....
+...##########...
+..###......###..
+..##.##..##.##..
+..##.##..##.##..
+..###......###..
 .##############.
-.#.##########.#.
-..############..
-.#.#.#.##.#.#.#.
-#..#.#.##.#.#..#
-..#...#..#...#..
-.#...#....#...#.
+################
+.##############.
+.#.#.#.#.#.#.#.#
+.#.#.#.#.#.#.#.#
+.#.#.#.#.#.#.#.#
+................
 ................
 """
 
-# Rime Shell (Cold Storage). ENCRYPTED, shield 3. A closed armoured box with
-# a seam down it — deliberately the most solid silhouette in the game.
-SPRITES["rime"] = """
+# Chiller (Cold Storage). ENCRYPTED, shield 3. The insulated unit that kept
+# the vaults cold: a closed armoured box, the most solid silhouette there is.
+SPRITES["chiller"] = """
 ................
 ..############..
 .##############.
@@ -269,9 +272,9 @@ SPRITES["rime"] = """
 ................
 """
 
-# Gate Drone (The Turnstile). AIRBORNE and FAST. Swept back and pointed, with
-# nothing under it: it reads as hovering and as going somewhere.
-SPRITES["drone"] = """
+# Ticket Drone (The Turnstile). AIRBORNE and FAST. Swept back and pointed,
+# with nothing under it: it hovers at the barrier and asks for your ticket.
+SPRITES["ticket"] = """
 .......##.......
 ......####......
 .....######.....
@@ -290,45 +293,45 @@ SPRITES["drone"] = """
 ................
 """
 
-# Mast Relay (Signal Hill). JAMMER. Tall and thin with a wide base and rings
-# coming off the top — a transmitter, which is what is eating your meter.
-SPRITES["relay"] = """
-#..............#
-.#....####....#.
-..#..######..#..
-...#.##..##.#...
-......####......
-.......##.......
-......####......
-.....##..##.....
-.....##..##.....
-.....##..##.....
+# Loudhailer (Signal Hill). JAMMER. A mast speaker seen face on — rings round
+# a dark driver, on a pole — still playing "please stay home" on a loop.
+SPRITES["hailer"] = """
 ....########....
-...##########...
-..############..
-.####......####.
-####........####
-................
+..###......###..
+.##..######..##.
+##..##....##..##
+##.##..##..##.##
+##.##.####.##.##
+##.##.####.##.##
+##.##..##..##.##
+##..##....##..##
+.##..######..##.
+..###......###..
+....########....
+.......##.......
+.......##.......
+.....######.....
+....########....
 """
 
-# Null Field (The Deadzone). ENCRYPTED and a JAMMER. A hollow ring with
-# nothing in the middle: the one silhouette here that is mostly absence.
-SPRITES["nullf"] = """
+# Shusher (The Deadzone). ENCRYPTED and a JAMMER. Hush's own quiet-maker: a
+# round face with a finger held to its lips.
+SPRITES["shusher"] = """
 ....########....
-..##........##..
-.#............#.
-##..........#.##
-#...........#..#
-#....#..#...#..#
-#...#....#..#..#
-#..#......#....#
-#..#......#....#
-#...#....#.....#
-#....#..#......#
-##.............#
-.#............#.
-..##........##..
-....########....
+..###......###..
+.##..........##.
+##..##....##..##
+##..##....##..##
+##............##
+##......##....##
+##....######..##
+##......##....##
+.##.....##...##.
+..###...##.###..
+....#########...
+........##......
+.......####.....
+.......####.....
 ................
 """
 
@@ -368,50 +371,52 @@ SPRITES["hero"] = """
 ................
 """
 
-# Stray Packet: a spiked ball. Deliberately round and legless so it cannot be
-# mistaken for the boxy, footed player.
-SPRITES["packet"] = """
-................
-....#..##..#....
-....##.##.##....
-...##########...
-..############..
+# Parcel Runner. A tied parcel on two wheels, with eyes either side of the
+# string: it carried the mail, and now it "returns" anyone it finds
+# wandering. Boxy but wheeled, so it is never mistaken for the footed hero.
+SPRITES["runner"] = """
+.......##.......
+.....##..##.....
+......####......
+.##############.
+.##....##....##.
+.##.##.##.##.##.
+.##.##.##.##.##.
+.##....##....##.
+.##############.
+.##....##....##.
+.##....##....##.
+.##############.
+..##........##..
 .####......####.
-.###.##..##.###.
-.###.##..##.###.
-.###........###.
-.###.######.###.
-..############..
+.####......####.
+..##........##..
+"""
+
+# Lamplighter. AIRBORNE. A floating lantern with little wings and a dark bulb
+# — it lit the night roads, and its Glare is that lamp turned on you.
+SPRITES["lamp"] = """
+......####......
+......#..#......
+.....######.....
+....########....
+##.##########.##
+.#.##......##.#.
+.#.##.####.##.#.
+...##.####.##...
+...##.####.##...
+...##......##...
 ...##########...
-....##.##.##....
-....#..##..#....
+....########....
+......####......
+.......##.......
 ................
 ................
 """
 
-# Drift Beacon: an airborne eye. Round body, solid pupil, swept wings and a
-# pulse antenna, so AIRBORNE reads instantly.
-SPRITES["beacon"] = """
-.......##.......
-.......##.......
-.....######.....
-....########....
-...##########...
-##.####..####.##
-##.###....###.##
-##.###....###.##
-##.####..####.##
-...##########...
-....########....
-.....######.....
-.......##.......
-................
-................
-................
-"""
-
-# Sealed Lock: a padlock with a scowl. Tall shackle above a heavy body.
-SPRITES["lock"] = """
+# Curfew Lock. A padlock with a scowl — tall shackle over a heavy body. It
+# locked the doors at night; it still does, and now you are the door.
+SPRITES["curfew"] = """
 .....######.....
 ....##....##....
 ....##....##....
@@ -427,6 +432,173 @@ SPRITES["lock"] = """
 .##....##....##.
 .##############.
 .##############.
+................
+"""
+
+
+# ---- Menu icons --------------------------------------------------------
+#
+# The pause menu is a grid of these rather than a list of words, because a
+# picture is easier to find again than a word in a list. Same rules as the
+# characters: a bold silhouette and features at least two pixels wide.
+
+# Pockets: a sack, tied at the neck.
+SPRITES["icon_bag"] = """
+......####......
+.....#....#.....
+......####......
+.....######.....
+....########....
+...##......##...
+..##........##..
+.##..........##.
+.##...####...##.
+.##..######..##.
+.##...####...##.
+.##..........##.
+.###........###.
+..############..
+...##########...
+................
+"""
+
+# Orbs: a ball with a shine on it.
+SPRITES["icon_orb"] = """
+.....######.....
+...##########...
+..###......###..
+.##..##......##.
+.##.##.......##.
+##..#.........##
+##............##
+##............##
+##............##
+##............##
+##............##
+.##..........##.
+.##..........##.
+..###......###..
+...##########...
+.....######.....
+"""
+
+# Quests: a clipboard with a list on it.
+SPRITES["icon_quests"] = """
+.....######.....
+..####....####..
+.##..######..##.
+.##..........##.
+.##.##.#####.##.
+.##.##.#####.##.
+.##..........##.
+.##.##.#####.##.
+.##.##.#####.##.
+.##..........##.
+.##.##.####..##.
+.##.##.####..##.
+.##..........##.
+.##############.
+..############..
+................
+"""
+
+# Field guide: an open book.
+SPRITES["icon_guide"] = """
+................
+................
+.######..######.
+##....####....##
+##.####..####.##
+##......##....##
+##.####.##.##.##
+##......##....##
+##.####.##.##.##
+##......##....##
+##......##....##
+##....####....##
+.######..######.
+................
+................
+................
+"""
+
+# Save: the terminal, the same one you save at in the world.
+SPRITES["icon_save"] = """
+.##############.
+.##############.
+.##..........##.
+.##.##.......##.
+.##.##.......##.
+.##..........##.
+.##..........##.
+.##############.
+.##############.
+......####......
+......####......
+....########....
+...##########...
+................
+................
+................
+"""
+
+# How to play: a question mark.
+SPRITES["icon_help"] = """
+.....######.....
+...##########...
+..####....####..
+..###......###..
+...........###..
+.........####...
+........####....
+.......###......
+.......###......
+.......###......
+................
+.......###......
+.......###......
+................
+................
+................
+"""
+
+# Settings: a gear.
+SPRITES["icon_gear"] = """
+......####......
+..##..####..##..
+..############..
+...###....###...
+..###......###..
+####........####
+####........####
+..##........##..
+..##........##..
+####........####
+####........####
+..###......###..
+...###....###...
+..############..
+..##..####..##..
+......####......
+"""
+
+# Quit to the title: a door, and the way out of it.
+SPRITES["icon_quit"] = """
+................
+.##########.....
+.##......##.....
+.##......##.....
+.##......##..#..
+.##......##..##.
+.##...##.#######
+.##......#######
+.##......##..##.
+.##......##..#..
+.##......##.....
+.##......##.....
+.##########.....
+................
+................
 ................
 """
 

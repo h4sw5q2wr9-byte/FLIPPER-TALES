@@ -155,15 +155,19 @@ static FtTalk ask(FtTalk t, const char* yes, const char* no) {
 
 static const char* KEEPER = "The Keeper";
 
+/* The first thing anybody says to you. You are brand new — he built you,
+ * after the Silence — and he hands you the sealed message straight away and
+ * will not say who it is for (STORY.md §6, and the threads in §7). The
+ * favour at the end is a test he does not call a test. */
 static const FtBeat KEEPER_OFFER[] = {
-    {FT_SAY_THEM, "Oh good, you're not", "dead. Wasn't sure."},
-    {FT_SAY_YOU,  "Where am I?", NULL},
-    {FT_SAY_THEM, "Cold Boot. Last stop", "on a line that died."},
-    {FT_SAY_THEM, "You've been asleep a", "long while, friend."},
-    {FT_SAY_YOU,  "How long?", NULL},
-    {FT_SAY_THEM, "I stopped counting", "at 'too long'."},
-    {FT_SAY_THEM, "Do an old man a", "favour? I'll pay."},
-    {FT_SAY_THEM, "Walk to the Gate and", "back. Don't fight."},
+    {FT_SAY_THEM, "Oh good, you work.", "Wasn't sure."},
+    {FT_SAY_YOU,  "Who are you?", NULL},
+    {FT_SAY_THEM, "The Keeper. I built", "you. Don't stare."},
+    {FT_SAY_THEM, "This is for you to", "carry. It's sealed."},
+    {FT_SAY_YOU,  "What is it?", NULL},
+    {FT_SAY_THEM, "A message. Who for,", "you'll learn later."},
+    {FT_SAY_THEM, "First, a favour. The", "Gate and back."},
+    {FT_SAY_THEM, "No fighting. I need", "to know you're kind."},
 };
 static const FtBeat KEEPER_OFFER_2[] = {
     {FT_SAY_THEM, "Back for that", "favour, then?"},
@@ -184,11 +188,12 @@ static const FtBeat KEEPER_ON_3[] = {
 };
 static const FtLines KEEPER_ON_MORE[] = {LINES(KEEPER_ON_2), LINES(KEEPER_ON_3)};
 
+/* The first hint that there was a Courier before you, and how it went. */
 static const FtBeat KEEPER_FAILED[] = {
     {FT_SAY_THEM, "You've got that", "fought-in look."},
     {FT_SAY_YOU,  "It started it.", NULL},
-    {FT_SAY_THEM, "They always do.", NULL},
-    {FT_SAY_THEM, "Go on. Try again.", NULL},
+    {FT_SAY_THEM, "The last one I built", "said that too."},
+    {FT_SAY_THEM, "...Go on. Again.", NULL},
 };
 static const FtBeat KEEPER_FAILED_2[] = {
     {FT_SAY_THEM, "Walk round them.", "It's allowed."},
@@ -199,7 +204,8 @@ static const FtBeat KEEPER_PAID[] = {
     {FT_SAY_THEM, "Not a scratch on", "you. Well done."},
     {FT_SAY_YOU,  "Easy.", NULL},
     {FT_SAY_THEM, "Don't get cocky.", NULL},
-    {FT_SAY_THEM, "Two orbs. Spend", "them on something."},
+    {FT_SAY_THEM, "I've waited a long", "time for you."},
+    {FT_SAY_THEM, "Two orbs. Now go", "east. Keep going."},
 };
 
 static const FtBeat KEEPER_DONE_1[] = {
@@ -389,6 +395,25 @@ static const FtBeat WREN_HOME_4[] = {
 static const FtLines WREN_HOME_MORE[] = {LINES(WREN_HOME_2), LINES(WREN_HOME_3),
                                          LINES(WREN_HOME_4)};
 
+/* ---- The opening ---- */
+
+/* Hush, the first voice in the game, before you have a body to hear it
+ * with. Polite, level, and it never gets to finish. */
+static const char* const INTRO[FT_INTRO_CARDS][FT_INTRO_CARD_LINES] = {
+    {"Good evening.", "This is the", "Carrier."},
+    {"Your call is", "important to us.", NULL},
+    {"All lines are", "closed, for your", "safety."},
+    {"Please stay home.", NULL, NULL},
+    {"Please hold.", NULL, NULL},
+    {"Please hold.", NULL, NULL},
+    {"Please ho", NULL, NULL},
+};
+
+const char* ft_quest_intro_line(uint8_t card, uint8_t line) {
+    if(card >= FT_INTRO_CARDS || line >= FT_INTRO_CARD_LINES) return NULL;
+    return INTRO[card][line];
+}
+
 /* ---- Barks ---- */
 
 static const char* const BARKS[FT_BARK_COUNT] = {
@@ -411,6 +436,12 @@ static const char* const BARKS[FT_BARK_COUNT] = {
     [FT_BARK_WREN_CHATTER + 5] = "Can I hold an orb?",
     [FT_BARK_WREN_CHATTER + 6] = "I'm SO hungry.",
     [FT_BARK_WREN_CHATTER + 7] = "Are we there yet?",
+
+    /* The terminal, when you save at it. */
+    [FT_BARK_HUSH + 0] = "Please hold.",
+    [FT_BARK_HUSH + 1] = "Please stay home.",
+    [FT_BARK_HUSH + 2] = "Lines are closed.",
+    [FT_BARK_HUSH + 3] = "We value you.",
 };
 
 const char* ft_quest_bark(uint8_t bark) {

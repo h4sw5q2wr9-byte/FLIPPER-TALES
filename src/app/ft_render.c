@@ -558,7 +558,7 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         /* A sleeper is faded rather than badged.
          *
          * This used to be a white box with three dots stamped across the
-         * middle of the sprite, which on the Blank Wall read as a random bar
+         * middle of the sprite, which on the Queue Barrier read as a random bar
          * through the art — the marker was less legible than the thing it was
          * marking. Knocking out every other pixel greys the foe out while
          * leaving its silhouette whole, which is the 1-bit way to say "not
@@ -687,14 +687,26 @@ static void draw_guard_check(Canvas* canvas, const FtEncounter* e) {
 
     canvas_set_font(canvas, FontSecondary);
 
-    const char* title;
+    /* The attack by name, then what a guard can do about it. "INCOMING"
+     * told you something was coming; "GLARE - JAM ONLY" tells you what, and
+     * — because every attack is named for the machine's old job — why.
+     *
+     * "UNDODGEABLE" was a lie by omission: it means no *timed* guard, and
+     * PROTECT still blunts the hit, which is what the coach line says. */
+    char title[40];
+    char name[FT_ATTACK_NAME_MAX + 1];
+    const char* src = ft_attack_name(atk->id);
+    size_t i = 0;
+    for(; src[i] && i < FT_ATTACK_NAME_MAX; i++) {
+        const char ch = src[i];
+        name[i] = (ch >= 'a' && ch <= 'z') ? (char)(ch - 'a' + 'A') : ch;
+    }
+    name[i] = '\0';
+
     switch(atk->klass) {
-    /* "UNDODGEABLE" was a lie by omission: it means no *timed* guard, and
-     * PROTECT still blunts the hit — which is exactly what the coach line
-     * tells you to do. Say what is true. */
-    case FT_CLASS_UNDODGEABLE: title = "NO JAM - PROTECT"; break;
-    case FT_CLASS_GUARDED:     title = "JAM ONLY - NO CAPTURE"; break;
-    default:                   title = "INCOMING"; break;
+    case FT_CLASS_UNDODGEABLE: snprintf(title, sizeof(title), "%s - PROTECT", name); break;
+    case FT_CLASS_GUARDED:     snprintf(title, sizeof(title), "%s - JAM ONLY", name); break;
+    default:                   snprintf(title, sizeof(title), "%s!", name); break;
     }
     draw_centred(canvas, FT_SCREEN_W / 2, FT_ARENA_Y + 6, title);
 
@@ -1176,40 +1188,188 @@ void ft_render_menu_list(
     }
 }
 
-void ft_render_pause(
-    Canvas* canvas, uint8_t selected, bool tips_on, bool sound_on, int16_t orbs,
-    bool in_battle) {
-    static const char* const ITEMS[FT_PAUSE_COUNT] = {
-        "Resume",
-        "Pockets",
-        "Orbs",
-        "Quests",
-        "Save",
-        "Field guide",
-        "How to play",
-        "Tips",
-        "Sound",
-        "Debug",
-        "New game",
-        "Quit",
-    };
+/* ---- Start screen, pause, settings ------------------------------------- */
 
-    char orbval[12];
-    const char* values[FT_PAUSE_COUNT] = {NULL};
-    values[FT_PAUSE_TIPS] = tips_on ? "ON" : "OFF";
-    values[FT_PAUSE_SOUND] = sound_on ? "ON" : "OFF";
+/* A dead mast: a lattice tower with a dish on top and nothing coming off it.
+ * The one picture on the start screen, and the whole premise in it. */
+static void draw_dead_mast(Canvas* c, int32_t x, int32_t top, int32_t ground) {
+    const int32_t half = (ground - top) / 4;
 
-    /* Rebuilding mid-fight would let a losing turn be undone by moving a
-     * point, so the row says why rather than vanishing. */
-    if(in_battle) {
-        values[FT_PAUSE_ORBS] = "not in battle";
-    } else {
-        snprintf(orbval, sizeof(orbval), "%d", (int)orbs);
-        values[FT_PAUSE_ORBS] = orbval;
+    canvas_draw_line(c, x - half, ground, x, top + 4);
+    canvas_draw_line(c, x + half, ground, x, top + 4);
+    canvas_draw_line(c, x - half + 1, ground, x + 1, top + 4);
+    canvas_draw_line(c, x + half + 1, ground, x + 1, top + 4);
+
+    /* Cross-bracing, every few rows, narrowing as it climbs. */
+    for(int32_t y = ground - 6; y > top + 8; y -= 7) {
+        const int32_t w = ((y - top) * half) / (ground - top);
+        canvas_draw_line(c, x - w, y, x + w + 1, y);
+        canvas_draw_line(c, x - w, y, x + w - 2, y - 6);
     }
 
-    ft_render_menu_list(
-        canvas, "PAUSED", ITEMS, values, FT_PAUSE_COUNT, selected);
+    /* The dish, tipped, with no signal coming off it. */
+    canvas_draw_box(c, x - 1, top + 1, 4, 3);
+    canvas_draw_line(c, x - 4, top, x + 5, top - 2);
+    canvas_draw_line(c, x - 4, top + 1, x + 5, top - 1);
+}
+
+void ft_render_title(Canvas* canvas, uint8_t selected, bool has_save) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+
+    canvas_set_font(canvas, FontPrimary);
+    draw_centred(canvas, FT_SCREEN_W / 2, 12, "FLIPPER TALES");
+
+    /* The scene: you, small, at the foot of a dead mast. */
+    const int32_t ground = 60;
+    canvas_draw_line(canvas, 0, ground, 62, ground);
+    draw_dead_mast(canvas, 42, 22, ground);
+    draw_player(canvas, 8, ground, false);
+
+    /* The choices, on the right. */
+    canvas_set_font(canvas, FontSecondary);
+    static const char* const ITEMS[FT_TITLE_COUNT] = {"Continue", "New game", "Settings"};
+
+    int32_t y = 30;
+    for(uint8_t i = 0; i < FT_TITLE_COUNT; i++) {
+        if(i == FT_TITLE_CONTINUE && !has_save) continue;
+
+        if(i == selected) {
+            canvas_draw_box(canvas, 68, y - 8, 58, 11);
+            canvas_set_color(canvas, ColorWhite);
+            canvas_draw_str(canvas, 72, y, ITEMS[i]);
+            canvas_set_color(canvas, ColorBlack);
+        } else {
+            canvas_draw_str(canvas, 72, y, ITEMS[i]);
+        }
+        y += 12;
+    }
+}
+
+void ft_render_intro(Canvas* canvas, uint8_t card, uint32_t ms) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    if(card >= FT_INTRO_DARK) return;
+
+    /* A terminal: a screen in a frame on a stand, the same shape as the save
+     * points you will walk up to in the world. */
+    canvas_draw_rframe(canvas, 6, 2, 116, 50, 4);
+    canvas_draw_rframe(canvas, 8, 4, 112, 46, 3);
+    canvas_draw_box(canvas, 56, 52, 16, 5);
+    canvas_draw_box(canvas, 44, 57, 40, 4);
+
+    if(card == FT_INTRO_STATIC) {
+        /* It dies mid-word. Snow, from a cheap hash of the time, so each
+         * frame is different and nothing needs to be stored. */
+        uint32_t h = ms * 2654435761u + 12345u;
+        for(int32_t y = 7; y < 47; y++) {
+            for(int32_t x = 11; x < 117; x += 2) {
+                h ^= h << 13;
+                h ^= h >> 17;
+                h ^= h << 5;
+                if((h & 3u) == 0u) canvas_draw_dot(canvas, x + (int32_t)(h >> 30), y);
+            }
+        }
+        return;
+    }
+
+    canvas_set_font(canvas, FontSecondary);
+
+    /* The header, like an operator's screen. */
+    canvas_draw_box(canvas, 10, 6, 108, 9);
+    canvas_set_color(canvas, ColorWhite);
+    canvas_draw_str(canvas, 13, 13, "CARRIER OPERATOR");
+    canvas_set_color(canvas, ColorBlack);
+
+    /* The words, typed out. */
+    uint32_t shown = ms / FT_INTRO_CHAR_MS;
+    int32_t  y = 26;
+    int32_t  end_x = 14, end_y = 26;
+    for(uint8_t i = 0; i < FT_INTRO_CARD_LINES; i++) {
+        const char* line = ft_quest_intro_line(card, i);
+        if(!line) break;
+
+        const size_t len = strlen(line);
+        char buf[24];
+        size_t n = (shown < len) ? shown : len;
+        if(n > sizeof(buf) - 1u) n = sizeof(buf) - 1u;
+        memcpy(buf, line, n);
+        buf[n] = '\0';
+
+        canvas_draw_str(canvas, 14, y, buf);
+        end_x = 14 + (int32_t)canvas_string_width(canvas, buf) + 1;
+        end_y = y;
+        shown = (shown > len) ? shown - (uint32_t)len : 0u;
+        y += 10;
+        if(n < len) break;
+    }
+
+    /* A cursor at the end of the text, blinking. */
+    if((ms / 250u) % 2u == 0u) canvas_draw_box(canvas, end_x, end_y - 6, 4, 7);
+}
+
+void ft_render_pause(Canvas* canvas, uint8_t selected, int16_t orbs, bool in_battle) {
+    static const uint16_t* const ICONS[FT_PAUSE_COUNT] = {
+        FT_SPRITE_ICON_BAG,  FT_SPRITE_ICON_ORB,  FT_SPRITE_ICON_QUESTS, FT_SPRITE_ICON_GUIDE,
+        FT_SPRITE_ICON_SAVE, FT_SPRITE_ICON_HELP, FT_SPRITE_ICON_GEAR,   FT_SPRITE_ICON_QUIT,
+    };
+    static const char* const NAMES[FT_PAUSE_COUNT] = {
+        "Pockets", "Orbs", "Quests", "Field guide", "Save", "How to play", "Settings", "Quit",
+    };
+
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 8, "PAUSED");
+    canvas_draw_line(canvas, 0, 10, FT_SCREEN_W - 1, 10);
+
+    /* Four across, two down. The selected one sits in a rounded frame; a
+     * picture you can see is easier to find again than a word in a list. */
+    enum { CELL_W = 32, CELL_H = 21, GRID_Y = 12 };
+    for(uint8_t i = 0; i < FT_PAUSE_COUNT; i++) {
+        const int32_t cx = (int32_t)(i % FT_PAUSE_COLS) * CELL_W;
+        const int32_t cy = GRID_Y + (int32_t)(i / FT_PAUSE_COLS) * CELL_H;
+
+        if(i == selected) canvas_draw_rframe(canvas, cx + 3, cy, CELL_W - 6, CELL_H - 1, 3);
+        draw_sprite(canvas, ICONS[i], cx + (CELL_W - FT_SPRITE_W) / 2, cy + 2);
+    }
+
+    /* What it is, and anything worth knowing before you open it. */
+    char label[32];
+    const char* name = NAMES[selected < FT_PAUSE_COUNT ? selected : 0];
+    switch(selected) {
+    case FT_PAUSE_ORBS:
+        if(in_battle) snprintf(label, sizeof(label), "Orbs - not in a fight");
+        else snprintf(label, sizeof(label), "Orbs: %d", (int)orbs);
+        break;
+    case FT_PAUSE_SAVE:
+        snprintf(label, sizeof(label), "Save - at a terminal");
+        break;
+    case FT_PAUSE_QUIT:
+        snprintf(label, sizeof(label), "Quit to title");
+        break;
+    default:
+        snprintf(label, sizeof(label), "%s", name);
+        break;
+    }
+    /* Baseline 61, not 63: a g, a p or the tail of a Q hangs two rows under
+     * the line, and at 63 that is off the bottom of the panel. */
+    canvas_draw_line(canvas, 0, 54, FT_SCREEN_W - 1, 54);
+    draw_centred(canvas, FT_SCREEN_W / 2, 61, label);
+}
+
+void ft_render_settings(Canvas* canvas, uint8_t selected, bool sound_on, bool voices_on,
+                        bool tips_on) {
+    static const char* const ITEMS[FT_SET_COUNT] = {
+        "Sound", "Voices", "Tips", "New game", "Back",
+    };
+    const char* values[FT_SET_COUNT] = {NULL};
+    values[FT_SET_SOUND] = sound_on ? "ON" : "OFF";
+    values[FT_SET_VOICES] = voices_on ? "ON" : "OFF";
+    values[FT_SET_TIPS] = tips_on ? "ON" : "OFF";
+
+    ft_render_menu_list(canvas, "SETTINGS", ITEMS, values, FT_SET_COUNT, selected);
 }
 
 void ft_render_debug(Canvas* canvas, uint8_t selected, const char* room_name) {

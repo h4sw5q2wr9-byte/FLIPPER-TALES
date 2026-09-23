@@ -181,19 +181,22 @@ bool ft_guide_attack_line(FtEnemyId id, uint8_t n, char* out, uint8_t cap) {
 
     const FtAttack* atk = &FT_ENEMIES[id].attacks[n];
 
-    /* Power first: it is the number you compare against your own HP. */
+    /* Its name first: "Glare 5 jam SLOW". The name is what the wind-up in
+     * the fight shows, so the page and the fight use the same word for the
+     * same thing. That cost the "wave"/"touch" column, which never changed a
+     * decision — the guard window is what you act on, and it is still here. */
+    append(out, cap, ft_attack_name(atk->id));
+    append(out, cap, " ");
+
+    /* Power: the number you compare against your own HP. */
     append_num(out, cap, atk->base_power);
 
-    /* How it gets to you. "Close"/"Wide" meant nothing; these are the two
-     * things the player's own modules already do. */
-    append(out, cap, (atk->delivery == FT_DELIVERY_BROADCAST) ? " wave" : " touch");
-
-    /* And what a guard can do about it, in the same words the wind-up uses. */
+    /* What a guard can do about it, only when it is not the usual. */
     switch(atk->klass) {
-    case FT_CLASS_UNDODGEABLE: append(out, cap, " no guard"); break;
-    case FT_CLASS_GUARDED:     append(out, cap, " jam only"); break;
+    case FT_CLASS_UNDODGEABLE: append(out, cap, " no-jam"); break;
+    case FT_CLASS_GUARDED:     append(out, cap, " jam"); break;
     case FT_CLASS_NORMAL:
-    default:                   append(out, cap, " block"); break;
+    default:                   break;
     }
 
     /* What it leaves behind, if anything. Worth a column of its own: an

@@ -43,6 +43,9 @@ typedef struct {
 
 typedef enum {
     FT_MODE_OVERWORLD = 0,
+    FT_MODE_TITLE,    /* the start screen: where the app opens */
+    FT_MODE_SETTINGS, /* sound, voices, tips — from the start screen or pause */
+    FT_MODE_INTRO,    /* the opening: Hush on a terminal, before you wake */
     FT_MODE_BATTLE,
     FT_MODE_PAUSE,
     FT_MODE_PRACTICE, /* the arena's setup screen */
@@ -172,8 +175,38 @@ typedef struct {
     int16_t chapters_done;
     uint8_t pause_item;
 
+    /* The start screen and Settings, and where each was opened from so Back
+     * goes back there. */
+    uint8_t title_item;
+    uint8_t settings_item;
+    FtMode  settings_from;
+    FtMode  confirm_from;
+    bool    has_save;
+
+    /* Voices on or off, separately from sound: somebody may want the fight
+     * to be loud and the talking to be quiet. */
+    bool voices;
+
+    /* How far into the Debug combination (Up, Up, Down, Down on the pause
+     * menu) the last few presses have got. The testing tools are behind it
+     * so the pause menu is only the things you use while playing. */
+    uint8_t combo;
+
+    /* The opening: which card of Hush's announcement is up, for how long,
+     * and how many of its letters have had a blip. */
+    uint8_t  intro_line;
+    uint32_t intro_ms;
+    uint16_t intro_voiced;
+
     bool running;
 } FlipperTales;
+
+/* Declared ahead: the start screen, the opening and the pause menu sit above
+ * the talking and saving code in this file, and call into both. */
+static uint8_t ft_talk_again(FlipperTales* app, const FtTalk* first);
+static void    ft_start_talk(FlipperTales* app, int32_t tx, int32_t ty);
+static void    ft_save_here(FlipperTales* app);
+static bool    ft_save_now(FlipperTales* app);
 
 #define HELD_UP    (1u << 0)
 #define HELD_DOWN  (1u << 1)
@@ -191,9 +224,14 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
 
     if(app->show_help) {
         ft_render_help(canvas, app->help_page);
+    } else if(app->mode == FT_MODE_TITLE) {
+        ft_render_title(canvas, app->title_item, app->has_save);
+    } else if(app->mode == FT_MODE_SETTINGS) {
+        ft_render_settings(canvas, app->settings_item, app->sound.on, app->voices, app->coach);
+    } else if(app->mode == FT_MODE_INTRO) {
+        ft_render_intro(canvas, app->intro_line, app->intro_ms);
     } else if(app->mode == FT_MODE_PAUSE) {
-        ft_render_pause(canvas, app->pause_item, app->coach, app->sound.on,
-                        app->world.stats.orbs,
+        ft_render_pause(canvas, app->pause_item, app->world.stats.orbs,
                         app->paused_from == FT_MODE_BATTLE);
     } else if(app->mode == FT_MODE_PRACTICE) {
         ft_render_practice(canvas, &app->practice);
@@ -206,7 +244,7 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
         ft_render_debug(canvas, app->debug_item,
                         ft_room(app->travel_room)->map->name);
     } else if(app->mode == FT_MODE_CONFIRM) {
-        ft_render_confirm(canvas, "Erase this run?", app->confirm_yes);
+        ft_render_confirm(canvas, "Erase your save?", app->confirm_yes);
     } else if(app->mode == FT_MODE_ORBS) {
         ft_render_orbs(canvas, &app->world.stats, app->orb_item);
     } else if(app->mode == FT_MODE_QUESTS) {
@@ -333,6 +371,7 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
 
         if(ft_storage_load(&saved)) {
             ft_save_to_world(&saved, &app->world, &app->coach, NULL);
+            app->voices = saved.voices;
             ft_toast(app, "Back to your save.");
         } else {
             /* Never saved: there is no checkpoint to go back to, so the run
@@ -502,6 +541,333 @@ static void ft_debug_pick(FlipperTales* app) {
     }
 }
 
+/* ---- The opening ------------------------------------------------------- */
+
+static uint16_t ft_intro_card_len(uint8_t card) {
+    uint16_t n = 0;
+    for(uint8_t i = 0; i < FT_INTRO_CARD_LINES; i++) {
+        const char* line = ft_quest_intro_line(card, i);
+        if(line) n = (uint16_t)(n + strlen(line));
+    }
+    return n;
+}
+
+static void ft_start_intro(FlipperTales* app) {
+    app->intro_line = 0;
+    app->intro_ms = 0;
+    app->intro_voiced = 0;
+    app->mode = FT_MODE_INTRO;
+}
+
+/* The opening is over: you are standing in Cold Boot, and the Keeper is
+ * already talking to you. The first conversation in the game is not one you
+ * have to walk up to. */
+static void ft_intro_done(FlipperTales* app) {
+    app->paused_from = FT_MODE_OVERWORLD;
+    app->mode = FT_MODE_OVERWORLD;
+
+    const FtRoom* room = ft_room(app->world.room);
+    for(uint8_t i = 0; i < room->ent_count; i++) {
+        const FtEntity* e = &room->ents[i];
+        if(e->kind != FT_ENT_NPC) continue;
+
+        app->talk_quest = (FtQuestId)e->roster;
+        app->talk_is_wren = false;
+        app->talk_is_hale = false;
+
+        const FtTalk first = ft_quest_talk(&app->world.quests, app->talk_quest, 0);
+        (void)ft_talk_again(app, &first);
+        app->talk = first;
+        ft_start_talk(app, e->tx, e->ty);
+        return;
+    }
+}
+
+static void ft_intro_next(FlipperTales* app) {
+    app->intro_line++;
+    app->intro_ms = 0;
+    app->intro_voiced = 0;
+
+    /* The last card is cut off; the terminal dies with a noise. */
+    if(app->intro_line == FT_INTRO_STATIC) ft_sound_play(&app->sound, FT_SFX_HURT);
+    if(app->intro_line > FT_INTRO_DARK) ft_intro_done(app);
+}
+
+static void ft_intro_tick(FlipperTales* app, uint32_t dt_ms) {
+    app->intro_ms += dt_ms;
+
+    if(app->intro_line < FT_INTRO_CARDS) {
+        const uint16_t len = ft_intro_card_len(app->intro_line);
+        const uint32_t typed = app->intro_ms / FT_INTRO_CHAR_MS;
+
+        /* Hush's voice under the words, every other letter. */
+        while(app->intro_voiced < len && app->intro_voiced < typed) {
+            app->intro_voiced++;
+            if(app->voices && (app->intro_voiced % 2u) == 1u) {
+                ft_sound_play(&app->sound, FT_SFX_VOICE_HUSH);
+            }
+        }
+
+        /* The last card does not get to finish. */
+        const uint32_t hold = (app->intro_line == FT_INTRO_CARDS - 1u) ? 150u : FT_INTRO_HOLD_MS;
+        if(typed >= len && app->intro_ms >= (uint32_t)len * FT_INTRO_CHAR_MS + hold) {
+            ft_intro_next(app);
+        }
+    } else if(app->intro_line == FT_INTRO_STATIC) {
+        if(app->intro_ms >= FT_INTRO_STATIC_MS) ft_intro_next(app);
+    } else if(app->intro_ms >= FT_INTRO_DARK_MS) {
+        ft_intro_next(app);
+    }
+}
+
+static void ft_intro_input(FlipperTales* app, InputKey key) {
+    if(key == InputKeyBack) {
+        /* Skip the lot. */
+        ft_intro_done(app);
+        return;
+    }
+    if(key != InputKeyOk) return;
+
+    /* OK finishes the line, and a second OK moves on — like talking. */
+    if(app->intro_line < FT_INTRO_CARDS) {
+        const uint16_t len = ft_intro_card_len(app->intro_line);
+        if(app->intro_ms < (uint32_t)len * FT_INTRO_CHAR_MS) {
+            app->intro_ms = (uint32_t)len * FT_INTRO_CHAR_MS;
+            app->intro_voiced = len;
+        } else {
+            ft_intro_next(app);
+        }
+    }
+}
+
+/* ---- Start screen, pause, settings ------------------------------------ */
+
+/* A run from nothing: the save goes, the world starts again, and the opening
+ * plays. */
+static void ft_new_run(FlipperTales* app) {
+    ft_storage_erase();
+    ft_world_init(&app->world);
+    app->battle_entity = -1;
+    app->has_save = false;
+    for(uint8_t i = 0; i < FT_VOICE_COUNT; i++) {
+        app->talk_first[i] = NULL;
+        app->talk_again[i] = 0;
+    }
+    ft_start_intro(app);
+}
+
+/* Back to where the save left off. Read fresh from the card every time, so
+ * Quit then Continue is the save, not whatever was in memory. */
+static void ft_continue(FlipperTales* app) {
+    FtSaveData saved;
+    if(ft_storage_load(&saved)) {
+        bool sound_on = app->sound.on;
+        ft_save_to_world(&saved, &app->world, &app->coach, &sound_on);
+        ft_sound_set(&app->sound, sound_on);
+        app->voices = saved.voices;
+    }
+    app->paused_from = FT_MODE_OVERWORLD;
+    app->mode = FT_MODE_OVERWORLD;
+}
+
+static void ft_open_settings(FlipperTales* app, FtMode from) {
+    app->settings_item = 0;
+    app->settings_from = from;
+    app->mode = FT_MODE_SETTINGS;
+}
+
+static void ft_to_title(FlipperTales* app) {
+    FtSaveData probe;
+    app->has_save = ft_storage_load(&probe);
+    app->title_item = app->has_save ? FT_TITLE_CONTINUE : FT_TITLE_NEW;
+    app->mode = FT_MODE_TITLE;
+}
+
+static void ft_title_input(FlipperTales* app, InputKey key) {
+    const uint8_t first = app->has_save ? FT_TITLE_CONTINUE : FT_TITLE_NEW;
+
+    switch(key) {
+    case InputKeyUp:
+        app->title_item = (app->title_item > first) ? (uint8_t)(app->title_item - 1u) :
+                                                      (uint8_t)(FT_TITLE_COUNT - 1u);
+        ft_sound_play(&app->sound, FT_SFX_MOVE);
+        break;
+    case InputKeyDown:
+        app->title_item = (app->title_item + 1u < FT_TITLE_COUNT) ?
+                              (uint8_t)(app->title_item + 1u) :
+                              first;
+        ft_sound_play(&app->sound, FT_SFX_MOVE);
+        break;
+    case InputKeyOk:
+        switch(app->title_item) {
+        case FT_TITLE_CONTINUE:
+            ft_continue(app);
+            break;
+        case FT_TITLE_NEW:
+            /* A save is somebody's run. Starting over asks first. */
+            if(app->has_save) {
+                app->confirm_yes = false;
+                app->confirm_from = FT_MODE_TITLE;
+                app->mode = FT_MODE_CONFIRM;
+            } else {
+                ft_new_run(app);
+            }
+            break;
+        case FT_TITLE_SETTINGS:
+        default:
+            ft_open_settings(app, FT_MODE_TITLE);
+            break;
+        }
+        break;
+    case InputKeyBack:
+        app->running = false;
+        break;
+    default:
+        break;
+    }
+}
+
+static void ft_settings_input(FlipperTales* app, InputKey key) {
+    switch(key) {
+    case InputKeyUp:
+        app->settings_item = (uint8_t)((app->settings_item + FT_SET_COUNT - 1u) % FT_SET_COUNT);
+        return;
+    case InputKeyDown:
+        app->settings_item = (uint8_t)((app->settings_item + 1u) % FT_SET_COUNT);
+        return;
+    case InputKeyBack:
+        app->mode = app->settings_from;
+        return;
+    case InputKeyOk:
+    case InputKeyLeft:
+    case InputKeyRight:
+        break;
+    default:
+        return;
+    }
+
+    /* Left and right flip a switch as well as OK does; only OK opens things. */
+    const bool ok = (key == InputKeyOk);
+    switch(app->settings_item) {
+    case FT_SET_SOUND:
+        ft_sound_set(&app->sound, !app->sound.on);
+        ft_sound_play(&app->sound, FT_SFX_PICK);
+        break;
+    case FT_SET_VOICES:
+        app->voices = !app->voices;
+        if(app->voices) ft_sound_play(&app->sound, FT_SFX_VOICE_WREN);
+        break;
+    case FT_SET_TIPS:
+        app->coach = !app->coach;
+        app->encounter.coach = app->coach;
+        break;
+    case FT_SET_NEWGAME:
+        if(!ok) break;
+        app->confirm_yes = false;
+        app->confirm_from = FT_MODE_SETTINGS;
+        app->mode = FT_MODE_CONFIRM;
+        break;
+    case FT_SET_BACK:
+    default:
+        if(ok) app->mode = app->settings_from;
+        break;
+    }
+}
+
+static void ft_pause_input(FlipperTales* app, InputKey key) {
+    /* Up, Up, Down, Down opens the testing tools. The moves still move the
+     * cursor — it lands back where it started — so the combination is
+     * invisible to anybody not looking for it. */
+    static const InputKey COMBO[4] = {InputKeyUp, InputKeyUp, InputKeyDown, InputKeyDown};
+    if(key == COMBO[app->combo]) {
+        app->combo++;
+    } else {
+        app->combo = (key == COMBO[0]) ? 1u : 0u;
+    }
+
+    switch(key) {
+    case InputKeyLeft:
+        app->pause_item = (uint8_t)((app->pause_item + FT_PAUSE_COUNT - 1u) % FT_PAUSE_COUNT);
+        break;
+    case InputKeyRight:
+        app->pause_item = (uint8_t)((app->pause_item + 1u) % FT_PAUSE_COUNT);
+        break;
+    case InputKeyUp:
+    case InputKeyDown:
+        app->pause_item = (uint8_t)((app->pause_item + FT_PAUSE_COLS) % FT_PAUSE_COUNT);
+        break;
+    case InputKeyBack:
+        app->mode = app->paused_from;
+        return;
+    case InputKeyOk:
+        break;
+    default:
+        return;
+    }
+
+    if(app->combo >= 4u) {
+        app->combo = 0;
+        app->debug_item = 0;
+        app->mode = FT_MODE_DEBUG;
+        return;
+    }
+    if(key != InputKeyOk) return;
+
+    switch(app->pause_item) {
+    case FT_PAUSE_POCKETS:
+        app->pocket_item = 0;
+        app->mode = FT_MODE_POCKETS;
+        break;
+    case FT_PAUSE_ORBS:
+        /* Not mid-fight: moving a point to escape a hit you have already
+         * taken is not a build decision. */
+        if(app->paused_from == FT_MODE_BATTLE) {
+            ft_toast(app, "Not in a fight.");
+            app->mode = app->paused_from;
+            break;
+        }
+        app->orb_item = 0;
+        app->orbs_from_pause = true;
+        app->mode = FT_MODE_ORBS;
+        break;
+    case FT_PAUSE_QUESTS:
+        app->quest_item = 0;
+        app->mode = FT_MODE_QUESTS;
+        break;
+    case FT_PAUSE_GUIDE:
+        app->guide_item = 0;
+        app->mode = FT_MODE_GUIDE;
+        break;
+    case FT_PAUSE_SAVE:
+        /* Terminals are the save point, so this says where to find one
+         * rather than quietly doing nothing. */
+        if(app->paused_from != FT_MODE_OVERWORLD) {
+            ft_toast(app, "Not in a fight.");
+        } else if(!ft_world_terminal_near(&app->world)) {
+            ft_toast(app, "Find a terminal.");
+        } else {
+            ft_save_here(app);
+            ft_toast(app, ft_save_now(app) ? "Saved." : "No card.");
+        }
+        app->mode = app->paused_from;
+        break;
+    case FT_PAUSE_HELP:
+        app->mode = app->paused_from;
+        app->show_help = true;
+        app->help_page = 0;
+        break;
+    case FT_PAUSE_SETTINGS:
+        ft_open_settings(app, FT_MODE_PAUSE);
+        break;
+    case FT_PAUSE_QUIT:
+    default:
+        /* To the start screen, not out of the app. Continue there picks up
+         * from the last save, so nothing is lost that was not already. */
+        ft_to_title(app);
+        break;
+    }
+}
+
 /* ---- Input ----------------------------------------------------------- */
 
 /* ---- Saving ----------------------------------------------------------- */
@@ -518,6 +884,7 @@ static void ft_save_here(FlipperTales* app) {
 static bool ft_save_now(FlipperTales* app) {
     FtSaveData data;
     ft_save_from_world(&app->world, app->coach, app->sound.on, &data);
+    data.voices = app->voices;
     return ft_storage_save(&data);
 }
 
@@ -590,7 +957,9 @@ static void ft_talk_tick(FlipperTales* app, uint32_t dt_ms) {
         const char ch = ft_beat_char(b, app->talk_shown);
         app->talk_shown++;
 
-        if(ch != ' ' && (app->talk_shown % 2u) == 1u) ft_sound_play(&app->sound, blip);
+        if(app->voices && ch != ' ' && (app->talk_shown % 2u) == 1u) {
+            ft_sound_play(&app->sound, blip);
+        }
 
         /* A breath after the end of a sentence, a shorter one after a comma
          * — unless it is the last thing on the line, where there is nothing
@@ -746,7 +1115,10 @@ static void ft_overworld_ok(FlipperTales* app) {
          * saving would mean the thing you walked across the room for did only
          * half of what it is for. */
         ft_save_here(app);
-        ft_toast(app, ft_save_now(app) ? "Saved. Restored." : "Restored. No card.");
+        ft_toast(app, ft_save_now(app) ? "Saved. Healed." : "Healed. No card.");
+
+        /* It is Hush's terminal, and it is very polite about it. */
+        ft_world_terminal_speaks(&app->world);
         return;
     }
 
@@ -804,89 +1176,23 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
         return;
     }
 
+    if(app->mode == FT_MODE_TITLE) {
+        ft_title_input(app, event->key);
+        return;
+    }
+
+    if(app->mode == FT_MODE_SETTINGS) {
+        ft_settings_input(app, event->key);
+        return;
+    }
+
+    if(app->mode == FT_MODE_INTRO) {
+        ft_intro_input(app, event->key);
+        return;
+    }
+
     if(app->mode == FT_MODE_PAUSE) {
-        switch(event->key) {
-        case InputKeyUp:
-            app->pause_item = (uint8_t)((app->pause_item + FT_PAUSE_COUNT - 1u) % FT_PAUSE_COUNT);
-            break;
-        case InputKeyDown:
-            app->pause_item = (uint8_t)((app->pause_item + 1u) % FT_PAUSE_COUNT);
-            break;
-        case InputKeyBack:
-            app->mode = app->paused_from;
-            break;
-        case InputKeyOk:
-            switch(app->pause_item) {
-            case FT_PAUSE_RESUME:
-                app->mode = app->paused_from;
-                break;
-            case FT_PAUSE_HELP:
-                app->mode = app->paused_from;
-                app->show_help = true;
-                app->help_page = 0;
-                break;
-            case FT_PAUSE_SAVE:
-                /* Terminals are the save point, so this says where to find
-                 * one rather than quietly doing nothing. */
-                if(app->paused_from != FT_MODE_OVERWORLD) {
-                    ft_toast(app, "Not in a fight.");
-                } else if(!ft_world_terminal_near(&app->world)) {
-                    ft_toast(app, "Find a terminal.");
-                } else {
-                    ft_save_here(app);
-                    ft_toast(app, ft_save_now(app) ? "Saved." : "No card.");
-                }
-                app->mode = app->paused_from;
-                break;
-            case FT_PAUSE_ORBS:
-                /* Not mid-fight: moving a point to escape a hit you have
-                 * already taken is not a build decision. */
-                if(app->paused_from == FT_MODE_BATTLE) {
-                    ft_toast(app, "Not in a fight.");
-                    app->mode = app->paused_from;
-                    break;
-                }
-                app->orb_item = 0;
-                app->orbs_from_pause = true;
-                app->mode = FT_MODE_ORBS;
-                break;
-            case FT_PAUSE_QUESTS:
-                app->quest_item = 0;
-                app->mode = FT_MODE_QUESTS;
-                break;
-            case FT_PAUSE_POCKETS:
-                app->pocket_item = 0;
-                app->mode = FT_MODE_POCKETS;
-                break;
-            case FT_PAUSE_GUIDE:
-                app->guide_item = 0;
-                app->mode = FT_MODE_GUIDE;
-                break;
-            case FT_PAUSE_DEBUG:
-                app->debug_item = 0;
-                app->mode = FT_MODE_DEBUG;
-                break;
-            case FT_PAUSE_NEWGAME:
-                app->confirm_yes = false;
-                app->mode = FT_MODE_CONFIRM;
-                break;
-            case FT_PAUSE_TIPS:
-                app->coach = !app->coach;
-                app->encounter.coach = app->coach;
-                break;
-            case FT_PAUSE_SOUND:
-                ft_sound_set(&app->sound, !app->sound.on);
-                ft_sound_play(&app->sound, FT_SFX_PICK);
-                break;
-            case FT_PAUSE_QUIT:
-            default:
-                app->running = false;
-                break;
-            }
-            break;
-        default:
-            break;
-        }
+        ft_pause_input(app, event->key);
         return;
     }
 
@@ -953,17 +1259,14 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
             break;
         case InputKeyOk:
             if(app->confirm_yes) {
-                ft_storage_erase();
-                ft_world_init(&app->world);
-                app->coach = true;
-                app->battle_entity = -1;
-                ft_toast(app, "New run.");
+                ft_new_run(app);
+            } else {
+                app->mode = app->confirm_from;
             }
-            app->mode = FT_MODE_OVERWORLD;
             break;
         case InputKeyBack:
         default:
-            app->mode = FT_MODE_PAUSE;
+            app->mode = app->confirm_from;
             break;
         }
         return;
@@ -1162,7 +1465,8 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
     if(event->key == InputKeyBack) {
         if(pressed) {
             app->paused_from = app->mode;
-            app->pause_item = FT_PAUSE_RESUME;
+            app->pause_item = FT_PAUSE_POCKETS;
+            app->combo = 0;
             app->mode = FT_MODE_PAUSE;
         }
         return;
@@ -1290,6 +1594,11 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
     }
 
     if(app->show_help) return;
+    if(app->mode == FT_MODE_TITLE || app->mode == FT_MODE_SETTINGS) return;
+    if(app->mode == FT_MODE_INTRO) {
+        ft_intro_tick(app, dt_ms);
+        return;
+    }
     if(app->mode == FT_MODE_PAUSE || app->mode == FT_MODE_PRACTICE) return;
     if(app->mode == FT_MODE_ORBS || app->mode == FT_MODE_CONFIRM) return;
     if(app->mode == FT_MODE_TALK) {
@@ -1444,19 +1753,32 @@ static FlipperTales* ft_alloc(void) {
      *
      * This is also why the tutorial is skipped on a resume: someone with a
      * save has already seen it. */
+    app->voices = true;
+    app->combo = 0;
+    app->settings_item = 0;
+    app->settings_from = FT_MODE_TITLE;
+    app->confirm_from = FT_MODE_TITLE;
+    app->intro_line = 0;
+    app->intro_ms = 0;
+    app->intro_voiced = 0;
+
+    /* The settings live in the save, so read them now even though the run
+     * itself waits for Continue: the start screen should already sound the
+     * way the player left it. */
     FtSaveData saved;
-    const bool resumed = ft_storage_load(&saved);
-    if(resumed) {
-        bool sound_on = true;
-        ft_save_to_world(&saved, &app->world, &app->coach, &sound_on);
-        ft_sound_set(&app->sound, sound_on);
+    if(ft_storage_load(&saved)) {
+        ft_sound_set(&app->sound, saved.sound);
+        app->coach = saved.coach;
+        app->voices = saved.voices;
     }
 
-    app->show_help = !resumed;
+    app->show_help = false;
     app->help_page = 0;
     app->paused_from = FT_MODE_OVERWORLD;
-    app->pause_item = FT_PAUSE_RESUME;
+    app->pause_item = FT_PAUSE_POCKETS;
     app->running = true;
+
+    ft_to_title(app);
 
     return app;
 }

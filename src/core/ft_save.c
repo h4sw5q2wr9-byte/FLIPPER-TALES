@@ -69,7 +69,7 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) put_u8(b, &at, d->cleared[i]);
 
     put_u8(b, &at, d->coach ? 1u : 0u);
-    put_u8(b, &at, d->sound ? 1u : 0u);
+    put_u8(b, &at, (uint8_t)((d->sound ? 1u : 0u) | (d->voices ? 0u : 2u)));
 
     put_u8(b, &at, d->escort ? 1u : 0u);
     put_u8(b, &at, d->escort_tx);
@@ -112,7 +112,11 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) d->cleared[i] = get_u8(b, &at);
 
     d->coach = get_u8(b, &at) != 0u;
-    d->sound = get_u8(b, &at) != 0u;
+    {
+        const uint8_t sb = get_u8(b, &at);
+        d->sound = (sb & 1u) != 0u;
+        d->voices = (sb & 2u) == 0u;
+    }
 
     d->escort = get_u8(b, &at) != 0u;
     d->escort_tx = get_u8(b, &at);
@@ -213,6 +217,7 @@ void ft_save_from_world(const FtWorld* w, bool coach, bool sound, FtSaveData* d)
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) d->cleared[i] = w->cleared[i];
     d->coach = coach;
     d->sound = sound;
+    d->voices = true;
 
     d->escort = w->escort;
     d->escort_tx = w->escort_mv.tx;

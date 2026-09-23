@@ -27,12 +27,12 @@ typedef struct {
 static void build(FtEncounter* e, const Shot* s) {
     if(s->extra_foes) {
         const FtEnemyId plain[FT_MAX_ENEMIES] = {
-            FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK};
+            FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_LAMPLIGHTER, FT_ENEMY_CURFEW_LOCK};
         const FtEnemyId walled[FT_MAX_ENEMIES] = {
-            FT_ENEMY_BLANK_WALL, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET};
+            FT_ENEMY_QUEUE_BARRIER, FT_ENEMY_LAMPLIGHTER, FT_ENEMY_PARCEL_RUNNER};
 
         ft_encounter_init(
-            e, (s->enemy == FT_ENEMY_BLANK_WALL) ? walled : plain, s->extra_foes, 42);
+            e, (s->enemy == FT_ENEMY_QUEUE_BARRIER) ? walled : plain, s->extra_foes, 42);
     } else {
         ft_encounter_init_single(e, s->enemy, 42);
     }
@@ -54,7 +54,7 @@ static void build(FtEncounter* e, const Shot* s) {
     }
 
     /* Widest case for the pip row: four bars, three of them filled. */
-    if(s->enemy == FT_ENEMY_SEALED_LOCK) {
+    if(s->enemy == FT_ENEMY_CURFEW_LOCK) {
         e->signal.max_bars = 4;
         e->signal.value = 320;
     }
@@ -176,83 +176,83 @@ static void build(FtEncounter* e, const Shot* s) {
 
 int main(void) {
     static const Shot shots[] = {
-        {"menu-plain",      FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    0, 0, 0, false},
-        {"menu-airborne",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_MENU,       0,    1, 0, 0, false},
-        {"menu-encrypted",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    0, 0, 0, false},
-        {"menu-last",       FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    3, 0, 0, false},
-        {"menu-nocoach",    FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    1, 9, 0, false},
+        {"menu-plain",      FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    0, 0, 0, false},
+        {"menu-airborne",   FT_ENEMY_LAMPLIGHTER, FT_PHASE_MENU,       0,    1, 0, 0, false},
+        {"menu-encrypted",  FT_ENEMY_CURFEW_LOCK,  FT_PHASE_MENU,       0,    0, 0, 0, false},
+        {"menu-last",       FT_ENEMY_CURFEW_LOCK,  FT_PHASE_MENU,       0,    3, 0, 0, false},
+        {"menu-nocoach",    FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    1, 9, 0, false},
         /* Phase times include the FT_READY_MS lead-in. */
-        {"strike-ready",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 200,  1, 0, 0, false},
-        {"strike-early",    FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 620,  1, 0, 0, false},
-        {"strike-perfect",  FT_ENEMY_STRAY_PACKET, FT_PHASE_PLAYER_ACT, 850,  1, 0, 0, false},
-        {"anim-strike",     FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     110,  1, 0, 0, false},
-        {"result-hit",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,    1100,  1, 0, 0, false},
-        {"result-group",    FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,    1100,  0, 0, 3, false},
-        {"telegraph-ready", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  250,  0, 0, 0, false},
-        {"telegraph-far",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  800,  0, 0, 0, false},
-        {"telegraph-near",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1270, 0, 0, 0, false},
-        {"telegraph-guard", FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1240, 0, 1, 0, false},
-        {"telegraph-undo",  FT_ENEMY_SEALED_LOCK,  FT_PHASE_TELEGRAPH,  1100, 0, 1, 0, false},
+        {"strike-ready",    FT_ENEMY_PARCEL_RUNNER, FT_PHASE_PLAYER_ACT, 200,  1, 0, 0, false},
+        {"strike-early",    FT_ENEMY_PARCEL_RUNNER, FT_PHASE_PLAYER_ACT, 620,  1, 0, 0, false},
+        {"strike-perfect",  FT_ENEMY_PARCEL_RUNNER, FT_PHASE_PLAYER_ACT, 850,  1, 0, 0, false},
+        {"anim-strike",     FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     110,  1, 0, 0, false},
+        {"result-hit",      FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,    1100,  1, 0, 0, false},
+        {"result-group",    FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,    1100,  0, 0, 3, false},
+        {"telegraph-ready", FT_ENEMY_LAMPLIGHTER, FT_PHASE_TELEGRAPH,  250,  0, 0, 0, false},
+        {"telegraph-far",   FT_ENEMY_LAMPLIGHTER, FT_PHASE_TELEGRAPH,  800,  0, 0, 0, false},
+        {"telegraph-near",  FT_ENEMY_LAMPLIGHTER, FT_PHASE_TELEGRAPH,  1270, 0, 0, 0, false},
+        {"telegraph-guard", FT_ENEMY_LAMPLIGHTER, FT_PHASE_TELEGRAPH,  1240, 0, 1, 0, false},
+        {"telegraph-undo",  FT_ENEMY_CURFEW_LOCK,  FT_PHASE_TELEGRAPH,  1100, 0, 1, 0, false},
         /* The guard aftermath: the marker frozen where the block went up,
          * with the impact edge still closing on it, and the readings the
          * popup gives afterwards. */
-        {"guard-held",      FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1280, 5, 0, 0, false},
-        {"guard-tooearly",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_TELEGRAPH,  1000, 6, 0, 0, false},
-        {"after-jam",       FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  5, 1, 0, false},
-        {"after-early",     FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  6, 1, 0, false},
-        {"after-noguard",   FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  7, 1, 0, false},
-        {"anim-incoming",   FT_ENEMY_SEALED_LOCK,  FT_PHASE_IMPACT,     110,  0, 1, 0, false},
-        {"anim-capture",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     110,  0, 0, 0, false},
-        {"impact-capture",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  0, 0, 0, false},
-        {"impact-jam",      FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1100,  0, 1, 0, false},
-        {"group3-menu",     FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    0, 0, 3, false},
-        {"group3-target",   FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    1, 0, 3, false},
-        {"group2-signal",   FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    4, 0, 2, false},
-        {"anim-bcast",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     560,  0, 0, 3, false},
-        {"anim-contact",    FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     560,  1, 0, 2, false},
-        {"anim-foe-bcast",  FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     560,  0, 1, 0, false},
+        {"guard-held",      FT_ENEMY_LAMPLIGHTER, FT_PHASE_TELEGRAPH,  1280, 5, 0, 0, false},
+        {"guard-tooearly",  FT_ENEMY_LAMPLIGHTER, FT_PHASE_TELEGRAPH,  1000, 6, 0, 0, false},
+        {"after-jam",       FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,    1100,  5, 1, 0, false},
+        {"after-early",     FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,    1100,  6, 1, 0, false},
+        {"after-noguard",   FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,    1100,  7, 1, 0, false},
+        {"anim-incoming",   FT_ENEMY_CURFEW_LOCK,  FT_PHASE_IMPACT,     110,  0, 1, 0, false},
+        {"anim-capture",    FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,     110,  0, 0, 0, false},
+        {"impact-capture",  FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,    1100,  0, 0, 0, false},
+        {"impact-jam",      FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,    1100,  0, 1, 0, false},
+        {"group3-menu",     FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    0, 0, 3, false},
+        {"group3-target",   FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    1, 0, 3, false},
+        {"group2-signal",   FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    4, 0, 2, false},
+        {"anim-bcast",      FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     560,  0, 0, 3, false},
+        {"anim-contact",    FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     560,  1, 0, 2, false},
+        {"anim-foe-bcast",  FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,     560,  0, 1, 0, false},
         /* The Attack panel: the second menu level, over a full three-foe row. */
-        {"panel-bcast",     FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    0, 0, 3, true},
-        {"panel-signal",    FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    4, 0, 3, true},
-        {"panel-locked",    FT_ENEMY_SEALED_LOCK,  FT_PHASE_MENU,       0,    0, 0, 0, true},
-        {"root-defend",     FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    2, 0, 3, false},
-        {"root-focus",      FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,       0,    3, 0, 3, false},
+        {"panel-bcast",     FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    0, 0, 3, true},
+        {"panel-signal",    FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    4, 0, 3, true},
+        {"panel-locked",    FT_ENEMY_CURFEW_LOCK,  FT_PHASE_MENU,       0,    0, 0, 0, true},
+        {"root-defend",     FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    2, 0, 3, false},
+        {"root-focus",      FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    3, 0, 3, false},
         /* Taking a hit: the flinch strobe, then the result. A landed hit is
          * variant 1. There is no iris here any more — that belongs to the
          * scene wipe, not to every single connect. */
-        {"flinch",          FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,     760,  0, 1, 0, false},
-        {"hit-taken",       FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,    1300,  0, 1, 0, false},
+        {"flinch",          FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,     760,  0, 1, 0, false},
+        {"hit-taken",       FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,    1300,  0, 1, 0, false},
         /* The travelling broadcast, late in its flight across the row. */
-        {"bcast-late",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     860,  0, 0, 3, false},
+        {"bcast-late",      FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     860,  0, 0, 3, false},
         /* The strike, frame by frame: wind-up, the dash, the burst, recovery. */
-        {"hit-windup",      FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     200,  1, 0, 2, false},
-        {"hit-dash",        FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     560,  1, 0, 2, false},
-        {"hit-burst",       FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     700,  1, 0, 2, false},
-        {"hit-recover",     FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     830,  1, 0, 2, false},
+        {"hit-windup",      FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     200,  1, 0, 2, false},
+        {"hit-dash",        FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     560,  1, 0, 2, false},
+        {"hit-burst",       FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     700,  1, 0, 2, false},
+        {"hit-recover",     FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     830,  1, 0, 2, false},
         /* And a foe going down, across the fold. */
-        {"die-early",       FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     740,  0, 7, 3, false},
-        {"die-mid",         FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     800,  0, 7, 3, false},
-        {"die-late",        FT_ENEMY_STRAY_PACKET, FT_PHASE_RESULT,     870,  0, 7, 3, false},
+        {"die-early",       FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     740,  0, 7, 3, false},
+        {"die-mid",         FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     800,  0, 7, 3, false},
+        {"die-late",        FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     870,  0, 7, 3, false},
         /* Every enemy, so new art is looked at rather than assumed. */
-        {"foe-crawler",     FT_ENEMY_SCRAP_CRAWLER, FT_PHASE_MENU,      0,    0, 0, 0, false},
-        {"foe-rime",        FT_ENEMY_RIME_SHELL,    FT_PHASE_MENU,      0,    0, 0, 0, false},
-        {"foe-drone",       FT_ENEMY_GATE_DRONE,    FT_PHASE_MENU,      0,    0, 0, 0, false},
-        {"foe-relay",       FT_ENEMY_MAST_RELAY,    FT_PHASE_MENU,      0,    0, 0, 0, false},
-        {"foe-null",        FT_ENEMY_NULL_FIELD,    FT_PHASE_MENU,      0,    0, 0, 0, false},
-        {"foe-wall",        FT_ENEMY_BLANK_WALL,   FT_PHASE_MENU,      0,    0, 0, 3, false},
-        {"foe-booter",      FT_ENEMY_COLD_BOOTER,  FT_PHASE_MENU,      0,    0, 0, 0, false},
-        {"status-dot",      FT_ENEMY_MAST_RELAY,   FT_PHASE_MENU,      0,    0, 8, 0, false},
+        {"foe-crawler",     FT_ENEMY_SWEEPER, FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-rime",        FT_ENEMY_CHILLER,    FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-drone",       FT_ENEMY_TICKET_DRONE,    FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-relay",       FT_ENEMY_LOUDHAILER,    FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-null",        FT_ENEMY_SHUSHER,    FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"foe-wall",        FT_ENEMY_QUEUE_BARRIER,   FT_PHASE_MENU,      0,    0, 0, 3, false},
+        {"foe-booter",      FT_ENEMY_NIGHT_SHIFT,  FT_PHASE_MENU,      0,    0, 0, 0, false},
+        {"status-dot",      FT_ENEMY_LOUDHAILER,   FT_PHASE_MENU,      0,    0, 8, 0, false},
         /* The deflect: the stance on its own, the stance under a payload,
          * and the two readings the bounce can give. */
-        {"use-apple",       FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,      0,    0, 12, 3, false},
-        {"use-cell",        FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,      0,    0, 13, 0, false},
-        {"use-empty",       FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,      0,    5, 9, 0, false},
-        {"deflect-armed",   FT_ENEMY_STRAY_PACKET, FT_PHASE_MENU,      0,    0, 10, 3, false},
-        {"deflect-stacked", FT_ENEMY_MAST_RELAY,   FT_PHASE_MENU,      0,    0, 11, 0, false},
-        {"deflect-full",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,   1100,  8, 0, 3, false},
-        {"deflect-half",    FT_ENEMY_DRIFT_BEACON, FT_PHASE_IMPACT,   1100,  9, 0, 3, false},
-        {"win",             FT_ENEMY_STRAY_PACKET, FT_PHASE_WIN,        100,  0, 0, 0, false},
-        {"lose",            FT_ENEMY_SEALED_LOCK,  FT_PHASE_LOSE,       100,  0, 0, 0, false},
+        {"use-apple",       FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,      0,    0, 12, 3, false},
+        {"use-cell",        FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,      0,    0, 13, 0, false},
+        {"use-empty",       FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,      0,    5, 9, 0, false},
+        {"deflect-armed",   FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,      0,    0, 10, 3, false},
+        {"deflect-stacked", FT_ENEMY_LOUDHAILER,   FT_PHASE_MENU,      0,    0, 11, 0, false},
+        {"deflect-full",    FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,   1100,  8, 0, 3, false},
+        {"deflect-half",    FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,   1100,  9, 0, 3, false},
+        {"win",             FT_ENEMY_PARCEL_RUNNER, FT_PHASE_WIN,        100,  0, 0, 0, false},
+        {"lose",            FT_ENEMY_CURFEW_LOCK,  FT_PHASE_LOSE,       100,  0, 0, 0, false},
     };
 
     Canvas* canvas = ft_stub_canvas_alloc();
@@ -261,16 +261,62 @@ int main(void) {
     /* The menus are screens too, and they were the two nobody was looking at
      * until a row was added to one of them. */
     for(uint8_t i = 0; i < FT_PAUSE_COUNT; i++) {
-        ft_render_pause(canvas, i, (i % 2) != 0, (i % 3u) != 0, (i == 0u) ? 0 : 12,
-                        (i % 3u) == 0u);
+        /* Every icon selected once, in and out of a fight. */
+        for(uint8_t fight = 0; fight < 2u; fight++) {
+            ft_render_pause(canvas, i, (i == 0u) ? 0 : 12, fight != 0u);
 
-        char pp[64];
-        snprintf(pp, sizeof(pp), "preview/80_pause%u.pbm", i);
-        ft_stub_canvas_write_pbm(canvas, pp);
+            char pp[64];
+            snprintf(pp, sizeof(pp), "preview/80_pause%u%s.pbm", i, fight ? "_fight" : "");
+            ft_stub_canvas_write_pbm(canvas, pp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  pause icon %u%s      %s\n", i, fight ? " (fight)" : "        ",
+                   c ? "CLIPPED" : "ok");
+        }
+    }
+
+    /* The start screen, with and without a save to continue, every row lit. */
+    for(uint8_t save = 0; save < 2u; save++) {
+        for(uint8_t i = 0; i < FT_TITLE_COUNT; i++) {
+            if(!save && i == FT_TITLE_CONTINUE) continue;
+            ft_render_title(canvas, i, save != 0u);
+
+            char tp[64];
+            snprintf(tp, sizeof(tp), "preview/79_title%u_%u.pbm", save, i);
+            ft_stub_canvas_write_pbm(canvas, tp);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  title %u/%u           %s\n", save, i, c ? "CLIPPED" : "ok");
+        }
+    }
+
+    /* The opening: every card half typed and whole, the static, and the dark. */
+    for(uint8_t card = 0; card <= FT_INTRO_DARK; card++) {
+        for(uint8_t whole = 0; whole < 2u; whole++) {
+            ft_render_intro(canvas, card, whole ? 5000u : 6u * FT_INTRO_CHAR_MS);
+
+            char ip[64];
+            snprintf(ip, sizeof(ip), "preview/78_intro%u_%u.pbm", card, whole);
+            ft_stub_canvas_write_pbm(canvas, ip);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            total_clipped += c;
+            printf("  intro %u/%u           %s\n", card, whole, c ? "CLIPPED" : "ok");
+        }
+    }
+
+    for(uint8_t i = 0; i < FT_SET_COUNT; i++) {
+        ft_render_settings(canvas, i, true, i % 2u == 0u, false);
+
+        char sp[64];
+        snprintf(sp, sizeof(sp), "preview/81_settings%u.pbm", i);
+        ft_stub_canvas_write_pbm(canvas, sp);
 
         const int c = ft_stub_canvas_clipped(canvas);
         total_clipped += c;
-        printf("  pause row %u         %s\n", i, c ? "CLIPPED" : "ok");
+        printf("  settings %u          %s\n", i, c ? "CLIPPED" : "ok");
     }
 
     {

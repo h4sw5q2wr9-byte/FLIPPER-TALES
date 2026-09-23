@@ -100,6 +100,7 @@ typedef enum {
     FT_VOICE_HALE,
     FT_VOICE_WREN,
     FT_VOICE_YOU,
+    FT_VOICE_HUSH, /* smooth, level, and much too calm */
     FT_VOICE_COUNT
 } FtVoice;
 
@@ -151,6 +152,21 @@ FtQuestOutcome ft_quest_wren_answer(FtQuests* q);
 FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit, uint8_t again);
 FtQuestOutcome ft_quest_hale_answer(const FtQuests* q, bool pit_found, bool by_the_pit);
 
+/* ---- The opening ----------------------------------------------------------
+ *
+ * Before you wake: Hush's announcement, on a terminal, one card at a time,
+ * until it is cut off mid-word. Up to three lines a card, each at most 20
+ * characters, like every other line in the game. */
+#define FT_INTRO_CARDS      7
+#define FT_INTRO_CARD_LINES 3
+
+/* Narrower than a talk line: the words sit inside a drawn terminal, and a
+ * twenty-character line ran off its screen. */
+#define FT_INTRO_LINE_MAX   17
+
+/* The lines of one card; unused lines are NULL. */
+const char* ft_quest_intro_line(uint8_t card, uint8_t line);
+
 /* ---- Barks --------------------------------------------------------------
  *
  * A line said out loud in the overworld, in a bubble over whoever said it,
@@ -172,7 +188,13 @@ typedef enum {
 } FtBark;
 
 #define FT_BARK_WREN_CHATTER_N 8
-#define FT_BARK_COUNT ((uint8_t)FT_BARK_WREN_CHATTER + FT_BARK_WREN_CHATTER_N)
+
+/* Every terminal is Hush's, and it is polite to you when you save. In
+ * order, one per use, after Wren's lines. */
+#define FT_BARK_HUSH   ((uint8_t)FT_BARK_WREN_CHATTER + FT_BARK_WREN_CHATTER_N)
+#define FT_BARK_HUSH_N 4
+
+#define FT_BARK_COUNT (FT_BARK_HUSH + FT_BARK_HUSH_N)
 
 /* A bubble is narrower than the talk box: it sits over somebody's head. */
 #define FT_BARK_MAX_CHARS 18

@@ -8,32 +8,32 @@
  * broadcast-versus-contact choice matter out here too. */
 static const FtRoster FT_ROSTERS[] = {
     /* [0-3] The prologue, one lesson at a time. */
-    {1, {FT_ENEMY_STRAY_PACKET, 0, 0}},
-    {2, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, 0}},
-    {2, {FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET, 0}},
-    {3, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK}},
+    {1, {FT_ENEMY_PARCEL_RUNNER, 0, 0}},
+    {2, {FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_PARCEL_RUNNER, 0}},
+    {2, {FT_ENEMY_LAMPLIGHTER, FT_ENEMY_PARCEL_RUNNER, 0}},
+    {3, {FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_LAMPLIGHTER, FT_ENEMY_CURFEW_LOCK}},
 
     /* [4-8] One per area. Each pairs its own enemy with something from the
      * prologue, so a fight is the new idea plus a thing you already know how
      * to handle rather than two puzzles at once. */
-    {2, {FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_STRAY_PACKET, 0}},           /* Scrapline */
-    {3, {FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_SCRAP_CRAWLER,
-         FT_ENEMY_STRAY_PACKET}},                                      /* Scrapline, heavier */
-    {2, {FT_ENEMY_RIME_SHELL, FT_ENEMY_STRAY_PACKET, 0}},              /* Cold Storage */
-    {2, {FT_ENEMY_GATE_DRONE, FT_ENEMY_SEALED_LOCK, 0}},               /* Turnstile */
-    {2, {FT_ENEMY_MAST_RELAY, FT_ENEMY_DRIFT_BEACON, 0}},              /* Signal Hill */
-    /* The Null Field is the whole fight: ENCRYPTED, a jammer, and both its
+    {2, {FT_ENEMY_SWEEPER, FT_ENEMY_PARCEL_RUNNER, 0}},           /* Scrapline */
+    {3, {FT_ENEMY_SWEEPER, FT_ENEMY_SWEEPER,
+         FT_ENEMY_PARCEL_RUNNER}},                                      /* Scrapline, heavier */
+    {2, {FT_ENEMY_CHILLER, FT_ENEMY_PARCEL_RUNNER, 0}},              /* Cold Storage */
+    {2, {FT_ENEMY_TICKET_DRONE, FT_ENEMY_CURFEW_LOCK, 0}},               /* Turnstile */
+    {2, {FT_ENEMY_LOUDHAILER, FT_ENEMY_LAMPLIGHTER, 0}},              /* Signal Hill */
+    /* The Shusher is the whole fight: ENCRYPTED, a jammer, and both its
      * attacks unguardable-for-capture. Pairing it with a FAST Crawler as
      * well put the Deadzone at 28% for an average player — two stars, no
      * room to learn either. A plain Packet gives it a partner without
      * giving it a second mechanic. */
-    {2, {FT_ENEMY_NULL_FIELD, FT_ENEMY_STRAY_PACKET, 0}},              /* Deadzone */
+    {2, {FT_ENEMY_SHUSHER, FT_ENEMY_PARCEL_RUNNER, 0}},              /* Deadzone */
 
     /* [10-11] The shape-changers. Order matters for both: the wall stands in
      * slot 0 so it is literally in front, and the sleeper sits in the last
      * slot so clearing the row is what wakes it. */
-    {3, {FT_ENEMY_BLANK_WALL, FT_ENEMY_DRIFT_BEACON, FT_ENEMY_STRAY_PACKET}},
-    {3, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_COLD_BOOTER}},
+    {3, {FT_ENEMY_QUEUE_BARRIER, FT_ENEMY_LAMPLIGHTER, FT_ENEMY_PARCEL_RUNNER}},
+    {3, {FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_SWEEPER, FT_ENEMY_NIGHT_SHIFT}},
 
     /* [12] The Hollow. Chapter 1's set-piece, and the first fight the
      * game asks you to win for somebody else: a wall in front so you cannot
@@ -45,7 +45,7 @@ static const FtRoster FT_ROSTERS[] = {
      * the wall blocks the broadcast and the flyers refuse contact, so the
      * fight had two locks and no key. A story beat nobody can clear is not a
      * story beat. */
-    {3, {FT_ENEMY_BLANK_WALL, FT_ENEMY_SCRAP_CRAWLER, FT_ENEMY_STRAY_PACKET}},
+    {3, {FT_ENEMY_QUEUE_BARRIER, FT_ENEMY_SWEEPER, FT_ENEMY_PARCEL_RUNNER}},
 };
 #define ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
 
@@ -525,6 +525,9 @@ void ft_world_init(FtWorld* w) {
     w->bark_ms = 0;
     w->chatter_ms = 0;
     w->chatter_at = 0;
+    w->bark_tx = 0;
+    w->bark_ty = 0;
+    w->hush_at = 0;
 
     /* World stats are authoritative: a battle copies them in rather than
      * building its own. */
@@ -1646,4 +1649,22 @@ bool ft_world_terminal_near(const FtWorld* w) {
 
     facing_delta(w->facing, &dx, &dy);
     return ft_map_tile(m, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) == FT_TILE_TERM;
+}
+
+void ft_world_terminal_speaks(FtWorld* w) {
+    int32_t dx, dy;
+    const FtMap* m = ft_world_map(w);
+
+    int32_t tx = w->mv.tx, ty = w->mv.ty;
+    if(ft_map_tile(m, tx, ty) != FT_TILE_TERM) {
+        facing_delta(w->facing, &dx, &dy);
+        tx += dx;
+        ty += dy;
+    }
+    if(ft_map_tile(m, tx, ty) != FT_TILE_TERM) return;
+
+    w->bark_tx = (uint8_t)tx;
+    w->bark_ty = (uint8_t)ty;
+    say_aloud(w, FT_BARK_BY_TERMINAL, (uint8_t)(FT_BARK_HUSH + (w->hush_at % FT_BARK_HUSH_N)));
+    w->hush_at++;
 }

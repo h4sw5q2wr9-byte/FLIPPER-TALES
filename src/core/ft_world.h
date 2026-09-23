@@ -287,12 +287,18 @@ typedef struct {
      * which of her lines is next. */
     uint16_t chatter_ms;
     uint8_t  chatter_at;
+
+    /* Where a terminal that has just said something is, and which of
+     * Hush's lines it says next. */
+    uint8_t bark_tx, bark_ty;
+    uint8_t hush_at;
 } FtWorld;
 
 typedef enum {
     FT_BARK_NOBODY = 0,
     FT_BARK_BY_HALE,
-    FT_BARK_BY_WREN
+    FT_BARK_BY_WREN,
+    FT_BARK_BY_TERMINAL /* at (bark_tx, bark_ty) */
 } FtBarkWho;
 
 /* How long a remark hangs over somebody's head, and how long Wren leaves
@@ -412,5 +418,8 @@ void ft_world_escort_stop(FtWorld* w);
 const FtExit* ft_world_exit_under(const FtWorld* w);
 
 bool ft_world_terminal_near(const FtWorld* w);
+
+/* The terminal you are using says one of Hush's lines, over itself. */
+void ft_world_terminal_speaks(FtWorld* w);
 
 #endif /* FT_WORLD_H */

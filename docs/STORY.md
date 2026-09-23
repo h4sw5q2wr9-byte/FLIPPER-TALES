@@ -63,6 +63,8 @@ So it never has to be asked twice.
 | The Keeper | Built Hush long ago; built **you** after the Silence |
 | Echo | In — a recurring rival you free at the end |
 | Your name | **Wren names you** (§5) |
+| The enemies | Maintenance machines doing their old jobs, turned on you (§4b) |
+| Pause menu | Icons, not a list — easier to remember |
 | The old story | Was a first sketch; replaced by this one |
 
 ---
@@ -84,7 +86,8 @@ the crowds. Nobody knows where the alarm came from. (Hush does. See §6.)
 Villages three spans apart might as well be on the moon.
 
 **The machines.** The Carrier looks after itself with small automatic things
-— packet runners, beacons, locks, gate drones. Hush gave them one new order:
+— parcel runners, lamplighters, curfew locks, ticket drones (§4b). Hush gave
+them one new order:
 *everybody stays home.* They take anyone who wanders and "return them to
 sender" — to a scrambled address, which is how Wren ended up in a cave. They
 attack you because you are a machine that is not on their list.
@@ -122,6 +125,31 @@ talks to you after the prologue.
 **The rule for everyone:** they are not helpless and they do not explain the
 world. Each one needs one specific thing done that they cannot do because
 they cannot travel — and you can.
+
+### 4b. The machines you fight
+
+Every enemy is one of the Carrier's own maintenance machines, still doing the
+job it was built for — for Hush, whose one rule is *everybody stays home*.
+The job is the reason for the fight: what it does to you is what it used to
+do for everyone.
+
+| Machine | Its old job | How it fights, and why | Its attacks | Where |
+|---|---|---|---|---|
+| **Parcel Runner** | Carried the mail between villages | The plain one. It "returns" anyone it finds wandering, stamped, to the wrong address | Stamp | Prologue |
+| **Lamplighter** | A floating lamp that lit the night roads | Floats, so you cannot reach it by hand | Flicker, **Glare** (blinds you: you may lose the turn) | Prologue |
+| **Curfew Lock** | Locked the doors at curfew | A lock cannot be picked from across the room | Clamp, **Lock Up** (locks your memory: drains MP) | Prologue |
+| **Sweeper** | Swept debris off the spans | Fast, because it scurries. To it, you are debris | Scoop | The Scrapline |
+| **Chiller** | Kept the archive vaults cold | Heavy insulated shell | Slam, **Frostbite** (slows you) | Cold Storage |
+| **Ticket Drone** | Checked tickets at the Turnstile | Flies, and it is quick | **Ticket?**, **Refused** | The Turnstile |
+| **Loudhailer** | The mast speaker for announcements | Plays "please stay home" so loud you cannot think (jams your SP) | Announcement, **Feedback** (the sound of the Loud Day) | Signal Hill |
+| **Shusher** | Hush's own quiet-maker | Silences everything | Shh, **Mute** | The Deadzone |
+| **Queue Barrier** | Kept the queue orderly | Never attacks. Makes you fight the others in line | *(Please Queue)* | Anywhere with a crowd |
+| **Night Shift** | Works when nobody else is | Asleep while the others fight; clocks in when the room goes quiet | Snore, **Clock In** | Anywhere |
+
+Plus the bosses: **Echo**, who fights like a mirror of you, and **Hush**.
+
+None of them speak. They are machinery doing a job badly, for somebody who is
+wrong — which is also why beating one never feels like killing anything.
 
 ---
 
@@ -287,12 +315,16 @@ conversation where there is room for it.
 
 | Part | Status |
 |---|---|
-| Prologue: Cold Boot, the Keeper, the Clean Run | Built (lines need the Keeper's seeds, §7) |
+| The opening: Hush's announcement, cut off | Built |
+| Prologue: Cold Boot, the Keeper, the sealed message, the Clean Run | Built, with the Keeper's seeds from §7 |
+| Terminals speaking in Hush's voice | Built |
+| The machines' jobs, names and attack names (§4b) | Built |
 | Weldhome: Coll, Hale, Wren, the pit, the Hollow | Built |
 | Wren naming you | Not built |
 | Coll's "not the first one through" | Built as a line; Echo not yet |
 | The Scrapline (Ma Rivet, Infrared, relay, Echo) | One sample room only |
 | Relays and calling the Keeper from terminals | Not built |
+| The sealed message shown anywhere in the menus | Not built |
 | Chapter 2 (Cold Storage, the Turnstile) | One sample room each |
 | Chapter 3 (Signal Hill, the Deadzone, Hush) | One sample room each |
 | Ending and epilogue | Not built |

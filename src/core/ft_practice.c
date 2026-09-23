@@ -10,14 +10,14 @@ typedef struct {
 } PracticeGroup;
 
 static const PracticeGroup GROUPS[FT_PRACTICE_GROUPS - 1] = {
-    {"Packet",     1, {FT_ENEMY_STRAY_PACKET, 0, 0}},
-    {"Beacon",     1, {FT_ENEMY_DRIFT_BEACON, 0, 0}},
-    {"Lock",       1, {FT_ENEMY_SEALED_LOCK, 0, 0}},
-    {"2 Packets",  2, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_STRAY_PACKET, 0}},
-    {"Air pair",   2, {FT_ENEMY_DRIFT_BEACON, FT_ENEMY_DRIFT_BEACON, 0}},
-    {"Mixed pair", 2, {FT_ENEMY_DRIFT_BEACON, FT_ENEMY_SEALED_LOCK, 0}},
-    {"Full trio",  3, {FT_ENEMY_STRAY_PACKET, FT_ENEMY_DRIFT_BEACON,
-                       FT_ENEMY_SEALED_LOCK}},
+    {"Packet",     1, {FT_ENEMY_PARCEL_RUNNER, 0, 0}},
+    {"Beacon",     1, {FT_ENEMY_LAMPLIGHTER, 0, 0}},
+    {"Lock",       1, {FT_ENEMY_CURFEW_LOCK, 0, 0}},
+    {"2 Packets",  2, {FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_PARCEL_RUNNER, 0}},
+    {"Air pair",   2, {FT_ENEMY_LAMPLIGHTER, FT_ENEMY_LAMPLIGHTER, 0}},
+    {"Mixed pair", 2, {FT_ENEMY_LAMPLIGHTER, FT_ENEMY_CURFEW_LOCK, 0}},
+    {"Full trio",  3, {FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_LAMPLIGHTER,
+                       FT_ENEMY_CURFEW_LOCK}},
 };
 
 

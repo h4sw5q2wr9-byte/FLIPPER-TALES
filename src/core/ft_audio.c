@@ -90,6 +90,10 @@ static const FtNote VOICE_HALE[]   = {{E5, 18}};
 static const FtNote VOICE_WREN[]   = {{A5, 14}};
 static const FtNote VOICE_YOU[]    = {{C5, 9}, {G5, 9}};
 
+/* Hush: one smooth, level note, the same every time. It never rises and it
+ * never hurries, which is what makes it the unsettling one. */
+static const FtNote VOICE_HUSH[]   = {{D5, 16}};
+
 #define CUE(a, v) {a, (uint8_t)(sizeof(a) / sizeof((a)[0])), v}
 
 static const struct {
@@ -125,6 +129,7 @@ static const struct {
     [FT_SFX_VOICE_HALE]   = CUE(VOICE_HALE, 22),
     [FT_SFX_VOICE_WREN]   = CUE(VOICE_WREN, 22),
     [FT_SFX_VOICE_YOU]    = CUE(VOICE_YOU, 18),
+    [FT_SFX_VOICE_HUSH]   = CUE(VOICE_HUSH, 16),
     [FT_SFX_ENCOUNTER] = CUE(SFX_ENCOUNTER, 65),
 };
 

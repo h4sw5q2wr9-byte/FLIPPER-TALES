@@ -423,6 +423,27 @@ It falls back safely: a board whose only foe never takes turns — a lone
 bulwark — cannot be handed the opening, so the fight starts normally rather
 than stalling before it begins.
 
+### 4.7i Every enemy has a job
+
+The enemies were designed mechanic-first — this one flies, that one is
+encrypted — and named in network jargon ("Stray Packet", "Null Field"), with
+attacks that had no names at all on screen. The player asked the right
+question: *what did these things do before, and do their attacks make sense?*
+
+They are the Carrier's own maintenance machines now, each still doing the job
+it was built for, for Hush (STORY.md §4b). The mechanics mostly already fit
+once each one had a job — a floating lamp is out of reach, a lock cannot be
+picked from across the room — so no numbers moved and the balance table is
+unchanged; the names, the attacks and the art did.
+
+**Every attack has a name**, named for the job: the Lamplighter's *Glare* is
+its lamp turned on you, the Curfew Lock *Locks Up* your memory, the Ticket
+Drone asks *Ticket?* and then *Refuses* you. The wind-up in a fight used to
+say "INCOMING"; it says the attack now, with what a guard can do about it —
+**"GLARE - JAM ONLY"** — and the field guide lists the same names, so the
+page and the fight use the same word for the same thing. A test holds every
+name unique and short enough for the wind-up.
+
 ### 4.8 Enemy attributes — Milestone 1 subset
 
 | Attribute | Effect | Block Tales equivalent |
@@ -1054,12 +1075,53 @@ Cues fire off phase changes and the animation's own strike frame, not from
 the resolver — so core stays free of the speaker, and a hit is heard when the
 sprite moves rather than when the arithmetic happened.
 
-**Sound** is a row in the pause menu and rides the save.
+**Sound** and **Voices** are separate switches under Settings, and both
+ride the save — in one byte, as a sound bit and a *voices-off* bit, so a
+save from before the Voices switch existed reads back with voices on.
+
+### 5.4e The start screen, the pause grid, and Settings
+
+The app used to open straight into the world, and the pause menu was twelve
+rows of words with the testing tools in the middle of them.
+
+**The start screen** is where the app opens: the title, a small picture — you,
+at the foot of a dead mast — and *Continue / New game / Settings*. Continue is
+only offered when there is a save, and it reads the save fresh from the card
+every time, so *Quit, then Continue* is the save and not whatever was in
+memory. New game over a save asks first. Back on the start screen leaves the
+app; everywhere else, Quit goes back to the start screen.
+
+**The pause menu is a grid of icons**, four across and two down: Pockets,
+Orbs, Quests, Field guide / Save, How to play, Settings, Quit. The player
+asked for icons because a picture is easier to find again than a word in a
+list, and they are drawn to the character rules — a bold silhouette and
+features at least two pixels wide. The name of the selected one, and anything
+worth knowing before you open it ("Orbs: 3", "Save - at a terminal"), sits
+under the grid. Back resumes, so there is no Resume icon.
+
+**Settings** — Sound, Voices, Tips, New game — is one door, reached from both
+the start screen and the pause grid, and goes back to whichever opened it.
+
+### 5.4f The opening
+
+A new game opens on a terminal: Hush's announcement, typing out one card at a
+time in its own voice — *"Good evening. This is the Carrier. Your call is
+important to us. All lines are closed, for your safety. Please stay home.
+Please hold. Please hold. Please ho—"* — and it is cut off mid-word by static.
+Then dark, then Cold Boot, with the Keeper already talking to you: the first
+conversation in the game is not one you have to walk up to. OK finishes a
+line and moves on, as in any conversation; Back skips the whole thing.
+
+Every terminal after that is Hush's, and it is polite about it: saving at one
+puts a line over it in a bubble — *"Please hold."*, *"We value you."* — while
+the toast says what actually happened (*Saved. Healed.*).
 
 ### 5.5 The debug menu
 
 Everything that exists to test the game rather than to play it lives behind
-one door, **Pause → Debug**, so the pause menu stays the player's.
+a door you have to know about: **Up, Up, Down, Down on the pause grid**. The
+presses still move the cursor, and it lands back where it started, so the
+combination is invisible to anybody not looking for it.
 
 | Row | What it does |
 |---|---|

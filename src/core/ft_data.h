@@ -53,27 +53,31 @@ typedef struct {
 } FtEnemy;
 
 typedef enum {
-    /* The prologue: one enemy per lesson. */
-    FT_ENEMY_STRAY_PACKET = 0, /* plain      — both modules work */
-    FT_ENEMY_DRIFT_BEACON,     /* AIRBORNE   — contact cannot reach */
-    FT_ENEMY_SEALED_LOCK,      /* ENCRYPTED  — broadcast does nothing */
+    /* Every enemy is one of the Carrier's own maintenance machines, still
+     * doing the job it was built for — for Hush, who told them all that
+     * everybody stays home. Its job is why it fights the way it does; see
+     * STORY.md §3 and the table in §4b.
+     *
+     * The prologue: one enemy per lesson. */
+    FT_ENEMY_PARCEL_RUNNER = 0, /* carried the mail       — plain */
+    FT_ENEMY_LAMPLIGHTER,       /* lit the night roads    — AIRBORNE */
+    FT_ENEMY_CURFEW_LOCK,       /* locked up at night     — ENCRYPTED */
 
     /* One per area, each taking a mechanic the prologue taught and turning
-     * it up. An area that looks like five places and fights like one is not
-     * five places.
+     * it up.
      *
      * No enemy is ever both AIRBORNE and ENCRYPTED: that combination is
      * immune to both modules at once, which is not difficulty, it is an
      * unwinnable fight. ft_data.c's tests assert it. */
-    FT_ENEMY_SCRAP_CRAWLER,    /* FAST            — hits first, hits hard */
-    FT_ENEMY_RIME_SHELL,       /* ENCRYPTED, SH3  — a wall; pierce it */
-    FT_ENEMY_GATE_DRONE,       /* AIRBORNE, FAST  — out of reach and quick */
-    FT_ENEMY_MAST_RELAY,       /* JAMMER          — no replays in this fight */
-    FT_ENEMY_NULL_FIELD,       /* ENCRYPTED+JAM   — and its hits resist capture */
+    FT_ENEMY_SWEEPER,       /* cleared the spans      — FAST */
+    FT_ENEMY_CHILLER,       /* kept the vaults cold   — ENCRYPTED, SH3 */
+    FT_ENEMY_TICKET_DRONE,  /* checked tickets        — AIRBORNE, FAST */
+    FT_ENEMY_LOUDHAILER,    /* made announcements     — JAMMER */
+    FT_ENEMY_SHUSHER,       /* Hush's own quiet-maker — ENCRYPTED, JAMMER */
 
     /* Two that change the shape of a fight rather than its numbers. */
-    FT_ENEMY_BLANK_WALL,       /* BULWARK  — never attacks, nothing gets past */
-    FT_ENEMY_COLD_BOOTER,      /* SLEEPER  — quiet until it is the last one */
+    FT_ENEMY_QUEUE_BARRIER, /* kept the queue orderly — BULWARK */
+    FT_ENEMY_NIGHT_SHIFT,   /* works when nobody else is — SLEEPER */
 
     FT_ENEMY_COUNT
 } FtEnemyId;
@@ -83,5 +87,12 @@ extern const FtEnemy FT_ENEMIES[FT_ENEMY_COUNT];
 /* Find an attack by its stable id, across every enemy. Used to replay a
  * captured signal, which stores only the id. NULL if no such attack. */
 const FtAttack* ft_attack_by_id(uint16_t id);
+
+/* What an attack is called, for the wind-up and the field guide. Every enemy
+ * attack has one; the player's modules are named by their module. Never NULL. */
+const char* ft_attack_name(uint16_t id);
+
+/* Longest attack name, so the wind-up title and the guide can budget for it. */
+#define FT_ATTACK_NAME_MAX 12
 
 #endif /* FT_DATA_H */

@@ -48,6 +48,11 @@ typedef struct {
     bool    coach;
     bool    sound;
 
+    /* The talking voices, separately from sound. Stored in the same byte as
+     * sound, as a "voices off" bit, so a save from before the setting
+     * existed reads back with voices on — which is what it was. */
+    bool    voices;
+
     /* Whether somebody is walking with you, and where they are standing.
      * Saving at a terminal half way home must not lose her. */
     bool    escort;
