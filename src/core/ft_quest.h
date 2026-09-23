@@ -93,7 +93,7 @@ typedef struct {
     const char* b;   /* a second line, or NULL */
 } FtBeat;
 
-#define FT_TALK_MAX_BEATS 10
+#define FT_TALK_MAX_BEATS 14
 
 /* Whose voice the text types out in. Every character gets a short blip of
  * their own pitch as their words appear, the way the genre has always done

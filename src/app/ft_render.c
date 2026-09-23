@@ -432,12 +432,27 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         const FtAction2 act = (FtAction2)e->menu_index;
         const bool broadcast = ft_encounter_action_is_broadcast(e, act);
         const bool attacked =
-            (act == FT_ACTION_BROADCAST || act == FT_ACTION_CONTACT) &&
+            (act == FT_ACTION_BROADCAST || act == FT_ACTION_CONTACT ||
+             act == FT_ACTION_INFRARED) &&
             e->last_player_hit.outcome != FT_HIT_MISSED;
 
         if(attacked && broadcast) {
             draw_antenna_charge(canvas, px, py, t);
             draw_travelling_signal(canvas, floor_y - 9, t);
+        } else if(attacked && act == FT_ACTION_INFRARED) {
+            /* Line of sight: you stay put and a dashed beam crosses the gap,
+             * which is the whole difference from walking up and hitting it. */
+            const int32_t bx0 = px + FT_HERO_W - 2, by = floor_y - 10;
+            const int32_t bx1 = foe_x(tgt, count) + 2;
+            if(t >= FT_ANIM_EMIT && t < FT_ANIM_RECOVER && bx1 > bx0) {
+                const int32_t span = FT_ANIM_STRIKE - FT_ANIM_EMIT;
+                int32_t len = ((bx1 - bx0) * ((int32_t)t - FT_ANIM_EMIT)) / span;
+                if(len > bx1 - bx0) len = bx1 - bx0;
+                const int32_t end = bx0 + len;
+                for(int32_t x = bx0; x < end; x += 3) {
+                    canvas_draw_line(canvas, x, by, x + 1, by);
+                }
+            }
         } else if(attacked) {
             /* Close the real distance to the target: a foe on the far side of
              * a three-wide row is a longer walk than one standing next to you,
@@ -983,6 +998,7 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
     switch(a) {
     case FT_ACTION_BROADCAST: return "All foes, weaker.";
     case FT_ACTION_CONTACT:   return "One foe, strong.";
+    case FT_ACTION_INFRARED:  return "Nearest. Hits any.";
     case FT_ACTION_DEFEND:    return "Guard, heal, +MP";
     case FT_ACTION_FOCUS:     return "Fill SP for DEF.";
     case FT_ACTION_DEFLECT:   return "Free. Blocks bite.";
@@ -1510,6 +1526,15 @@ void ft_render_orbs(Canvas* canvas, const FtStats* stats, uint8_t selected) {
         if(on) canvas_set_color(canvas, ColorBlack);
     }
 
+    /* Power is the one with a limit, so say why it will not move rather
+     * than just refusing. */
+    if(selected == 2u && stats->orbs > 0 && !ft_level_choice_available(stats, FT_UP_POWER) &&
+       stats->power < FT_CAP_POWER) {
+        char hint[28];
+        snprintf(hint, sizeof(hint), "Next Power at L%d", (int)ft_power_next_level(stats));
+        draw_centred(canvas, FT_SCREEN_W / 2, 62, hint);
+        return;
+    }
     draw_centred(canvas, FT_SCREEN_W / 2, 62, "LEFT/RIGHT to move");
 }
 

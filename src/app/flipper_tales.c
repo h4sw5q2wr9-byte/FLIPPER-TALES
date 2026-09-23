@@ -317,6 +317,7 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
     app->encounter.pockets = app->world.pockets;
     ft_roll_init(&app->encounter.roll, app->world.stats.charge);
     app->encounter.coach = app->coach;
+    app->encounter.infrared = ft_quest_has_infrared(&app->world.quests);
 
     if(first_strike) {
         /* Hitting it out here means it enters already hurt. */
@@ -1091,6 +1092,13 @@ static void ft_overworld_ok(FlipperTales* app) {
     const int ahead = ft_world_foe_ahead(&app->world);
     if(ahead >= 0) {
         ft_begin_battle(app, ahead, true, false);
+        return;
+    }
+
+    /* Infrared at a foe a few tiles off: it freezes, and you walk past. */
+    if(ft_quest_has_infrared(&app->world.quests) && ft_world_ir_stun(&app->world)) {
+        ft_toast(app, "Click! Frozen.");
+        ft_sound_play(&app->sound, FT_SFX_REVEAL);
         return;
     }
 

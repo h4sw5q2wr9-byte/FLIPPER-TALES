@@ -24,7 +24,7 @@
 #define FT_STEP_MS      210 /* per tile; ~38 px/s */
 #define FT_FOE_STEP_MS  240 /* still slower than the player, but not a crawl */
 #define FT_FOE_THINK_MS 150
-#define FT_FOE_ALERT    5   /* tiles: how far a foe can notice you */
+#define FT_FOE_ALERT    4   /* walking tiles: how far a foe can notice you */
 
 /* The beat between being seen and being chased.
  *

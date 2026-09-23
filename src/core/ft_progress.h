@@ -36,6 +36,12 @@ int16_t ft_level_cap(int16_t chapters_completed);
 /* Can this stat still be raised? Caps make some choices unavailable. */
 bool ft_level_choice_available(const FtStats* s, FtLevelChoice choice);
 
+/* Power is limited to one orb per FT_LEVELS_PER_POWER_ORB levels; these say
+ * how many that is now, and at what level the next one opens. */
+#define FT_LEVELS_PER_POWER_ORB 3
+int16_t ft_power_orbs_allowed(const FtStats* s);
+int16_t ft_power_next_level(const FtStats* s);
+
 /* Take one owed level: raises `level`, pays out FT_ORBS_PER_LEVEL orbs, and
  * restores HP and MP in full as levelling always did. Nothing here picks a
  * stat — that is the orb's job, and it can be changed later. */

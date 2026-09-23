@@ -28,6 +28,10 @@ typedef struct {
 typedef enum {
     FT_MOD_SUBGHZ = 0,
     FT_MOD_NFC,
+
+    /* Ma Rivet's clicker. Line of sight: the nearest foe, whatever it is —
+     * flying or sealed, Infrared reaches it — and hard, for more MP. */
+    FT_MOD_INFRARED,
     FT_MODULE_COUNT
 } FtModuleId;
 

@@ -165,28 +165,38 @@ static const char* KEEPER = "The Keeper";
  * will not say who it is for (STORY.md §6, and the threads in §7). The
  * favour at the end is a test he does not call a test. */
 static const FtBeat KEEPER_OFFER[] = {
-    {FT_SAY_THEM, "Oh good, you work.", "Wasn't sure."},
+    {FT_SAY_THEM, "Oh good, you're", "awake. And working."},
+    {FT_SAY_THEM, "I wasn't sure the", "legs would take."},
     {FT_SAY_YOU,  "Who are you?", NULL},
-    {FT_SAY_THEM, "The Keeper. I built", "you. Don't stare."},
-    {FT_SAY_THEM, "This is for you to", "carry. It's sealed."},
-    {FT_SAY_YOU,  "What is it?", NULL},
-    {FT_SAY_THEM, "A message. Who for,", "you'll learn later."},
-    {FT_SAY_THEM, "First, a favour. The", "Gate and back."},
-    {FT_SAY_THEM, "No fighting. I need", "to know you're kind."},
+    {FT_SAY_THEM, "People call me the", "Keeper. I made you."},
+    {FT_SAY_THEM, "Last week, out of", "scrap lying about."},
+    {FT_SAY_YOU,  "Why?", NULL},
+    {FT_SAY_THEM, "Because the lines", "went quiet, and"},
+    {FT_SAY_THEM, "someone has to carry", "what matters."},
+    {FT_SAY_THEM, "This is for you.", "It's sealed."},
+    {FT_SAY_THEM, "Don't open it, and", "don't lose it."},
+    {FT_SAY_YOU,  "Who is it for?", NULL},
+    {FT_SAY_THEM, "You'll find out when", "you get there."},
+    {FT_SAY_THEM, "First, a favour: go", "to the Cold Gate and"},
+    {FT_SAY_THEM, "come back, without a", "single fight. Deal?"},
 };
 static const FtBeat KEEPER_OFFER_2[] = {
-    {FT_SAY_THEM, "Back for that", "favour, then?"},
-    {FT_SAY_THEM, "Gate and back.", "No fighting."},
+    {FT_SAY_THEM, "Back already? The", "favour still stands."},
+    {FT_SAY_THEM, "Cold Gate and back,", "without a fight."},
+    {FT_SAY_THEM, "Will you do it?", NULL},
 };
 static const FtLines KEEPER_OFFER_MORE[] = {LINES(KEEPER_OFFER_2)};
 
 static const FtBeat KEEPER_ON[] = {
-    {FT_SAY_THEM, "Still no fights?", NULL},
+    {FT_SAY_THEM, "No fights so far?", NULL},
     {FT_SAY_YOU,  "Not one.", NULL},
-    {FT_SAY_THEM, "Good. Four rooms", "out, four back."},
+    {FT_SAY_THEM, "Good. It's four", "rooms to the Gate,"},
+    {FT_SAY_THEM, "and four back. Walk", "round them, or wait."},
+    {FT_SAY_THEM, "They wander, but", "they don't see far."},
 };
 static const FtBeat KEEPER_ON_2[] = {
-    {FT_SAY_THEM, "Go on. The Gate", "won't come to you."},
+    {FT_SAY_THEM, "The Gate won't come", "to you, you know."},
+    {FT_SAY_THEM, "Go on. I'll be here.", NULL},
 };
 static const FtBeat KEEPER_ON_3[] = {
     {FT_SAY_THEM, "Still here? I can", "hear you not going."},
@@ -197,31 +207,36 @@ static const FtLines KEEPER_ON_MORE[] = {LINES(KEEPER_ON_2), LINES(KEEPER_ON_3)}
 static const FtBeat KEEPER_FAILED[] = {
     {FT_SAY_THEM, "You've got that", "fought-in look."},
     {FT_SAY_YOU,  "It started it.", NULL},
-    {FT_SAY_THEM, "The last one I built", "said that too."},
-    {FT_SAY_THEM, "...Go on. Again.", NULL},
+    {FT_SAY_THEM, "Mm. The last one I", "made said that too."},
+    {FT_SAY_YOU,  "The last one?", NULL},
+    {FT_SAY_THEM, "...Never mind. Try", "again. Walk round."},
 };
 static const FtBeat KEEPER_FAILED_2[] = {
-    {FT_SAY_THEM, "Walk round them.", "It's allowed."},
+    {FT_SAY_THEM, "They're slow, and", "you're not."},
+    {FT_SAY_THEM, "Walk round them.", NULL},
 };
 static const FtLines KEEPER_FAILED_MORE[] = {LINES(KEEPER_FAILED_2)};
 
 static const FtBeat KEEPER_PAID[] = {
     {FT_SAY_THEM, "Not a scratch on", "you. Well done."},
-    {FT_SAY_YOU,  "Easy.", NULL},
-    {FT_SAY_THEM, "Don't get cocky.", NULL},
-    {FT_SAY_THEM, "I've waited a long", "time for you."},
-    {FT_SAY_THEM, "Two orbs. Now go", "east. Keep going."},
+    {FT_SAY_YOU,  "It was easy.", NULL},
+    {FT_SAY_THEM, "Don't get cocky. It", "gets harder east."},
+    {FT_SAY_THEM, "I've waited a long", "time for something"},
+    {FT_SAY_THEM, "to come through that", "door. And kind, too."},
+    {FT_SAY_THEM, "Take two orbs. Then", "go east, and keep"},
+    {FT_SAY_THEM, "going. And keep that", "letter safe."},
 };
 
 static const FtBeat KEEPER_DONE_1[] = {
-    {FT_SAY_THEM, "That's all I've got.", "Go be a hero."},
+    {FT_SAY_THEM, "That's all I have.", "Go and be useful."},
 };
 static const FtBeat KEEPER_DONE_2[] = {
-    {FT_SAY_THEM, "Still here. Still", "old."},
+    {FT_SAY_THEM, "Still here. Still", "old. Go on, now."},
 };
 static const FtBeat KEEPER_DONE_3[] = {
     {FT_SAY_YOU,  "Any more favours?", NULL},
     {FT_SAY_THEM, "Ask me in a year.", NULL},
+    {FT_SAY_THEM, "Now go east.", NULL},
 };
 static const FtLines KEEPER_DONE_MORE[] = {LINES(KEEPER_DONE_2), LINES(KEEPER_DONE_3)};
 
@@ -230,32 +245,34 @@ static const FtLines KEEPER_DONE_MORE[] = {LINES(KEEPER_DONE_2), LINES(KEEPER_DO
 static const char* COLL = "Warden Coll";
 
 static const FtBeat COLL_OFFER[] = {
-    {FT_SAY_THEM, "Stop. Gate's shut.", NULL},
+    {FT_SAY_THEM, "Stop right there.", "The gate's shut."},
     {FT_SAY_YOU,  "Can you open it?", NULL},
-    {FT_SAY_THEM, "Could. Won't.", NULL},
+    {FT_SAY_THEM, "I could. I won't.", NULL},
     {FT_SAY_THEM, "You walk like the", "things that take us."},
     {FT_SAY_YOU,  "I walk like me.", NULL},
-    {FT_SAY_THEM, "Hm. Prove it, then.", NULL},
-    {FT_SAY_THEM, "A kid's missing.", "Wren. Two days now."},
-    {FT_SAY_THEM, "Hale knows where.", "Go with him."},
+    {FT_SAY_THEM, "Hm. Then prove it.", NULL},
+    {FT_SAY_THEM, "A kid's gone. Wren.", "Two days now."},
+    {FT_SAY_THEM, "The machines took", "her. They do that."},
+    {FT_SAY_THEM, "Bring her home, and", "the gate opens."},
+    {FT_SAY_THEM, "Hale knows where she", "went. Go with him."},
 };
 static const FtBeat COLL_OFFER_2[] = {
-    {FT_SAY_THEM, "Back again. Kid's", "still gone."},
-    {FT_SAY_THEM, "Going with Hale?", NULL},
+    {FT_SAY_THEM, "Back again? The kid", "is still out there."},
+    {FT_SAY_THEM, "Will you go with", "Hale or not?"},
 };
 static const FtLines COLL_OFFER_MORE[] = {LINES(COLL_OFFER_2)};
 
 static const FtBeat COLL_ON[] = {
     {FT_SAY_THEM, "Why are you still", "talking to me?"},
     {FT_SAY_YOU,  "Just checking in.", NULL},
-    {FT_SAY_THEM, "Check in on Wren.", NULL},
+    {FT_SAY_THEM, "Check in on Wren.", "She's the one lost."},
 };
 static const FtBeat COLL_ON_2[] = {
-    {FT_SAY_THEM, "Hale. Grass. Wren.", "Go."},
+    {FT_SAY_THEM, "Hale knows the way.", "Follow him."},
 };
 static const FtBeat COLL_ON_3[] = {
     {FT_SAY_THEM, "Every minute you", "stand here, she's"},
-    {FT_SAY_THEM, "down there. Go.", NULL},
+    {FT_SAY_THEM, "down there alone.", NULL},
 };
 static const FtLines COLL_ON_MORE[] = {LINES(COLL_ON_2), LINES(COLL_ON_3)};
 
@@ -265,38 +282,37 @@ static const FtBeat COLL_FAILED[] = {
 };
 
 static const FtBeat COLL_PAID[] = {
-    {FT_SAY_THEM, "Wren! Inside. Now.", NULL},
-    {FT_SAY_THEM, "...Thank you.", NULL},
+    {FT_SAY_THEM, "Wren! Inside, now.", NULL},
+    {FT_SAY_THEM, "...Thank you. I", "mean it."},
     {FT_SAY_YOU,  "She named me.", "I'm @."},
-    {FT_SAY_THEM, "Course she did.", NULL},
-    {FT_SAY_THEM, "Gate's open. You've", "earned it."},
-
-    /* The first real thing anybody tells you, and the set-up for Echo
-     * (STORY.md §7): it looked like you, it only said Hush's words, and it
-     * went the way you are about to go. */
+    {FT_SAY_THEM, "Of course she did.", NULL},
+    {FT_SAY_THEM, "The gate's open. You", "earned it."},
     {FT_SAY_THEM, "You're not the first", "one through here."},
     {FT_SAY_YOU,  "Who was?", NULL},
     {FT_SAY_THEM, "One like you. Same", "box head."},
-    {FT_SAY_THEM, "Didn't talk. Just", "said 'Please hold.'"},
-    {FT_SAY_THEM, "Went east. Never", "came back."},
+    {FT_SAY_THEM, "It didn't talk. It", "only ever said:"},
+    {FT_SAY_THEM, "'Please hold.' Over", "and over again."},
+    {FT_SAY_THEM, "It went east, and it", "never came back."},
 };
 
 static const FtBeat COLL_DONE_1[] = {
-    {FT_SAY_THEM, "East gate's open.", "Go on, @."},
+    {FT_SAY_THEM, "The east gate's", "open. Go on, then."},
+    {FT_SAY_THEM, "Go on, @.", NULL},
 };
 static const FtBeat COLL_DONE_2[] = {
-    {FT_SAY_THEM, "Wren's grounded.", "Forever."},
+    {FT_SAY_THEM, "Wren's grounded.", "Forever, she says."},
 };
 static const FtBeat COLL_DONE_3[] = {
     {FT_SAY_YOU,  "Thanks, Coll.", NULL},
-    {FT_SAY_THEM, "Don't make it weird.", "...@."},
+    {FT_SAY_THEM, "Don't make it weird,", "@."},
 };
 static const FtBeat COLL_DONE_4[] = {
-    {FT_SAY_THEM, "Still watching you,", "you know."},
+    {FT_SAY_THEM, "I'm still watching", "you, you know."},
 };
 static const FtBeat COLL_DONE_5[] = {
     {FT_SAY_YOU,  "The other one...", NULL},
-    {FT_SAY_THEM, "Please hold. That's", "all it ever said."},
+    {FT_SAY_THEM, "'Please hold.' That", "was all it said."},
+    {FT_SAY_THEM, "Gave me the creeps.", NULL},
 };
 static const FtLines COLL_DONE_MORE[] = {LINES(COLL_DONE_2), LINES(COLL_DONE_5),
                                          LINES(COLL_DONE_3), LINES(COLL_DONE_4)};
@@ -309,12 +325,14 @@ static const FtBeat HALE_IDLE[] = {
     {FT_SAY_THEM, "Coll does the", "talking round here."},
     {FT_SAY_YOU,  "And you?", NULL},
     {FT_SAY_THEM, "I do the standing.", NULL},
+    {FT_SAY_THEM, "It's harder than it", "looks. Honestly."},
 };
 static const FtBeat HALE_IDLE_2[] = {
-    {FT_SAY_THEM, "Still standing.", "Going great."},
+    {FT_SAY_THEM, "Still standing.", "Going great, thanks."},
 };
 static const FtBeat HALE_IDLE_3[] = {
     {FT_SAY_THEM, "Ask Coll. She loves", "being asked things."},
+    {FT_SAY_THEM, "...She doesn't.", NULL},
 };
 static const FtBeat HALE_IDLE_4[] = {
     {FT_SAY_THEM, "Nice day for", "standing, this."},
@@ -326,30 +344,30 @@ static const FtLines HALE_IDLE_MORE[] = {LINES(HALE_IDLE_2), LINES(HALE_IDLE_3),
 static const FtBeat HALE_AGAIN[] = {
     {FT_SAY_THEM, "Lost your nerve?", NULL},
     {FT_SAY_YOU,  "Show me again.", NULL},
-    {FT_SAY_THEM, "Stay close, then.", NULL},
+    {FT_SAY_THEM, "Right. Stay close,", "and mind the grass."},
 };
 
 static const FtBeat HALE_PITSIDE[] = {
-    {FT_SAY_THEM, "She's down there.", "Bet you anything."},
+    {FT_SAY_THEM, "She's down there.", "I'd bet anything."},
     {FT_SAY_YOU,  "You're not coming?", NULL},
     {FT_SAY_THEM, "Someone has to", "guard the hole."},
-    {FT_SAY_THEM, "...Important job.", NULL},
+    {FT_SAY_THEM, "...It's a very", "important job."},
 };
 static const FtBeat HALE_PITSIDE_2[] = {
     {FT_SAY_THEM, "Still guarding it.", "Hole's still here."},
 };
 static const FtBeat HALE_PITSIDE_3[] = {
-    {FT_SAY_THEM, "It's a standing job", "too. I'm a natural."},
+    {FT_SAY_THEM, "It's a standing job,", "too. I'm a natural."},
 };
 static const FtLines HALE_PITSIDE_MORE[] = {LINES(HALE_PITSIDE_2), LINES(HALE_PITSIDE_3)};
 
 /* Back at the gate, with the pit found and Wren still down it. */
 static const FtBeat HALE_KNOWN[] = {
     {FT_SAY_THEM, "You know the way.", "Long grass, south."},
-    {FT_SAY_THEM, "Hole in the middle.", "Can't miss it."},
+    {FT_SAY_THEM, "The hole's right in", "the middle of it."},
 };
 static const FtBeat HALE_KNOWN_2[] = {
-    {FT_SAY_THEM, "Grass. Hole. Kid.", NULL},
+    {FT_SAY_THEM, "Grass. Hole. Kid.", "In that order."},
 };
 static const FtLines HALE_KNOWN_MORE[] = {LINES(HALE_KNOWN_2)};
 
@@ -360,13 +378,13 @@ static const FtBeat HALE_HOME[] = {
     {FT_SAY_THEM, "That's what I said.", NULL},
     {FT_SAY_THEM, "Coll almost smiled.", "I saw it."},
     {FT_SAY_YOU,  "Did she?", NULL},
-    {FT_SAY_THEM, "Almost.", NULL},
+    {FT_SAY_THEM, "Almost. It was", "lovely."},
 };
 static const FtBeat HALE_HOME_2[] = {
     {FT_SAY_THEM, "Back to standing.", "Living the dream."},
 };
 static const FtBeat HALE_HOME_3[] = {
-    {FT_SAY_THEM, "If you find more", "holes, don't."},
+    {FT_SAY_THEM, "If you find more", "holes... don't."},
 };
 static const FtLines HALE_HOME_MORE[] = {LINES(HALE_HOME_2), LINES(HALE_HOME_3)};
 
@@ -375,21 +393,23 @@ static const FtLines HALE_HOME_MORE[] = {LINES(HALE_HOME_2), LINES(HALE_HOME_3)}
 static const char* WREN = "Wren";
 
 static const FtBeat WREN_FOUND[] = {
-    {FT_SAY_THEM, "Don't come closer!", "I bite!"},
+    {FT_SAY_THEM, "Don't come any", "closer! I bite!"},
     {FT_SAY_YOU,  "Coll sent me.", NULL},
     {FT_SAY_THEM, "...Is she mad?", NULL},
     {FT_SAY_YOU,  "Very.", NULL},
     {FT_SAY_THEM, "Yeah. That's Coll.", NULL},
-    {FT_SAY_THEM, "I wasn't scared.", "I was HIDING."},
+    {FT_SAY_THEM, "I wasn't scared. I", "was HIDING. That's"},
+    {FT_SAY_THEM, "different.", NULL},
     {FT_SAY_YOU,  "Can you walk?", NULL},
-    {FT_SAY_THEM, "I can RUN.", NULL},
+    {FT_SAY_THEM, "I can RUN. Faster", "than you, probably."},
+    {FT_SAY_YOU,  "Let's go home.", NULL},
 };
 
 /* Found, then lost on the way home: a reload, or you wandered off. */
 static const FtBeat WREN_LOST[] = {
     {FT_SAY_THEM, "You LEFT me!", NULL},
     {FT_SAY_YOU,  "Sorry. Come on.", NULL},
-    {FT_SAY_THEM, "Don't do it again.", NULL},
+    {FT_SAY_THEM, "Don't do it again.", "I mean it."},
 };
 
 /* Only reachable by the debug travel menu, but it should still be her. */
@@ -400,6 +420,7 @@ static const FtBeat WREN_WAIT[] = {
 static const FtBeat WREN_HOME_1[] = {
     {FT_SAY_THEM, "I'm grounded.", NULL},
     {FT_SAY_THEM, "Worth it, @.", NULL},
+    {FT_SAY_THEM, "Coll made soup. It", "was SO good."},
 };
 static const FtBeat WREN_HOME_2[] = {
     {FT_SAY_THEM, "Next time take me", "somewhere good."},
@@ -421,17 +442,22 @@ static const FtLines WREN_HOME_MORE[] = {LINES(WREN_HOME_2), LINES(WREN_HOME_3),
 static const char* RIVET = "Ma Rivet";
 
 static const FtBeat RIVET_OFFER[] = {
-    {FT_SAY_THEM, "OI! Robot! Off my", "span!"},
+    {FT_SAY_THEM, "OI! Robot! Get off", "my span!"},
     {FT_SAY_YOU,  "Sorry.", NULL},
     {FT_SAY_THEM, "Sorry, it says. HA.", NULL},
     {FT_SAY_THEM, "I'm Ma Rivet. All", "this scrap is MINE."},
-    {FT_SAY_THEM, "Relay's been dead", "since the Silence."},
-    {FT_SAY_THEM, "No relay, no trade.", "No trade, no dinner."},
-    {FT_SAY_THEM, "Wake it. East, past", "the broken spans."},
-    {FT_SAY_THEM, "Take this clicker.", "Point it at stuff."},
+    {FT_SAY_THEM, "Mine to sell, if", "anyone could buy."},
+    {FT_SAY_THEM, "The relay's been", "dead since the"},
+    {FT_SAY_THEM, "Silence. No relay,", "no trade with"},
+    {FT_SAY_THEM, "Weldhome. No trade,", "no dinner."},
+    {FT_SAY_YOU,  "I could wake it.", NULL},
+    {FT_SAY_THEM, "You? HA! ...Could", "you, though?"},
+    {FT_SAY_THEM, "It's east, past the", "broken spans."},
+    {FT_SAY_THEM, "Here, take this", "clicker. Point it"},
+    {FT_SAY_THEM, "across a gap, and", "stuff happens."},
 };
 static const FtBeat RIVET_OFFER_2[] = {
-    {FT_SAY_THEM, "Back? Relay's still", "dead. Going or not?"},
+    {FT_SAY_THEM, "Back? The relay's", "still dead. Well?"},
 };
 static const FtLines RIVET_OFFER_MORE[] = {LINES(RIVET_OFFER_2)};
 
@@ -440,6 +466,8 @@ static const FtBeat RIVET_ON[] = {
 };
 static const FtBeat RIVET_ON_2[] = {
     {FT_SAY_THEM, "Point the clicker at", "the posts. Bridges."},
+    {FT_SAY_THEM, "Point it at one of", "those machines, and"},
+    {FT_SAY_THEM, "it freezes. Handy.", NULL},
 };
 static const FtBeat RIVET_ON_3[] = {
     {FT_SAY_THEM, "Don't fall in. I'm", "not fishing you out."},
@@ -449,13 +477,13 @@ static const FtLines RIVET_ON_MORE[] = {LINES(RIVET_ON_2), LINES(RIVET_ON_3)};
 
 /* Nothing fails her job, but a state with no lines is a bug waiting. */
 static const FtBeat RIVET_FAILED[] = {
-    {FT_SAY_THEM, "Well? Relay?", NULL},
+    {FT_SAY_THEM, "Well? The relay?", NULL},
 };
 
 /* The relay is awake, the line is open, and the first thing anybody does
  * with it is argue (STORY.md §6: noisy, and wonderful). */
 static const FtBeat RIVET_PAID[] = {
-    {FT_SAY_THEM, "Hear that? Line's", "OPEN!"},
+    {FT_SAY_THEM, "Hear that? The line", "is OPEN!"},
     {FT_SAY_THEM, "COLL! Is that you?", NULL},
     {FT_SAY_THEM, "Your offer's a JOKE,", "Coll!"},
     {FT_SAY_THEM, "...Yes, I missed you", "too. SHUT UP."},
@@ -463,13 +491,14 @@ static const FtBeat RIVET_PAID[] = {
     {FT_SAY_THEM, "Stay. Coll says your", "name's @."},
     {FT_SAY_THEM, "Suits you.", NULL},
     {FT_SAY_THEM, "Three orbs. Don't", "spend 'em on junk."},
+    {FT_SAY_THEM, "And... thank you.", "Now get off my span."},
 };
 
 static const FtBeat RIVET_DONE_1[] = {
-    {FT_SAY_THEM, "Line's open. LOUD,", "isn't it? Lovely."},
+    {FT_SAY_THEM, "The line's open.", "It's LOUD. Lovely."},
 };
 static const FtBeat RIVET_DONE_2[] = {
-    {FT_SAY_THEM, "Coll owes me a crate", "of bolts. Ha!"},
+    {FT_SAY_THEM, "Coll owes me a crate", "of bolts. HA!"},
 };
 static const FtBeat RIVET_DONE_3[] = {
     {FT_SAY_YOU,  "Thanks, Ma.", NULL},
@@ -487,11 +516,13 @@ static const FtLines RIVET_DONE_MORE[] = {LINES(RIVET_DONE_2), LINES(RIVET_DONE_
 static const FtBeat KEEPER_CALL[] = {
     {FT_SAY_THEM, "...Hello? Is this", "thing on?"},
     {FT_SAY_YOU,  "Keeper?", NULL},
-    {FT_SAY_THEM, "Ha! It works. The", "relay's awake."},
-    {FT_SAY_THEM, "You met the other", "one."},
+    {FT_SAY_THEM, "Ha! It works. The", "relay's awake, then."},
+    {FT_SAY_THEM, "Well done. Really.", NULL},
+    {FT_SAY_THEM, "You met the other", "one, didn't you."},
     {FT_SAY_YOU,  "It looked like me.", NULL},
     {FT_SAY_THEM, "Yes. Well.", NULL},
-    {FT_SAY_THEM, "Not now. Keep going.", "I'll call again."},
+    {FT_SAY_THEM, "Not now. There's", "more to do first."},
+    {FT_SAY_THEM, "Keep going. I'll", "call again."},
 };
 
 FtTalk ft_quest_keeper_call(void) {
@@ -547,6 +578,7 @@ static const FtBeat NAMING_0[] = {
     {FT_SAY_THEM, "Hey. Robot.", NULL},
     {FT_SAY_YOU,  "Yes?", NULL},
     {FT_SAY_THEM, "You need a name.", "Robot's rude."},
+    {FT_SAY_THEM, "Hold still. Let me", "look at you."},
     {FT_SAY_THEM, "You're a box. With", "legs. So... Boxy."},
 };
 static const FtBeat NAMING_1[] = {

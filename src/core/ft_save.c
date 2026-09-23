@@ -247,6 +247,15 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach, bool* sound)
     ft_world_init(w);
 
     w->stats = d->stats;
+
+    /* Power is limited now (ft_power_orbs_allowed). A save made before the
+     * limit may have more in it than its level allows: those orbs come back
+     * to you, to spend on HP or MP, rather than the save being refused. */
+    while(w->stats.spent[FT_UP_POWER] > 0u &&
+          (int16_t)w->stats.spent[FT_UP_POWER] > ft_power_orbs_allowed(&w->stats)) {
+        if(!ft_orb_refund(&w->stats, FT_UP_POWER)) break;
+    }
+
     w->guide = d->guide;
     w->quests = d->quests;
     w->pockets = d->pockets;

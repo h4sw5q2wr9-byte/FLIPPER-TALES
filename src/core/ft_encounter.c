@@ -257,6 +257,7 @@ void ft_encounter_init(
     e->last_enemy_hit = blank;
     e->last_total_damage = 0;
     e->retreated = false;
+    e->infrared = false;
 
     e->deflect_armed = false;
     e->last_deflect_fired = false;
@@ -314,6 +315,7 @@ static const FtAttack* action_attack(const FtEncounter* e, FtAction2 action) {
     switch(action) {
     case FT_ACTION_BROADCAST: return &FT_MODULES[FT_MOD_SUBGHZ].attack;
     case FT_ACTION_CONTACT:   return &FT_MODULES[FT_MOD_NFC].attack;
+    case FT_ACTION_INFRARED:  return &FT_MODULES[FT_MOD_INFRARED].attack;
     case FT_ACTION_DEFLECT:
     case FT_ACTION_ITEM:
     default:                  return NULL;
@@ -347,6 +349,7 @@ bool ft_encounter_can_reach(const FtEncounter* e, FtAction2 action, uint8_t i) {
      * broadcast cannot get into something encrypted — that is a targeting
      * fact, not a locked button. */
     if(atk->delivery == FT_DELIVERY_BROADCAST) return !(attrs & FT_ATTR_ENCRYPTED);
+    if(atk->delivery == FT_DELIVERY_DIRECTED) return true; /* line of sight */
     return !(attrs & FT_ATTR_AIRBORNE);
 }
 
@@ -372,9 +375,9 @@ uint8_t ft_encounter_effective_target(const FtEncounter* e, FtAction2 action) {
 /* MP the chosen action will spend. Only the strong module costs any. */
 uint8_t ft_encounter_action_cost(const FtEncounter* e, FtAction2 action) {
     (void)e;
-    if(action != FT_ACTION_CONTACT) return 0u;
-
-    return ft_module_ram_cost(FT_MOD_NFC);
+    if(action == FT_ACTION_CONTACT) return ft_module_ram_cost(FT_MOD_NFC);
+    if(action == FT_ACTION_INFRARED) return ft_module_ram_cost(FT_MOD_INFRARED);
+    return 0u;
 }
 
 const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
@@ -382,6 +385,8 @@ const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
      * meter that is empty or jammed. An enemy's attributes never take a
      * module away from you — they decide who it lands on, which the caret
      * over the row already shows. */
+    if(action == FT_ACTION_INFRARED && !e->infrared) return "Not yet.";
+
     if(e->stats.ram < (int16_t)ft_encounter_action_cost(e, action)) {
         return "Out of MP. Guard.";
     }
@@ -426,6 +431,7 @@ const char* ft_action_name(FtAction2 action) {
     switch(action) {
     case FT_ACTION_BROADCAST: return "Sub-GHz";
     case FT_ACTION_CONTACT:   return "NFC";
+    case FT_ACTION_INFRARED:  return "Infrared";
     case FT_ACTION_DEFLECT:   return "Deflect";
     case FT_ACTION_ITEM:      return "Use";
     case FT_ACTION_DEFEND:    return "Protect";
@@ -448,6 +454,14 @@ void ft_encounter_menu_move(FtEncounter* e, int8_t delta) {
     int16_t idx = (int16_t)(e->menu_index + delta);
     while(idx < 0) idx = (int16_t)(idx + FT_ACTION_COUNT);
     while(idx >= FT_ACTION_COUNT) idx = (int16_t)(idx - FT_ACTION_COUNT);
+
+    /* Infrared is not in the ring until you have it: an action you cannot
+     * have yet is not a choice, it is a puzzle about why not. */
+    if(idx == FT_ACTION_INFRARED && !e->infrared) {
+        idx = (int16_t)(idx + (delta < 0 ? -1 : 1));
+        while(idx < 0) idx = (int16_t)(idx + FT_ACTION_COUNT);
+        while(idx >= FT_ACTION_COUNT) idx = (int16_t)(idx - FT_ACTION_COUNT);
+    }
 
     e->menu_index = (uint8_t)idx;
 }
@@ -640,7 +654,10 @@ static void strike_foe(FtEncounter* e, uint8_t i, const FtAttack* atk, FtRating 
 
         /* Half gone, and it leaves: off the board as if beaten, and the
          * fight remembers that it got away rather than went down. */
-        if((proto->attrs & FT_ATTR_RETREATS) && e->foes[i].charge > 0 &&
+        /* Even a hit that would have finished it: it does not go down, it
+         * goes. The first version asked for it to be still standing, and a
+         * player with enough Power killed Echo outright. */
+        if((proto->attrs & FT_ATTR_RETREATS) &&
            e->foes[i].charge * 2 <= e->foes[i].charge_max) {
             e->foes[i].charge = 0;
             e->retreated = true;
@@ -698,6 +715,9 @@ static void resolve_player_action(FtEncounter* e) {
         atk = &FT_MODULES[FT_MOD_SUBGHZ].attack;
     } else if(action == FT_ACTION_CONTACT) {
         atk = &FT_MODULES[FT_MOD_NFC].attack;
+        gain_ram(e, -(int16_t)ft_encounter_action_cost(e, action));
+    } else if(action == FT_ACTION_INFRARED && e->infrared) {
+        atk = &FT_MODULES[FT_MOD_INFRARED].attack;
         gain_ram(e, -(int16_t)ft_encounter_action_cost(e, action));
     }
 

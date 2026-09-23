@@ -235,7 +235,7 @@ static void draw_foe(Canvas* c, const uint16_t* rows, int32_t x, int32_t y) {
 /* The mark over something that has just seen you. White-backed so it reads
  * over any tile, and gone the moment the group starts moving. */
 static void draw_notice(Canvas* c, int32_t x, int32_t y) {
-    const int32_t sx = x * FT_ZOOM + FT_SPRITE_W / 2 - 2;
+    int32_t sx = x * FT_ZOOM + FT_SPRITE_W / 2 - 2;
 
     /* Clamped downward rather than skipped: against the top wall the mark
      * would otherwise silently not be drawn, and a warning you only get in
@@ -243,8 +243,12 @@ static void draw_notice(Canvas* c, int32_t x, int32_t y) {
     int32_t sy = y * FT_ZOOM + (FT_TILE_PX * FT_ZOOM - FT_SPRITE_H) - 9;
     if(sy < 1) sy = 1;
 
-    if(sx < 1 || sx + 5 >= FT_PANEL_W) return;
-    if(sy + 9 >= FT_PANEL_H) return;
+    /* And clamped to the edge when the foe is off the screen altogether:
+     * something that has seen you from beyond the view is the one you most
+     * need to be told about. The mark sits on the side it is coming from. */
+    if(sx < 1) sx = 1;
+    if(sx + 6 >= FT_PANEL_W) sx = FT_PANEL_W - 7;
+    if(sy + 10 >= FT_PANEL_H) sy = FT_PANEL_H - 11;
 
     canvas_set_color(c, ColorWhite);
     canvas_draw_box(c, sx - 1, sy - 1, 7, 11);
@@ -464,6 +468,24 @@ static void render_world(Canvas* canvas, const FtWorld* w, FtPos focus, bool tal
         if(ft_world_foe_noticing(w, i) && w->foes[i].count > 0u) {
             const FtPos fp = ft_stepper_pos(&w->foes[i].w[0].mv, FT_FOE_STEP_MS);
             draw_notice(canvas, fp.x - cam.x, fp.y - cam.y);
+        }
+
+        /* Frozen by Infrared: a little zigzag over the first walker, for as
+         * long as it lasts. */
+        if(ft_world_foe_stunned(w, i) && w->foes[i].count > 0u) {
+            const FtPos fp = ft_stepper_pos(&w->foes[i].w[0].mv, FT_FOE_STEP_MS);
+            const int32_t zx = (fp.x - cam.x) * FT_ZOOM + FT_SPRITE_W / 2 - 3;
+            int32_t zy = (fp.y - cam.y) * FT_ZOOM + (FT_TILE_PX * FT_ZOOM - FT_SPRITE_H) - 5;
+            if(zy < 1) zy = 1;
+            if(zx >= 1 && zx + 7 < FT_PANEL_W && zy + 4 < FT_PANEL_H) {
+                canvas_set_color(canvas, ColorWhite);
+                canvas_draw_box(canvas, zx - 1, zy - 1, 9, 6);
+                canvas_set_color(canvas, ColorBlack);
+                for(int32_t k = 0; k < 7; k++) {
+                    canvas_draw_dot(canvas, zx + k, zy + ((k % 2) ? 0 : 3));
+                    if(k < 6) canvas_draw_line(canvas, zx + k, zy + 1, zx + k, zy + 2);
+                }
+            }
         }
     }
 

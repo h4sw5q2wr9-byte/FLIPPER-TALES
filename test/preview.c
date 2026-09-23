@@ -37,6 +37,7 @@ static void build(FtEncounter* e, const Shot* s) {
         ft_encounter_init_single(e, s->enemy, 42);
     }
 
+    e->infrared = true;
     e->phase = s->phase;
     e->phase_ms = s->phase_ms;
     e->menu_index = s->menu_index;
@@ -213,6 +214,9 @@ int main(void) {
         {"group2-signal",   FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    4, 0, 2, false},
         {"anim-bcast",      FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     560,  0, 0, 3, false},
         {"anim-contact",    FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     560,  1, 0, 2, false},
+        /* Infrared: the beam across to a flyer, and the menu entry. */
+        {"anim-infrared",   FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     500,  6, 0, 2, false},
+        {"menu-infrared",   FT_ENEMY_LAMPLIGHTER, FT_PHASE_MENU,       0,    6, 0, 0, false},
         {"anim-foe-bcast",  FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,     560,  0, 1, 0, false},
         /* The Attack panel: the second menu level, over a full three-foe row. */
         {"panel-bcast",     FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    0, 0, 3, true},

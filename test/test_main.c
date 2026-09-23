@@ -886,8 +886,39 @@ static void test_encounter(void) {
     /* One flat ring of every action, wrapping both ways. The menu used to be
      * two levels with the modules behind a drill-down, which put two of them
      * an extra press away and gave the screen two rows of buttons. */
-    CHECK_EQ(FT_ACTION_COUNT, 6);
+    CHECK_EQ(FT_ACTION_COUNT, 7);
     CHECK_EQ(e.menu_index, 0);
+
+    /* Infrared reaches what the others cannot: a flyer and a sealed one. */
+    {
+        FtEncounter ir;
+        static const FtEnemyId TWO[2] = {FT_ENEMY_LAMPLIGHTER, FT_ENEMY_CURFEW_LOCK};
+        ft_encounter_init(&ir, TWO, 2, 5);
+        ir.infrared = true;
+        CHECK(ft_encounter_can_reach(&ir, FT_ACTION_INFRARED, 0), "Infrared reaches a flyer");
+        CHECK(ft_encounter_can_reach(&ir, FT_ACTION_INFRARED, 1), "and a sealed one");
+        CHECK(!ft_encounter_can_reach(&ir, FT_ACTION_CONTACT, 0), "which NFC cannot");
+        CHECK(!ft_encounter_can_reach(&ir, FT_ACTION_BROADCAST, 1), "nor Sub-GHz");
+        CHECK_EQ(ft_encounter_action_cost(&ir, FT_ACTION_INFRARED), 2);
+        CHECK_EQ(ft_encounter_effective_target(&ir, FT_ACTION_INFRARED), 0);
+    }
+
+    /* Before Ma Rivet's clicker, Infrared is not on the ring at all. */
+    {
+        bool met = false;
+        for(uint8_t i = 0; i < 2u * FT_ACTION_COUNT; i++) {
+            ft_encounter_menu_move(&e, 1);
+            if(e.menu_index == FT_ACTION_INFRARED) met = true;
+        }
+        for(uint8_t i = 0; i < 2u * FT_ACTION_COUNT; i++) {
+            ft_encounter_menu_move(&e, -1);
+            if(e.menu_index == FT_ACTION_INFRARED) met = true;
+        }
+        CHECK(!met, "no Infrared before you have it");
+        CHECK(ft_encounter_action_block(&e, FT_ACTION_INFRARED) != NULL, "and it is refused");
+        e.menu_index = 0;
+    }
+    e.infrared = true;
 
     ft_encounter_menu_move(&e, -1);
     CHECK_EQ(e.menu_index, FT_ACTION_COUNT - 1);
@@ -3522,12 +3553,29 @@ static void test_orbs(void) {
     FtStats c;
     ft_stats_init(&c);
     ft_level_take(&c);
-    CHECK(ft_orb_spend(&c, FT_UP_POWER), "a point of damage is bought");
+    CHECK(!ft_orb_spend(&c, FT_UP_POWER), "no Power at level 2");
+    CHECK_EQ(c.orbs, 1);
+    ft_level_take(&c);
+    CHECK(ft_orb_spend(&c, FT_UP_POWER), "a point of damage is bought at level 3");
+    CHECK(!ft_orb_spend(&c, FT_UP_POWER), "and only one until level 6");
+    CHECK_EQ(ft_power_next_level(&c), 6);
+    CHECK(ft_orb_spend(&c, FT_UP_CHARGE), "the orb goes to HP instead");
     CHECK_EQ(c.power, FT_START_POWER + FT_LEVEL_UP_POWER);
 
     CHECK(ft_orb_can_refund(&c, FT_UP_POWER), "and always comes back out");
     CHECK(ft_orb_refund(&c, FT_UP_POWER), "which it does");
     CHECK_EQ(c.power, FT_START_POWER);
+
+    /* All the way up, Power never has more than a third of the orbs. */
+    FtStats all;
+    ft_stats_init(&all);
+    for(int i = 0; i < 30; i++) {
+        ft_level_take(&all);
+        while(ft_orb_spend(&all, FT_UP_POWER)) {}
+    }
+    CHECK(all.spent[FT_UP_POWER] * FT_LEVELS_PER_POWER_ORB <= all.level,
+          "Power stays at one orb in three levels (%u at L%d)", all.spent[FT_UP_POWER],
+          (int)all.level);
 
     /* A capped stat refuses, and the orb stays in hand rather than vanishing. */
     FtStats m;
@@ -5242,6 +5290,39 @@ static void test_scrapline(void) {
         CHECK_EQ(won, 8);
         CHECK_EQ(fled, 8);
         CHECK_EQ(halfway, 8);
+
+        /* Hit hard enough to finish it in one, it still gets away. A player
+         * with every orb in Power killed it outright. */
+        FtEncounter big;
+        ft_encounter_init(&big, ONE, 1, 3);
+        big.stats.power = 60;
+        for(int t = 0; t < 40000 && !ft_encounter_over(&big); t++) {
+            if(big.phase == FT_PHASE_MENU) {
+                big.menu_index = FT_ACTION_CONTACT;
+                ft_encounter_press_ok(&big);
+            } else if(big.phase == FT_PHASE_PLAYER_ACT && !big.action_pressed &&
+                      big.phase_ms >= FT_READY_MS + FT_ACTION_WINDOW_MS / 2) {
+                ft_encounter_press_ok(&big);
+            }
+            ft_encounter_tick(&big, 10);
+        }
+        CHECK(big.phase == FT_PHASE_WIN && big.retreated, "a single huge hit: it still flees");
+    }
+
+    /* An old save with too much Power gives the extra orbs back. */
+    {
+        FtWorld old;
+        ft_world_init(&old);
+        old.stats.level = 4;
+        old.stats.power = 3;
+        old.stats.spent[FT_UP_POWER] = 3;
+        FtSaveData d;
+        ft_save_from_world(&old, true, true, &d);
+        FtWorld r;
+        ft_save_to_world(&d, &r, NULL, NULL);
+        CHECK_EQ(r.stats.spent[FT_UP_POWER], 1);
+        CHECK_EQ(r.stats.power, 1);
+        CHECK_EQ(r.stats.orbs, 2);
     }
 
     /* Beaten, it is gone for good, and the relay is yours to wake. */
@@ -5407,6 +5488,53 @@ static void test_clean_run_both_ways(void) {
           RUNS);
     CHECK(abs_i32(caught_out - caught_back) * 20 <= RUNS,
           "the way back is no harder than the way out (%d vs %d)", caught_out, caught_back);
+}
+
+static void test_infrared_freeze(void) {
+    section("Infrared freezes a foe");
+
+    /* Boot Corridor, the player three tiles from the foe, facing it. */
+    FtWorld w;
+    ft_world_init(&w);
+    ft_world_enter(&w, 1, 6, 4);
+    FtFoeState* f = &w.foes[0];
+    CHECK(f->alive && f->count > 0, "there is a foe");
+    for(uint8_t m = 0; m < f->count; m++) {
+        f->w[m].mv.tx = (uint8_t)(9 + m);
+        f->w[m].mv.ty = (uint8_t)(4 + (m ? 1 : 0));
+        f->w[m].mv.dx = 0;
+        f->w[m].mv.dy = 0;
+    }
+    w.facing = FT_FACE_RIGHT;
+    CHECK_EQ(ft_world_ir_foe(&w), 0);
+    w.facing = FT_FACE_UP;
+    CHECK_EQ(ft_world_ir_foe(&w), -1);
+    w.facing = FT_FACE_RIGHT;
+
+    CHECK(ft_world_ir_stun(&w), "click");
+    CHECK(ft_world_foe_stunned(&w, 0), "frozen");
+    const uint8_t fx = f->w[0].mv.tx;
+
+    /* Standing right next to it for two seconds: it neither moves nor sees. */
+    w.mv.tx = 8;
+    for(int t = 0; t < 200; t++) ft_world_update(&w, 0, 0, 10);
+    CHECK(!f->alert, "it does not notice you while frozen");
+    CHECK_EQ(f->w[0].mv.tx, fx);
+
+    /* And then it thaws, and you are right there. */
+    for(int t = 0; t < 200; t++) ft_world_update(&w, 0, 0, 10);
+    CHECK(!ft_world_foe_stunned(&w, 0), "it thaws");
+    CHECK(f->alert, "and sees you");
+
+    /* One tile off is a hit, not a freeze; a wall in the way blocks it. */
+    FtWorld n;
+    ft_world_init(&n);
+    ft_world_enter(&n, 1, 6, 4);
+    n.foes[0].w[0].mv.tx = 7;
+    n.foes[0].w[0].mv.ty = 4;
+    n.facing = FT_FACE_RIGHT;
+    CHECK_EQ(ft_world_ir_foe(&n), -1);
+    CHECK_EQ(ft_world_foe_ahead(&n), 0);
 }
 
 static void test_talk_repeats(void) {
@@ -6279,6 +6407,7 @@ int main(void) {
     test_echo();
     test_scrapline();
     test_clean_run_both_ways();
+    test_infrared_freeze();
     test_dead_stay_dead();
     test_area_names();
     test_items();

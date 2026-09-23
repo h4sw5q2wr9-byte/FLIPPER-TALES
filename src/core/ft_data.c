@@ -4,6 +4,7 @@
 #define FT_ATK_SUBGHZ  1
 #define FT_ATK_NFC     2
 #define FT_ATK_PAYLOAD 3
+#define FT_ATK_INFRARED 4
 
 #define FT_ATK_STAMP         10
 #define FT_ATK_FLICKER       11
@@ -48,6 +49,16 @@ const FtModule FT_MODULES[FT_MODULE_COUNT] = {
          .hits_all = false,
          /* Contact burst: higher power, and halves the target's shield. */
          .attack = {FT_ATK_NFC, 4, 0, true, FT_DELIVERY_CONTACT, FT_CLASS_NORMAL,
+                    FT_PAYLOAD_NONE}},
+
+    [FT_MOD_INFRARED] =
+        {.name = "Infrared",
+         .slot = FT_SLOT_CONTACT,
+         /* Two MP: the strongest thing you have, and the only thing that
+          * reaches anything, so it has to cost something to reach for. */
+         .ram_cost = 2,
+         .hits_all = false,
+         .attack = {FT_ATK_INFRARED, 6, 0, false, FT_DELIVERY_DIRECTED, FT_CLASS_NORMAL,
                     FT_PAYLOAD_NONE}},
 };
 

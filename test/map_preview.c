@@ -503,6 +503,55 @@ int main(void) {
         printf("  %-18s %s\n", "scrapline", c ? "CLIPPED" : "ok");
     }
 
+    /* Infrared freezing a foe, and the alert mark for a foe that has seen
+     * you from off the screen. And a few of the rewritten conversations. */
+    {
+        int c = 0;
+        FtWorld fz;
+        ft_world_init(&fz);
+        ft_world_enter(&fz, 1, 6, 4);
+        fz.area_ms = 100000u;
+        fz.facing = FT_FACE_RIGHT;
+        for(uint8_t m = 0; m < fz.foes[0].count; m++) {
+            fz.foes[0].w[m].mv.tx = (uint8_t)(9 + m);
+            fz.foes[0].w[m].mv.ty = 4;
+        }
+        (void)ft_world_ir_stun(&fz);
+        ft_overworld_render(canvas, &fz);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_90_freeze.pbm");
+        c += ft_stub_canvas_clipped(canvas);
+
+        FtWorld off;
+        ft_world_init(&off);
+        ft_world_enter(&off, 1, 2, 3);
+        off.area_ms = 100000u;
+        off.foes[0].w[0].mv.tx = 11;
+        off.foes[0].w[0].mv.ty = 4;
+        off.foes[0].alert = true;
+        off.foes[0].notice_ms = FT_FOE_NOTICE_MS;
+        ft_overworld_render(canvas, &off);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_91_offscreen.pbm");
+        c += ft_stub_canvas_clipped(canvas);
+
+        FtWorld kp;
+        ft_world_init(&kp);
+        ft_world_enter(&kp, 0, 6, 3);
+        kp.area_ms = 100000u;
+        kp.facing = FT_FACE_UP;
+        const FtTalk k = ft_quest_talk(&kp.quests, FT_QUEST_CLEAN_RUN, 0);
+        const uint8_t beats[3] = {3, 8, 13};
+        for(uint8_t b = 0; b < 3; b++) {
+            ft_overworld_render_talk(canvas, &kp, 6, 2);
+            ft_render_talk(canvas, &k, beats[b], UINT16_MAX, false, true);
+            char path[96];
+            snprintf(path, sizeof(path), "preview/map_%02u_keeper-new.pbm", 92u + b);
+            ft_stub_canvas_write_pbm(canvas, path);
+            c += ft_stub_canvas_clipped(canvas);
+        }
+        clipped_total += c;
+        printf("  %-18s %s\n", "freeze/offscreen", c ? "CLIPPED" : "ok");
+    }
+
     /* Spotted: the mark over a group that has seen you and has not started
      * moving yet. It is the only thing drawn above a sprite, so it is also
      * the only thing that can run off the top of the panel. */

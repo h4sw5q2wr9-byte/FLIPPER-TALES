@@ -567,6 +567,7 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
         f->alive = false;
         f->alert = false;
         f->notice_ms = 0;
+        f->stun_ms = 0;
         f->count = 0;
 
         if(i >= r->ent_count || r->ents[i].kind != FT_ENT_FOE) continue;
@@ -1011,8 +1012,15 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     if(any_alive) flow_refresh(map, w->mv.tx, w->mv.ty);
 
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
-        const FtFoeState* f = &w->foes[i];
+        FtFoeState* f = &w->foes[i];
         if(!f->alive) continue;
+
+        /* Frozen: it sees nothing until it thaws. */
+        if(f->stun_ms > 0u) {
+            f->stun_ms = (dt_ms >= (uint32_t)f->stun_ms) ? 0u
+                                                         : (uint16_t)(f->stun_ms - (uint16_t)dt_ms);
+            continue;
+        }
 
         for(uint8_t m = 0; m < f->count; m++) {
             if(foe_spots(w, &f->w[m], map)) any_spotted = true;
@@ -1020,6 +1028,7 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     }
     if(any_spotted) {
         for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+            if(w->foes[i].stun_ms > 0u) continue;
             /* Only the transition starts the beat. Re-arming it every frame
              * the player stays in range would freeze the room solid. */
             if(!w->foes[i].alert) w->foes[i].notice_ms = FT_FOE_NOTICE_MS;
@@ -1046,6 +1055,15 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
         FtFoeState* f = &w->foes[i];
         if(!f->alive) continue;
+
+        /* Frozen by Infrared: a step under way finishes, nothing new starts. */
+        if(f->stun_ms > 0u) {
+            for(uint8_t m = 0; m < f->count; m++) {
+                FtFoeWalker* k = &f->w[m];
+                if(k->mv.dx || k->mv.dy) (void)step_advance(&k->mv, dt_ms, FT_FOE_STEP_MS);
+            }
+            continue;
+        }
 
         /* A boss stands where the story put it: it does not wander off, and
          * it does not come for you. You go to it. */
@@ -1445,8 +1463,8 @@ bool ft_world_bridge_down(const FtWorld* w) {
 
 /* Infrared is line of sight: straight ahead, across whatever gap is there,
  * to the first thing that is not a gap. Far enough for any gap a map draws,
- * and never so far that you point at something off the screen. */
-#define FT_IR_RANGE 4
+ * and never so far that you point at something off the screen
+ * (FT_IR_RANGE, in ft_world.h). */
 
 bool ft_world_ir_target(const FtWorld* w) {
     if(ft_room(w->room)->bridge == 0u || bridge_down_in(w)) return false;
@@ -1476,6 +1494,42 @@ bool ft_world_ir_fire(FtWorld* w) {
     if(!ft_world_ir_target(w)) return false;
     w->revealed |= ft_room(w->room)->bridge;
     return true;
+}
+
+int ft_world_ir_foe(const FtWorld* w) {
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+
+    const FtMap* m = ft_world_map(w);
+    int32_t x = w->mv.tx, y = w->mv.ty;
+
+    for(uint8_t i = 1; i <= FT_IR_RANGE; i++) {
+        x += dx;
+        y += dy;
+        const FtTile t = ft_map_tile(m, x, y);
+        const int who = foe_at_tile(w, x, y);
+
+        if(who >= 0) return (i >= 2u) ? who : -1;
+        if(ft_tile_solid(t) && t != FT_TILE_VOID && t != FT_TILE_BRIDGE) return -1;
+    }
+    return -1;
+}
+
+bool ft_world_ir_stun(FtWorld* w) {
+    const int who = ft_world_ir_foe(w);
+    if(who < 0) return false;
+
+    FtFoeState* f = &w->foes[who];
+    f->stun_ms = (uint16_t)FT_IR_STUN_MS;
+    f->alert = false;
+    f->notice_ms = 0;
+
+    /* A walker mid-step finishes it: stopping between tiles breaks the grid. */
+    return true;
+}
+
+bool ft_world_foe_stunned(const FtWorld* w, uint8_t index) {
+    return index < FT_MAX_ROOM_ENTS && w->foes[index].alive && w->foes[index].stun_ms > 0u;
 }
 
 bool ft_world_relay_ahead(const FtWorld* w) {

@@ -206,6 +206,10 @@ typedef struct {
      * seen you and is not moving yet — see FT_FOE_NOTICE_MS. */
     uint16_t notice_ms;
 
+    /* Frozen by Infrared, and for how much longer: it neither moves nor
+     * notices you. Walking into it is still a fight. */
+    uint16_t stun_ms;
+
     uint8_t count; /* walkers, from the roster */
     FtFoeWalker w[FT_MAX_ENEMIES];
 } FtFoeState;
@@ -473,6 +477,16 @@ bool ft_world_ir_target(const FtWorld* w);
 
 /* Bring the bridge down. False if there was nothing to point at. */
 bool ft_world_ir_fire(FtWorld* w);
+
+/* Infrared at a foe: the group whose walker is in a straight line ahead of
+ * you, two to FT_IR_RANGE tiles off (one tile is close enough to hit), with
+ * nothing solid between — a gap does not block a beam. -1 when there is
+ * none. Freezing it stops it moving and noticing for FT_IR_STUN_MS. */
+#define FT_IR_RANGE   4
+#define FT_IR_STUN_MS 3000u
+int  ft_world_ir_foe(const FtWorld* w);
+bool ft_world_ir_stun(FtWorld* w);
+bool ft_world_foe_stunned(const FtWorld* w, uint8_t index);
 
 /* Facing the relay mast. */
 bool ft_world_relay_ahead(const FtWorld* w);

@@ -35,6 +35,7 @@ typedef enum {
     FT_ACTION_FOCUS,         /* charge the Signal meter */
     FT_ACTION_DEFLECT,       /* spend a bar to send their next hits back */
     FT_ACTION_ITEM,          /* eat something out of your pockets */
+    FT_ACTION_INFRARED,      /* the nearest foe, whatever it is; only once you have it */
     FT_ACTION_COUNT
 } FtAction2;
 
@@ -142,6 +143,10 @@ typedef struct {
     /* A foe with FT_ATTR_RETREATS got away this fight. The app says so
      * instead of "Cleared.", because it will be back. */
     bool        retreated;
+
+    /* Whether you have Infrared (Ma Rivet's clicker). Without it the action
+     * is not in the menu at all. The app sets it when a fight starts. */
+    bool        infrared;
 
     bool coach;
 

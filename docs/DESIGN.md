@@ -799,6 +799,17 @@ which meant the level never moved, the chapter cap never bit, and every enemy
 was worth full XP forever. The anti-farming taper only started working once
 that was fixed.
 
+#### Power has a limit
+
+A player put every orb into Power and one-shot the whole of Chapter 1, Echo
+included. Power is added to every hit and every hit starts at 3 or 4, so
+each orb there was worth a quarter to a third more damage, against enemies
+whose health does not move; HP and MP could never compete. Power now takes
+**one orb per three levels** (`FT_LEVELS_PER_POWER_ORB`); HP and MP have no
+limit. The orb screen says when the next one opens ("Next Power at L6")
+instead of just refusing, and a save with more Power than its level allows
+gives the extra orbs back on load, to spend again.
+
 ### 5.4a Quests
 
 A quest is a **condition over state the world already tracks** — which room
@@ -869,6 +880,15 @@ blob. The art rules the enemies already follow — a 2px silhouette, a white
 interior, dark features at least 2x2 inside it — apply to people too.
 
 #### Conversations
+
+**Full sentences.** A player found the talk "too minimal and compressed":
+every line was a fragment ("Hale. Grass. Wren. Go."), because a beat is two
+lines of twenty characters and the first drafts treated that as a word
+budget. It is a *screen* budget. Every conversation was rewritten to say
+things the way a person would, running a sentence over as many beats as it
+needs; a conversation may now be fourteen beats. The jokes that landed
+stayed ("I do the standing."), and fragments are kept only where they are
+the joke ("Grass. Hole. Kid. In that order.").
 
 A conversation is a list of **beats**, each one somebody saying up to two
 lines, and it may end in a question.
@@ -1106,6 +1126,16 @@ until their chapters replace them.
   Measured with 30 Charge it went down in two turns, which is no boss; at 52
   it takes about four and still wins 98/99/100% — easy, as asked, but a
   fight.
+- **Infrared, everywhere** (a player found it too niche and missing from
+  fights):
+  - *In a fight* it is the seventh action, only on the ring once you have
+    it: 6 power, 2 MP, the nearest foe, and it reaches anything — flying or
+    sealed — because it is line of sight. A dashed beam crosses the arena
+    instead of the NFC walk-up.
+  - *Out in the world*, OK facing a foe two to four tiles off, with nothing
+    solid between (a gap does not block it), freezes its group for three
+    seconds: it does not move and does not notice you. One tile off is a
+    first strike, as before. Walking into a frozen foe is still a fight.
 - **The relay** is `FT_TILE_RELAY`; OK facing it with the job on wakes it
   (quest READY). The Relay room's terminal then plays the Keeper's call once
   instead of the save toast (`FT_REVEAL_KEEPER_CALL`), still saving and
@@ -1536,6 +1566,14 @@ so they are told apart by **direction** instead: the hut is vertical boards,
 the roof is horizontal courses, the canopy is an even checker. That survives
 being one bit deep and reads at a glance.
 
+#### Paths that go nowhere in particular
+
+Outdoors, a room with one road through it reads as a corridor with grass
+painted on. Trails now branch off it the way worn paths do: to each fruit
+tree, a loop over the top of the Approach, a lookout in its corner, a lane
+between Weldhome's houses. Grass is walkable either way, so they change how
+a place looks, never where you can go.
+
 #### Laying out a room
 
 The first pass at these rooms was a rectangle of floor with single tiles of
@@ -1793,6 +1831,12 @@ blind coming back. Three fixes, and a test that walks the route both ways
 - Boot Corridor's foe stands in the middle, as far from each door.
 - Foes notice you by **walking distance**, not a straight line through
   walls, so a terrace or a rock wall is a wall in both directions.
+- And from **four** steps, not five (asked for after playing).
+
+**The "!" is never off the screen.** A foe that notices you from outside
+the view used to show its mark outside the view too, which is to say not
+at all. The mark is clamped to the edge of the screen on the side it is
+coming from.
 
 The rule for new rooms: nothing may lurk within sight of a place you arrive
 at blind — a door, a ladder top, a drop.

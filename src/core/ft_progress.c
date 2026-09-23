@@ -19,9 +19,22 @@ bool ft_level_choice_available(const FtStats* s, FtLevelChoice choice) {
     switch(choice) {
     case FT_UP_CHARGE: return s->charge_max < FT_CAP_CHARGE;
     case FT_UP_RAM:    return s->ram_max < FT_CAP_RAM;
-    case FT_UP_POWER:  return s->power < FT_CAP_POWER;
+    case FT_UP_POWER:
+        return s->power < FT_CAP_POWER && s->spent[FT_UP_POWER] < ft_power_orbs_allowed(s);
     default:           return false;
     }
+}
+
+/* One Power orb per three levels. Power is added to every hit, and every hit
+ * starts at 3 or 4, so it scales far faster than anything it is traded
+ * against: a player who put every orb into it one-shot the whole of Chapter
+ * 1, Echo included. HP and MP have no such limit. */
+int16_t ft_power_orbs_allowed(const FtStats* s) {
+    return (int16_t)(s->level / FT_LEVELS_PER_POWER_ORB);
+}
+
+int16_t ft_power_next_level(const FtStats* s) {
+    return (int16_t)((s->spent[FT_UP_POWER] + 1) * FT_LEVELS_PER_POWER_ORB);
 }
 
 void ft_level_take(FtStats* s) {

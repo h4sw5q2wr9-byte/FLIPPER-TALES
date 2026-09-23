@@ -250,8 +250,10 @@ to Weldhome again.
 
 The clicker is **Infrared**: line of sight. At the edge of a gap, face the
 receiver post on the far side and press OK, and a drawbridge comes down.
-That is the whole verb. Two gaps: the Fallen Spans, and the one in front of
-the relay.
+Point it at a machine a few steps off and it freezes for a moment, long
+enough to walk past. And in a fight it is your strongest hit: it reaches
+the nearest machine whatever it is, flying or sealed. Two gaps: the Fallen
+Spans, and the one in front of the relay.
 
 **Boss: Echo**, first meeting, on the one-tile spit in front of the relay.
 It looks like you (a dark copy: the same box and legs, the screen black with
