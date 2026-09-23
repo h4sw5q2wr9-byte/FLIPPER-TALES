@@ -373,14 +373,22 @@ static void test_priority(void) {
 /* What ft_level_apply used to do, in one call: take the level and put the
  * orb it pays into a stat. The two are separate now precisely so the second
  * half can be undone later. */
-static bool level_into(FtStats* s, FtLevelChoice choice) {
+/* A level with an orb in it. Orbs are switched off in the game — a level
+ * pays none — but the spending rules are kept for when they come back, and
+ * these tests hand the orb over by hand to keep them honest. */
+static void level_with_orb(FtStats* s) {
     ft_level_take(s);
+    s->orbs++;
+}
+
+static bool level_into(FtStats* s, FtLevelChoice choice) {
+    level_with_orb(s);
     if(ft_orb_spend(s, choice)) return true;
 
     /* Refused: hand the level back so a capped stat costs nothing, which is
      * what the old all-or-nothing call guaranteed. */
     s->level--;
-    s->orbs = (int16_t)(s->orbs - FT_ORBS_PER_LEVEL);
+    s->orbs--;
     return false;
 }
 
@@ -2348,10 +2356,12 @@ static void test_save_world(void) {
     FtWorld w;
     ft_world_init(&w);
 
-    /* Play a little: move rooms, beat something, level up, install a card. */
+    /* Play a little: move rooms, beat something, level up. (No orb: they
+     * are switched off, and a load strips any it finds.) */
     ft_world_enter(&w, 2, 3, 4);
     ft_world_clear_entity(&w, 0);
-    level_into(&w.stats, FT_UP_RAM);
+    ft_level_take(&w.stats);
+    w.stats.xp = 37;
 
     w.save_room = 2;
     w.save_tx = 3;
@@ -2377,6 +2387,7 @@ static void test_save_world(void) {
     CHECK_EQ(loaded.save_room, 2);
     CHECK_EQ(loaded.stats.ram_max, w.stats.ram_max);
     CHECK_EQ(loaded.stats.level, w.stats.level);
+    CHECK_EQ(loaded.stats.xp, 37);
     CHECK(!coach, "the tips setting survives too");
 
     /* Loading walks you into the room, and walking into a room repopulates
@@ -3497,9 +3508,10 @@ static void test_orbs(void) {
     CHECK_EQ(s.charge_max, FT_START_CHARGE);
 
     /* A level pays out an orb and does not choose for you. */
-    ft_level_take(&s);
+    level_with_orb(&s);
     CHECK_EQ(s.level, 2);
-    CHECK_EQ(s.orbs, FT_ORBS_PER_LEVEL);
+    CHECK_EQ(FT_ORBS_PER_LEVEL, 0); /* switched off in play */
+    CHECK_EQ(s.orbs, 1);
     CHECK_EQ(s.charge_max, FT_START_CHARGE);
 
     /* Placing one raises the stat, and grants the gain there and then: this
@@ -3528,7 +3540,7 @@ static void test_orbs(void) {
     /* Round trips never invent or lose anything. */
     FtStats t;
     ft_stats_init(&t);
-    for(int i = 0; i < 6; i++) ft_level_take(&t);
+    for(int i = 0; i < 6; i++) level_with_orb(&t);
 
     const int16_t banked = t.orbs;
     ft_orb_spend(&t, FT_UP_CHARGE);
@@ -3552,10 +3564,10 @@ static void test_orbs(void) {
      * Cards deleted the whole class of bug. */
     FtStats c;
     ft_stats_init(&c);
-    ft_level_take(&c);
+    level_with_orb(&c);
     CHECK(!ft_orb_spend(&c, FT_UP_POWER), "no Power at level 2");
     CHECK_EQ(c.orbs, 1);
-    ft_level_take(&c);
+    level_with_orb(&c);
     CHECK(ft_orb_spend(&c, FT_UP_POWER), "a point of damage is bought at level 3");
     CHECK(!ft_orb_spend(&c, FT_UP_POWER), "and only one until level 6");
     CHECK_EQ(ft_power_next_level(&c), 6);
@@ -3570,7 +3582,7 @@ static void test_orbs(void) {
     FtStats all;
     ft_stats_init(&all);
     for(int i = 0; i < 30; i++) {
-        ft_level_take(&all);
+        level_with_orb(&all);
         while(ft_orb_spend(&all, FT_UP_POWER)) {}
     }
     CHECK(all.spent[FT_UP_POWER] * FT_LEVELS_PER_POWER_ORB <= all.level,
@@ -3580,16 +3592,16 @@ static void test_orbs(void) {
     /* A capped stat refuses, and the orb stays in hand rather than vanishing. */
     FtStats m;
     ft_stats_init(&m);
-    ft_level_take(&m);
+    level_with_orb(&m);
     m.charge_max = FT_CAP_CHARGE;
     CHECK(!ft_orb_spend(&m, FT_UP_CHARGE), "a capped stat refuses");
-    CHECK_EQ(m.orbs, FT_ORBS_PER_LEVEL);
+    CHECK_EQ(m.orbs, 1);
 
     /* No stat can ever be pushed past its cap by a legal sequence. */
     FtStats hi;
     ft_stats_init(&hi);
     for(int i = 0; i < 400; i++) {
-        ft_level_take(&hi);
+        level_with_orb(&hi);
         ft_orb_spend(&hi, FT_UP_CHARGE);
         ft_orb_spend(&hi, FT_UP_RAM);
         ft_orb_spend(&hi, FT_UP_POWER);
@@ -3611,7 +3623,7 @@ static void test_quests(void) {
     const FtQuestDef* d = ft_quest_def(FT_QUEST_CLEAN_RUN);
     CHECK(d->goal_room != d->giver_room, "the goal is somewhere else");
     CHECK(d->goal_room < ft_room_count(), "and is a room that exists");
-    CHECK(d->reward_orbs > 0, "and it pays something");
+    CHECK(d->reward_count > 0, "and it pays something");
 
     /* Somebody has to be standing in the giver's room to offer it. */
     const FtRoom* giver = ft_room(d->giver_room);
@@ -3631,7 +3643,7 @@ static void test_quests(void) {
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_UNKNOWN);
 
     /* Saying no leaves it exactly as it was. */
-    CHECK_EQ(ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, false).orbs, 0);
+    CHECK_EQ(ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, false).items, 0);
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_UNKNOWN);
 
     /* Saying yes takes it. */
@@ -3656,10 +3668,10 @@ static void test_quests(void) {
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_READY);
 
     /* Collecting pays exactly once. */
-    CHECK_EQ(ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, true).orbs, d->reward_orbs);
+    CHECK_EQ(ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, true).items, d->reward_count);
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_DONE);
 
-    CHECK_EQ(ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, true).orbs, 0);
+    CHECK_EQ(ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, true).items, 0);
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_DONE);
 
     /* Fighting fails it, whether it was under way or already armed. */
@@ -3677,7 +3689,7 @@ static void test_quests(void) {
     CHECK_EQ(ft_quest_state(&g, FT_QUEST_CLEAN_RUN), FT_QUEST_FAILED);
 
     /* A failed run does not pay, and can be taken again. */
-    CHECK_EQ(ft_quest_answer(&g, FT_QUEST_CLEAN_RUN, true).orbs, 0);
+    CHECK_EQ(ft_quest_answer(&g, FT_QUEST_CLEAN_RUN, true).items, 0);
     CHECK_EQ(ft_quest_state(&g, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
 
     /* A finished quest is not undone by fighting afterwards. */
@@ -5309,7 +5321,7 @@ static void test_scrapline(void) {
         CHECK(big.phase == FT_PHASE_WIN && big.retreated, "a single huge hit: it still flees");
     }
 
-    /* An old save with too much Power gives the extra orbs back. */
+    /* A save from when orbs were on comes back at the starting stats. */
     {
         FtWorld old;
         ft_world_init(&old);
@@ -5320,9 +5332,10 @@ static void test_scrapline(void) {
         ft_save_from_world(&old, true, true, &d);
         FtWorld r;
         ft_save_to_world(&d, &r, NULL, NULL);
-        CHECK_EQ(r.stats.spent[FT_UP_POWER], 1);
-        CHECK_EQ(r.stats.power, 1);
-        CHECK_EQ(r.stats.orbs, 2);
+        CHECK_EQ(r.stats.spent[FT_UP_POWER], 0);
+        CHECK_EQ(r.stats.power, FT_START_POWER);
+        CHECK_EQ(r.stats.orbs, 0);
+        CHECK_EQ(r.stats.level, 4);
     }
 
     /* Beaten, it is gone for good, and the relay is yours to wake. */
@@ -5341,7 +5354,8 @@ static void test_scrapline(void) {
 
     /* Home to Ma Rivet, who pays, between shouting at Coll. */
     o = ft_quest_answer(&w.quests, FT_QUEST_RIVET, true);
-    CHECK_EQ(o.orbs, 3);
+    CHECK_EQ(o.items, 2);
+    CHECK_EQ(o.item, FT_ITEM_CELL);
     CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_RIVET), FT_QUEST_DONE);
     CHECK(ft_quest_has_infrared(&w.quests), "and you keep the clicker");
 }
@@ -5827,7 +5841,7 @@ static void test_weldhome(void) {
     ft_world_enter(&j, GATE, 1, 3);
     const FtQuestOutcome done = ft_quest_answer(&j.quests, FT_QUEST_WREN, true);
     CHECK_EQ(ft_quest_state(&j.quests, FT_QUEST_WREN), FT_QUEST_DONE);
-    CHECK(done.orbs > 0, "which pays");
+    CHECK(done.items > 0, "which pays");
 
     ft_world_escort_stop(&j);
     CHECK(!j.escort, "and she goes inside");

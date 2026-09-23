@@ -48,7 +48,11 @@
  * you an Orb, and an Orb can be moved between stats at any time outside a
  * fight. A build you cannot change is a build you have to be told about
  * beforehand, which is not a thing a game on a 128x64 panel can do. */
-#define FT_ORBS_PER_LEVEL 1
+/* Orbs are switched off for now (a player could not make them balance: every
+ * build fell over). A level is a full heal and nothing else, which is also
+ * the loadout every balance table was measured at. The spending code stays
+ * for when they come back. */
+#define FT_ORBS_PER_LEVEL 0
 
 #define FT_LEVEL_CAP_BASE         4
 #define FT_LEVEL_CAP_PER_CHAPTER  4

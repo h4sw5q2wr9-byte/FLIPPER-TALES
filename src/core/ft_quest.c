@@ -1,4 +1,5 @@
 #include "ft_quest.h"
+#include "ft_item.h"
 
 /* Every quest needs a byte to live in, and the save reserves exactly
  * FT_QUEST_BYTES of them. Overflowing would be silent — the quest would
@@ -10,16 +11,16 @@ static const FtQuestDef FT_QUESTS[FT_QUEST_COUNT] = {
      * where the terminal is. The goal is the Cold Gate at the far end of the
      * prologue: four rooms out, four back, and foes respawn behind you, so
      * "without a fight" is a real route rather than a formality. */
-    [FT_QUEST_CLEAN_RUN] = {"Clean Run", 0u, 3u, true, 2},
+    [FT_QUEST_CLEAN_RUN] = {"Clean Run", 0u, 3u, true, FT_ITEM_RATION, 2},
 
     /* Warden Coll holds the gate in room 10; Wren is down the junction at
      * room 11. The goal is not a room, because getting there is not what
      * finishes it — you have to talk her into coming out. */
-    [FT_QUEST_WREN] = {"The Kid", 10u, FT_QUEST_NO_ROOM, false, 3},
+    [FT_QUEST_WREN] = {"The Kid", 10u, FT_QUEST_NO_ROOM, false, FT_ITEM_RATION, 2},
 
     /* Ma Rivet in the Scrapline, room 13. The goal is not a room either:
      * waking the relay is something you do to it, past Echo. */
-    [FT_QUEST_RIVET] = {"Wake the Relay", 13u, FT_QUEST_NO_ROOM, false, 3},
+    [FT_QUEST_RIVET] = {"Wake the Relay", 13u, FT_QUEST_NO_ROOM, false, FT_ITEM_CELL, 2},
 };
 
 const FtQuestDef* ft_quest_def(FtQuestId id) {
@@ -223,8 +224,8 @@ static const FtBeat KEEPER_PAID[] = {
     {FT_SAY_THEM, "Don't get cocky. It", "gets harder east."},
     {FT_SAY_THEM, "I've waited a long", "time for something"},
     {FT_SAY_THEM, "to come through that", "door. And kind, too."},
-    {FT_SAY_THEM, "Take two orbs. Then", "go east, and keep"},
-    {FT_SAY_THEM, "going. And keep that", "letter safe."},
+    {FT_SAY_THEM, "Take these rations.", "Then go east, and"},
+    {FT_SAY_THEM, "keep going. And keep", "that letter safe."},
 };
 
 static const FtBeat KEEPER_DONE_1[] = {
@@ -490,7 +491,7 @@ static const FtBeat RIVET_PAID[] = {
     {FT_SAY_YOU,  "Should I go?", NULL},
     {FT_SAY_THEM, "Stay. Coll says your", "name's @."},
     {FT_SAY_THEM, "Suits you.", NULL},
-    {FT_SAY_THEM, "Three orbs. Don't", "spend 'em on junk."},
+    {FT_SAY_THEM, "Two cells for you.", "Don't waste 'em."},
     {FT_SAY_THEM, "And... thank you.", "Now get off my span."},
 };
 
@@ -645,7 +646,7 @@ static const char* const BARKS[FT_BARK_COUNT] = {
     [FT_BARK_WREN_CHATTER + 2] = "Coll's gonna yell.",
     [FT_BARK_WREN_CHATTER + 3] = "Are you a robot?",
     [FT_BARK_WREN_CHATTER + 4] = "...Cool.",
-    [FT_BARK_WREN_CHATTER + 5] = "Can I hold an orb?",
+    [FT_BARK_WREN_CHATTER + 5] = "Can I carry stuff?",
     [FT_BARK_WREN_CHATTER + 6] = "I'm SO hungry.",
     [FT_BARK_WREN_CHATTER + 7] = "Are we there yet?",
 
@@ -762,7 +763,7 @@ FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit, ui
 /* ---- What a finished conversation did ---------------------------------- */
 
 static FtQuestOutcome nothing(void) {
-    FtQuestOutcome o = {0, false, false, false, false};
+    FtQuestOutcome o = {0, 0, false, false, false, false};
     return o;
 }
 
@@ -796,7 +797,8 @@ FtQuestOutcome ft_quest_answer(FtQuests* q, FtQuestId id, bool yes) {
 
     case FT_QUEST_READY:
         set_state(q, id, FT_QUEST_DONE);
-        o.orbs = FT_QUESTS[id].reward_orbs;
+        o.item = FT_QUESTS[id].reward_item;
+        o.items = FT_QUESTS[id].reward_count;
         o.ended = true;
         break;
 

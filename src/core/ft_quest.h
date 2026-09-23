@@ -56,7 +56,10 @@ typedef struct {
     uint8_t     goal_room;
 
     bool        no_battle; /* a fight fails it */
-    int16_t     reward_orbs;
+
+    /* What it pays: supplies, now that orbs are switched off. */
+    uint8_t     reward_item;  /* an FtItemId */
+    uint8_t     reward_count;
 } FtQuestDef;
 
 #define FT_QUEST_NO_ROOM 255
@@ -143,7 +146,8 @@ FtTalk ft_quest_wren_talk(const FtQuests* q, uint8_t again);
 
 /* What a finished conversation did. */
 typedef struct {
-    int16_t orbs;    /* paid out, usually 0 */
+    uint8_t item;    /* paid out: an FtItemId, if `items` is not 0 */
+    uint8_t items;   /* how many; usually 0 */
     bool    follows; /* somebody just started walking with you */
     bool    ended;   /* the quest is now done */
     bool    leads;   /* somebody just set off to show you the way */

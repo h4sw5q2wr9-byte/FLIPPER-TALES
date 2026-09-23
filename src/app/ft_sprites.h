@@ -452,22 +452,22 @@ static const uint16_t FT_SPRITE_ICON_BAG[FT_SPRITE_H] = {
 };
 
 static const uint16_t FT_SPRITE_ICON_ORB[FT_SPRITE_H] = {
-    0x07E0,
-    0x1FF8,
-    0x381C,
-    0x6066,
-    0x6036,
-    0xC013,
-    0xC003,
-    0xC003,
-    0xC003,
-    0xC003,
-    0xC003,
+    0x0180,
+    0x0180,
+    0x3FFC,
+    0x7FFE,
     0x6006,
+    0x6C36,
+    0x6C36,
     0x6006,
-    0x381C,
+    0x63C6,
+    0x6006,
+    0x7FFE,
+    0x3FFC,
     0x1FF8,
-    0x07E0,
+    0x0C30,
+    0x0C30,
+    0x0000,
 };
 
 static const uint16_t FT_SPRITE_ICON_QUESTS[FT_SPRITE_H] = {

@@ -132,7 +132,10 @@ void ft_practice_start(FtPractice* p, FtEncounter* e) {
     static const FtLevelChoice CYCLE[FT_UP_COUNT] = {
         FT_UP_CHARGE, FT_UP_RAM, FT_UP_POWER};
     for(uint8_t l = 1; l < p->level; l++) {
+        /* Orbs are switched off in play; the arena still builds a stronger
+         * character per level so a level-10 match means something. */
         ft_level_take(&e->stats);
+        e->stats.orbs++;
         ft_orb_spend(&e->stats, CYCLE[(l - 1u) % FT_UP_COUNT]);
     }
     e->stats.charge = e->stats.charge_max;

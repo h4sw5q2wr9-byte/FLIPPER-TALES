@@ -255,7 +255,10 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
     } else if(app->mode == FT_MODE_CONFIRM) {
         ft_render_confirm(canvas, "Erase your save?", app->confirm_yes);
     } else if(app->mode == FT_MODE_ORBS) {
-        ft_render_orbs(canvas, &app->world.stats, app->orb_item);
+        ft_render_status(canvas, &app->world.stats,
+                         (app->world.name < FT_NAME_COUNT) ? ft_quest_name(app->world.name) :
+                                                             NULL,
+                         ft_quest_has_infrared(&app->world.quests));
     } else if(app->mode == FT_MODE_QUESTS) {
         ft_render_quests(canvas, &app->world.quests, app->quest_item);
     } else if(app->mode == FT_MODE_POCKETS) {
@@ -398,17 +401,9 @@ static void ft_leave_battle_now(FlipperTales* app, bool won) {
 
     app->battle_entity = -1;
 
-    /* A level just earned takes the screen before the world comes back. Orbs
-     * banked on purpose do not: a player who is saving them should not have
-     * the screen pushed at them after every fight. The pause menu's Orbs row
-     * shows the count, which is where a reminder belongs. */
-    if(won && app->levelled && app->world.stats.orbs > 0) {
-        app->orb_item = 0;
-        app->orbs_from_pause = false;
-        app->mode = FT_MODE_ORBS;
-        return;
-    }
-
+    /* A level is a full heal and nothing else while orbs are switched off,
+     * so it is a line on the screen, not a screen of its own. */
+    if(won && app->levelled) ft_toast(app, "Level up! Healed.");
     app->mode = FT_MODE_OVERWORLD;
 }
 
@@ -525,13 +520,7 @@ static void ft_debug_pick(FlipperTales* app) {
 
         for(int16_t i = 0; i < owed; i++) ft_level_take(&app->world.stats);
 
-        if(app->world.stats.orbs > 0) {
-            app->orb_item = 0;
-            app->orbs_from_pause = false;
-            app->mode = FT_MODE_ORBS;
-        } else {
-            ft_toast(app, "XP banked.");
-        }
+        ft_toast(app, owed > 0 ? "Level up! Healed." : "XP banked.");
         break;
     }
 
@@ -831,13 +820,8 @@ static void ft_pause_input(FlipperTales* app, InputKey key) {
         app->mode = FT_MODE_POCKETS;
         break;
     case FT_PAUSE_ORBS:
-        /* Not mid-fight: moving a point to escape a hit you have already
-         * taken is not a build decision. */
-        if(app->paused_from == FT_MODE_BATTLE) {
-            ft_toast(app, "Not in a fight.");
-            app->mode = app->paused_from;
-            break;
-        }
+        /* Status, now that orbs are switched off: a page to read, from
+         * anywhere, fights included. */
         app->orb_item = 0;
         app->orbs_from_pause = true;
         app->mode = FT_MODE_ORBS;
@@ -1072,14 +1056,25 @@ static void ft_finish_talk(FlipperTales* app, bool yes) {
     /* Handing her back is what ends the escort. */
     if(out.ended) ft_world_escort_stop(&app->world);
 
-    if(out.orbs > 0) {
-        app->world.stats.orbs = (int16_t)(app->world.stats.orbs + out.orbs);
+    /* A reward goes in your pockets; whatever does not fit is said so. */
+    if(out.items > 0 && out.item < FT_ITEM_COUNT) {
+        uint8_t got = 0;
+        for(uint8_t i = 0; i < out.items; i++) {
+            if(ft_pockets_add(&app->world.pockets, (FtItemId)out.item)) got++;
+        }
+        char line[28];
+        if(got == out.items) {
+            snprintf(line, sizeof(line), "Got %u x %s!", out.items, ft_item_def(out.item)->name);
+        } else {
+            snprintf(line, sizeof(line), "Pockets full: %u lost", (unsigned)(out.items - got));
+        }
+        ft_toast(app, line);
         ft_sound_play(&app->sound, FT_SFX_LEVEL);
     }
 
     /* Anything a conversation changed is progress worth keeping even if the
      * walk home goes badly. */
-    if(out.orbs > 0 || out.follows || out.ended || out.leads || out.infrared) ft_save_now(app);
+    if(out.items > 0 || out.follows || out.ended || out.leads || out.infrared) ft_save_now(app);
 
     /* Heard it. Next time they say something shorter, and different. */
     if(app->talk_again[app->talk_slot] < 250u) app->talk_again[app->talk_slot]++;
@@ -1423,45 +1418,9 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
     }
 
     if(app->mode == FT_MODE_ORBS) {
-        static const FtLevelChoice CHOICE[FT_UP_COUNT] = {
-            FT_UP_CHARGE, FT_UP_RAM, FT_UP_POWER};
-
-        switch(event->key) {
-        case InputKeyUp:
-            app->orb_item =
-                (uint8_t)((app->orb_item + FT_UP_COUNT - 1u) % FT_UP_COUNT);
-            break;
-        case InputKeyDown:
-            app->orb_item = (uint8_t)((app->orb_item + 1u) % FT_UP_COUNT);
-            break;
-
-        case InputKeyOk:
-        case InputKeyRight:
-            /* A capped stat, or an empty hand, simply refuses: there is no
-             * way to lose an orb by pressing the wrong row. */
-            if(ft_orb_spend(&app->world.stats, CHOICE[app->orb_item])) {
-                ft_sound_play(&app->sound, FT_SFX_LEVEL);
-                ft_save_now(app);
-            }
-            break;
-
-        case InputKeyLeft:
-            /* And back out again, at any time. This is the whole point: a
-             * build you are stuck with is one you had to be told about. */
-            if(ft_orb_refund(&app->world.stats, CHOICE[app->orb_item])) {
-                ft_sound_play(&app->sound, FT_SFX_DENY);
-                ft_save_now(app);
-            }
-            break;
-
-        case InputKeyBack:
-        default:
-            /* Leaving with orbs in hand is fine — they keep, and the pause
-             * menu says how many. The screen used to refuse to close, which
-             * made a level-up a modal interruption. */
-            app->mode = app->orbs_from_pause ? FT_MODE_PAUSE : FT_MODE_OVERWORLD;
-            break;
-        }
+        /* Orbs are switched off: this is the Status page, and any key closes
+         * it. The spending rules stay in ft_progress for when they come back. */
+        app->mode = app->orbs_from_pause ? FT_MODE_PAUSE : FT_MODE_OVERWORLD;
         return;
     }
 

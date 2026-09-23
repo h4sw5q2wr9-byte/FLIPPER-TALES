@@ -1327,7 +1327,7 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, int16_t orbs, bool in_bat
         FT_SPRITE_ICON_SAVE, FT_SPRITE_ICON_HELP, FT_SPRITE_ICON_GEAR,   FT_SPRITE_ICON_QUIT,
     };
     static const char* const NAMES[FT_PAUSE_COUNT] = {
-        "Pockets", "Orbs", "Quests", "Field guide", "Save", "How to play", "Settings", "Quit",
+        "Pockets", "Status", "Quests", "Field guide", "Save", "How to play", "Settings", "Quit",
     };
 
     canvas_clear(canvas);
@@ -1353,8 +1353,9 @@ void ft_render_pause(Canvas* canvas, uint8_t selected, int16_t orbs, bool in_bat
     const char* name = NAMES[selected < FT_PAUSE_COUNT ? selected : 0];
     switch(selected) {
     case FT_PAUSE_ORBS:
-        if(in_battle) snprintf(label, sizeof(label), "Orbs - not in a fight");
-        else snprintf(label, sizeof(label), "Orbs: %d", (int)orbs);
+        (void)orbs;
+        (void)in_battle;
+        snprintf(label, sizeof(label), "Status");
         break;
     case FT_PAUSE_SAVE:
         snprintf(label, sizeof(label), "Save - at a terminal");
@@ -1486,6 +1487,29 @@ void ft_render_practice(Canvas* canvas, const FtPractice* p) {
 
 /* The level-up screen. Three stats, what each is worth, and what it would
  * become — a choice nobody can make from the stat's name alone. */
+void ft_render_status(Canvas* canvas, const FtStats* stats, const char* name, bool infrared) {
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_set_font(canvas, FontSecondary);
+
+    draw_centred(canvas, FT_SCREEN_W / 2, 8, name ? name : "STATUS");
+    canvas_draw_line(canvas, 0, 11, FT_SCREEN_W - 1, 11);
+
+    char row[28];
+    snprintf(row, sizeof(row), "Level %d", (int)stats->level);
+    canvas_draw_str(canvas, 6, 22, row);
+    snprintf(row, sizeof(row), "XP %d/%d", (int)stats->xp, FT_XP_PER_LEVEL);
+    canvas_draw_str(canvas, 64, 22, row);
+
+    snprintf(row, sizeof(row), "HP %d/%d", (int)stats->charge, (int)stats->charge_max);
+    canvas_draw_str(canvas, 6, 34, row);
+    snprintf(row, sizeof(row), "MP %d/%d", (int)stats->ram, (int)stats->ram_max);
+    canvas_draw_str(canvas, 64, 34, row);
+
+    canvas_draw_str(canvas, 6, 46, infrared ? "Sub-GHz NFC Infrared" : "Sub-GHz  NFC");
+    draw_centred(canvas, FT_SCREEN_W / 2, 61, "A level heals you.");
+}
+
 void ft_render_orbs(Canvas* canvas, const FtStats* stats, uint8_t selected) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);

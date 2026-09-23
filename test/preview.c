@@ -437,6 +437,18 @@ int main(void) {
         total_clipped += ft_stub_canvas_clipped(canvas);
         printf("  orbs capped         %s\n",
                ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
+
+        /* The Status page that stands in for them, at its widest. */
+        FtStats ss;
+        ft_stats_init(&ss);
+        ss.level = 12;
+        ss.xp = 99;
+        ss.charge = 9;
+        ft_render_status(canvas, &ss, "Lunchbox", true);
+        ft_stub_canvas_write_pbm(canvas, "preview/89_status.pbm");
+        total_clipped += ft_stub_canvas_clipped(canvas);
+        printf("  status              %s\n",
+               ft_stub_canvas_clipped(canvas) ? "CLIPPED" : "ok");
     }
 
     {

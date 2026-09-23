@@ -799,6 +799,18 @@ which meant the level never moved, the chapter cap never bit, and every enemy
 was worth full XP forever. The anti-farming taper only started working once
 that was fixed.
 
+#### Orbs are switched off, for now
+
+After limiting Power, a player still found the game falling over and asked
+for orbs to go. They are off: a level is a full heal and nothing else, which
+is exactly the loadout every balance table here was measured at. Quest
+rewards are supplies instead (the Keeper and Coll two Rations each, Ma Rivet
+two Cells), into your pockets. The pause grid's orb icon is a **Status**
+page — your name, level, XP, HP, MP and what you can attack with. A save
+made while orbs were on comes back with every orb taken out. The spending
+rules (and the Power limit below) are still in `ft_progress` for when orbs
+return; the practice arena still uses them to build a stronger opponent.
+
 #### Power has a limit
 
 A player put every orb into Power and one-shot the whole of Chapter 1, Echo

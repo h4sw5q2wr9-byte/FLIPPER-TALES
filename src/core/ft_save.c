@@ -248,13 +248,13 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach, bool* sound)
 
     w->stats = d->stats;
 
-    /* Power is limited now (ft_power_orbs_allowed). A save made before the
-     * limit may have more in it than its level allows: those orbs come back
-     * to you, to spend on HP or MP, rather than the save being refused. */
-    while(w->stats.spent[FT_UP_POWER] > 0u &&
-          (int16_t)w->stats.spent[FT_UP_POWER] > ft_power_orbs_allowed(&w->stats)) {
-        if(!ft_orb_refund(&w->stats, FT_UP_POWER)) break;
+    /* Orbs are switched off for now. A save made while they were on is
+     * taken back to the starting stats every fight was balanced at: every
+     * orb comes out of every stat, and the ones in hand go too. */
+    for(uint8_t c = 0; c < FT_UP_COUNT; c++) {
+        while(ft_orb_refund(&w->stats, (FtLevelChoice)c)) {}
     }
+    w->stats.orbs = 0;
 
     w->guide = d->guide;
     w->quests = d->quests;
