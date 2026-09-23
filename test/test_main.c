@@ -3550,7 +3550,7 @@ static void test_quests(void) {
 
     /* Talking changes nothing on its own — which is what lets a player back
      * out of a question they did not mean to open. */
-    FtTalk t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
+    FtTalk t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN, 0);
     CHECK(t.ask, "the offer is a question");
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_UNKNOWN);
 
@@ -3563,7 +3563,7 @@ static void test_quests(void) {
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
 
     /* And talking again does not re-take it. */
-    t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN);
+    t = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN, 0);
     CHECK(!t.ask, "an accepted quest stops asking");
     ft_quest_answer(&q, FT_QUEST_CLEAN_RUN, true);
     CHECK_EQ(ft_quest_state(&q, FT_QUEST_CLEAN_RUN), FT_QUEST_ACTIVE);
@@ -3621,7 +3621,7 @@ static void test_quests(void) {
             ft_quests_init(&say);
             say.state[qi] = st;
 
-            const FtTalk c = ft_quest_talk(&say, (FtQuestId)qi);
+            const FtTalk c = ft_quest_talk(&say, (FtQuestId)qi, 0);
             CHECK(c.count > 0 && c.count <= FT_TALK_MAX_BEATS,
                   "quest %u state %u has beats (%u)", qi, st, c.count);
             CHECK(c.speaker && c.speaker[0], "quest %u state %u names a speaker",
@@ -3656,7 +3656,7 @@ static void test_quests(void) {
         FtQuests fresh;
         ft_quests_init(&fresh);
 
-        const FtTalk c = ft_quest_talk(&fresh, FT_QUEST_CLEAN_RUN);
+        const FtTalk c = ft_quest_talk(&fresh, FT_QUEST_CLEAN_RUN, 0);
         bool you = false, them = false;
         for(uint8_t i = 0; i < c.count; i++) {
             if(c.beats[i].who == FT_SAY_YOU) you = true;
@@ -4280,9 +4280,27 @@ static void walk(FtWorld* w, int8_t dx, int8_t dy) {
 
 /* Plays the app's part in the overworld: steps the world and takes an exit
  * the moment one is stood on, which is what ft_overworld_update does. */
+/* Set if Hale is ever seen standing on the pit's tile. He knows where it is
+ * before you do; walking across it on the way to it was the "one tile too
+ * far" a player saw. */
+static bool g_hale_on_pit = false;
+
 static void drive_tick(FtWorld* w, int8_t dx, int8_t dy, bool* revealed_seen) {
     ft_world_update(w, dx, dy, 10);
     if(revealed_seen && w->revealed_now) *revealed_seen = true;
+
+    if(w->room == FT_ROOM_APPROACH && ft_world_hale_here(w)) {
+        const FtRoom* ap = ft_room(FT_ROOM_APPROACH);
+        for(uint8_t i = 0; i < ap->exit_count; i++) {
+            const FtExit* x = &ap->exits[i];
+            if(x->reveal == 0u) continue;
+            if(w->hale_mv.tx == x->tx && w->hale_mv.ty == x->ty) g_hale_on_pit = true;
+            if((int32_t)w->hale_mv.tx + w->hale_mv.dx == x->tx &&
+               (int32_t)w->hale_mv.ty + w->hale_mv.dy == x->ty) {
+                g_hale_on_pit = true;
+            }
+        }
+    }
 
     if(w->arrived) {
         const FtExit* x = ft_world_exit_under(w);
@@ -4292,28 +4310,57 @@ static void drive_tick(FtWorld* w, int8_t dx, int8_t dy, bool* revealed_seen) {
     }
 }
 
-/* One greedy step toward a tile — along the longer axis, or the shorter one
- * when that is blocked. The ground Hale walks over is open, so this is
- * enough to follow him, which is the thing being tested: if a player who
- * does nothing cleverer than walk toward him cannot get to the pit, neither
- * can a real one. */
+/* One step toward a tile along a shortest walkable path, the way a player
+ * who can see the room would walk it. It routes round walls, trunks and
+ * anybody standing still — Hale at his post or by the pit, Coll — but not
+ * round the target itself, which may be a person you are walking up to. */
 static void chase(const FtWorld* w, int32_t tx, int32_t ty, int8_t* dx, int8_t* dy) {
+    static uint16_t dist[1024];
+    static uint16_t queue[1024];
+
     const FtMap* m = ft_world_map(w);
-    const int32_t ex = tx - (int32_t)w->mv.tx, ey = ty - (int32_t)w->mv.ty;
-    const int8_t ax = (int8_t)((ex > 0) - (ex < 0));
-    const int8_t ay = (int8_t)((ey > 0) - (ey < 0));
-
-    const bool x_ok = ax && !ft_tile_solid(ft_map_tile(m, (int32_t)w->mv.tx + ax, w->mv.ty));
-    const bool y_ok = ay && !ft_tile_solid(ft_map_tile(m, w->mv.tx, (int32_t)w->mv.ty + ay));
-
+    const int32_t W = (int32_t)m->w, H = (int32_t)m->h;
     *dx = 0;
     *dy = 0;
-    if(abs_i32(ex) >= abs_i32(ey)) {
-        if(x_ok) *dx = ax;
-        else if(y_ok) *dy = ay;
-    } else {
-        if(y_ok) *dy = ay;
-        else if(x_ok) *dx = ax;
+    if(W * H > 1024 || tx < 0 || ty < 0 || tx >= W || ty >= H) return;
+
+    for(int32_t i = 0; i < W * H; i++) dist[i] = 0xFFFFu;
+    uint32_t head = 0, tail = 0;
+    dist[ty * W + tx] = 0;
+    queue[tail++] = (uint16_t)(ty * W + tx);
+
+    static const int8_t STEP[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    while(head < tail) {
+        const int32_t at = queue[head++];
+        const int32_t ax = at % W, ay = at / W;
+        for(int k = 0; k < 4; k++) {
+            const int32_t nx = ax + STEP[k][0], ny = ay + STEP[k][1];
+            if(nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            if(dist[ny * W + nx] != 0xFFFFu) continue;
+            if(ft_tile_solid(ft_map_tile(m, nx, ny))) continue;
+
+            /* Somebody standing still is in the way; walk round them. */
+            if(ft_world_hale_here(w) &&
+               (w->hale == FT_HALE_POST || w->hale == FT_HALE_WAIT) &&
+               (int32_t)w->hale_mv.tx == nx && (int32_t)w->hale_mv.ty == ny) {
+                continue;
+            }
+
+            dist[ny * W + nx] = (uint16_t)(dist[at] + 1u);
+            queue[tail++] = (uint16_t)(ny * W + nx);
+        }
+    }
+
+    const int32_t px = w->mv.tx, py = w->mv.ty;
+    uint16_t best = dist[py * W + px];
+    for(int k = 0; k < 4; k++) {
+        const int32_t nx = px + STEP[k][0], ny = py + STEP[k][1];
+        if(nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        if(dist[ny * W + nx] < best) {
+            best = dist[ny * W + nx];
+            *dx = STEP[k][0];
+            *dy = STEP[k][1];
+        }
     }
 }
 
@@ -4378,7 +4425,9 @@ static void test_hale(void) {
           "his post is open ground");
     CHECK(!ft_tile_solid(ft_map_tile(ft_room(FT_ROOM_APPROACH)->map, side_x, side_y)),
           "so is the tile beside the pit");
-    CHECK_EQ(abs_i32((int32_t)side_x - pit->tx) + abs_i32((int32_t)side_y - pit->ty), 1);
+    /* Beside it — a diagonal counts: he has stepped aside to let you in. */
+    CHECK(abs_i32((int32_t)side_x - pit->tx) <= 1 && abs_i32((int32_t)side_y - pit->ty) <= 1,
+          "he waits right by the hole");
 
     FtWorld w;
     ft_world_init(&w);
@@ -4404,6 +4453,8 @@ static void test_hale(void) {
     CHECK(yes.leads, "saying yes to Coll sends Hale");
     ft_world_hale_lead(&w);
     CHECK_EQ(w.hale, FT_HALE_LEAD);
+    CHECK(w.bark_who == FT_BARK_BY_HALE && w.bark == FT_BARK_HALE_SET_OFF,
+          "and he says so, out loud, as he sets off");
     CHECK(!ft_world_hale_ahead(&w), "and on the move he is not in your way");
 
     /* --- he waits for you --- */
@@ -4419,8 +4470,13 @@ static void test_hale(void) {
 
     /* --- follow him --- */
     bool seen = false;
+    g_hale_on_pit = false;
     CHECK(follow_hale(&w, &seen), "walking after him finds the pit");
+    CHECK(!g_hale_on_pit, "without him ever walking over it");
+    CHECK(w.bark_who == FT_BARK_BY_HALE && w.bark == FT_BARK_HALE_FOUND,
+          "and he tells you when he has found it");
     CHECK(seen, "and the world says so, once, for the sound");
+    idle(&w, 40); /* he steps aside after it opens */
     CHECK_EQ(w.room, FT_ROOM_APPROACH);
     CHECK_EQ(w.hale, FT_HALE_WAIT);
     CHECK_EQ(w.hale_mv.tx, side_x);
@@ -4428,7 +4484,7 @@ static void test_hale(void) {
     CHECK(ft_world_pit_at(&w, pit->tx, pit->ty), "the hole is there to draw");
 
     /* Beside it, he is still again, so he is solid and you can talk. */
-    const FtTalk by = ft_quest_hale_talk(&w.quests, true, true);
+    const FtTalk by = ft_quest_hale_talk(&w.quests, true, true, 0);
     CHECK(by.speaker && strcmp(by.speaker, "Hale") == 0, "it is Hale talking");
     CHECK(!ft_quest_hale_answer(&w.quests, true, true).leads,
           "and he has nowhere left to take you");
@@ -4577,7 +4633,7 @@ static void test_hale(void) {
             ft_quests_init(&q);
             q.state[FT_QUEST_WREN] = st;
 
-            const FtTalk c = ft_quest_hale_talk(&q, (k & 1u) != 0u, (k & 2u) != 0u);
+            const FtTalk c = ft_quest_hale_talk(&q, (k & 1u) != 0u, (k & 2u) != 0u, 0);
             CHECK(c.count > 0 && c.count <= FT_TALK_MAX_BEATS,
                   "Hale says something in state %u/%u", st, k);
             for(uint8_t i = 0; i < c.count; i++) {
@@ -4590,6 +4646,113 @@ static void test_hale(void) {
             }
         }
     }
+}
+
+/* Every line anybody can say, including every repeat, fits and is spoken. */
+static void check_talk(const FtTalk* c, const char* who, unsigned st, unsigned again) {
+    CHECK(c->count > 0 && c->count <= FT_TALK_MAX_BEATS, "%s %u/%u has beats (%u)", who,
+          st, again, c->count);
+    CHECK(c->speaker && c->speaker[0] && strlen(c->speaker) <= FT_TUTORIAL_MAX_CHARS,
+          "%s %u/%u is named", who, st, again);
+    CHECK(c->voice < FT_VOICE_COUNT, "%s %u/%u has a voice", who, st, again);
+
+    for(uint8_t i = 0; i < c->count; i++) {
+        CHECK(c->beats[i].a && strlen(c->beats[i].a) <= FT_TUTORIAL_MAX_CHARS,
+              "%s %u/%u beat %u fits: \"%s\"", who, st, again, i,
+              c->beats[i].a ? c->beats[i].a : "");
+        if(c->beats[i].b) {
+            CHECK(strlen(c->beats[i].b) <= FT_TUTORIAL_MAX_CHARS,
+                  "%s %u/%u beat %u line b fits: \"%s\"", who, st, again, i,
+                  c->beats[i].b);
+        }
+    }
+    if(c->ask) {
+        CHECK(c->yes && strlen(c->yes) <= 10u && c->no && strlen(c->no) <= 10u,
+              "%s %u/%u answers fit", who, st, again);
+    }
+}
+
+static void test_talk_repeats(void) {
+    section("people do not repeat themselves");
+
+    for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+        for(uint8_t again = 0; again < 7u; again++) {
+            FtQuests q;
+            ft_quests_init(&q);
+            q.state[FT_QUEST_CLEAN_RUN] = st;
+            q.state[FT_QUEST_WREN] = st;
+
+            FtTalk c = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN, again);
+            check_talk(&c, "Keeper", st, again);
+            c = ft_quest_talk(&q, FT_QUEST_WREN, again);
+            check_talk(&c, "Coll", st, again);
+            c = ft_quest_wren_talk(&q, again);
+            check_talk(&c, "Wren", st, again);
+            for(uint8_t k = 0; k < 4u; k++) {
+                c = ft_quest_hale_talk(&q, (k & 1u) != 0u, (k & 2u) != 0u, again);
+                check_talk(&c, "Hale", st, again);
+            }
+        }
+    }
+
+    /* The second time round is not the first scene again. Checked where it
+     * matters most: somebody you will talk to over and over. */
+    FtQuests q;
+    ft_quests_init(&q);
+    const FtTalk first = ft_quest_hale_talk(&q, false, false, 0);
+    const FtTalk second = ft_quest_hale_talk(&q, false, false, 1);
+    const FtTalk third = ft_quest_hale_talk(&q, false, false, 2);
+    CHECK(first.beats != second.beats, "Hale says something new the second time");
+    CHECK(second.beats != third.beats, "and something else the third");
+    CHECK(strcmp(first.beats[2].a, "I do the standing.") == 0,
+          "and the first time is still the joke that landed");
+
+    /* An offer turned down is offered again, shorter — and it is still a
+     * question, or you could never say yes. */
+    const FtTalk again = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN, 1);
+    const FtTalk once = ft_quest_talk(&q, FT_QUEST_CLEAN_RUN, 0);
+    CHECK(again.ask, "asking again is still asking");
+    CHECK(again.count < once.count, "and shorter (%u vs %u)", again.count, once.count);
+
+    /* Everything said out loud fits in a bubble over somebody's head. */
+    for(uint8_t b = 0; b < FT_BARK_COUNT; b++) {
+        const char* line = ft_quest_bark(b);
+        CHECK(line[0] != '\0', "bark %u says something", b);
+        CHECK(strlen(line) <= FT_BARK_MAX_CHARS, "bark %u fits a bubble: \"%s\"", b, line);
+    }
+
+    /* Wren does not stop talking on the walk home, and does not say the same
+     * thing twice in a row. */
+    {
+        FtWorld k;
+        ft_world_init(&k);
+        ft_world_enter(&k, FT_ROOM_HOLLOW, 3, 3);
+        ft_world_escort_start(&k);
+        CHECK_EQ(k.bark_who, FT_BARK_BY_WREN);
+        CHECK_EQ(k.bark, FT_BARK_WREN_START);
+
+        uint8_t said[4];
+        uint8_t n = 0;
+        for(int s = 0; s < 4000 && n < 4u; s++) {
+            const uint16_t before = k.bark_ms;
+            ft_world_update(&k, 0, 0, 10);
+            if(k.bark_ms > before && k.bark >= FT_BARK_WREN_CHATTER) said[n++] = k.bark;
+        }
+        CHECK_EQ(n, 4);
+        for(uint8_t i = 1; i < n; i++) CHECK(said[i] != said[i - 1], "a new line each time");
+
+        /* And stops once she is home. */
+        ft_world_escort_stop(&k);
+        k.bark_ms = 0;
+        for(int s = 0; s < 1000; s++) ft_world_update(&k, 0, 0, 10);
+        CHECK_EQ(k.bark_ms, 0);
+    }
+
+    /* The voices are who they say they are. */
+    CHECK_EQ(ft_quest_talk(&q, FT_QUEST_CLEAN_RUN, 0).voice, FT_VOICE_KEEPER);
+    CHECK_EQ(ft_quest_talk(&q, FT_QUEST_WREN, 0).voice, FT_VOICE_COLL);
+    CHECK_EQ(ft_quest_hale_talk(&q, false, false, 0).voice, FT_VOICE_HALE);
+    CHECK_EQ(ft_quest_wren_talk(&q, 0).voice, FT_VOICE_WREN);
 }
 
 /* Long grass is somewhere to wade, not somewhere things happen. */
@@ -4722,7 +4885,7 @@ static void test_weldhome(void) {
 
     CHECK(!j.escort, "nobody with you yet");
 
-    const FtTalk hers = ft_quest_wren_talk(&j.quests);
+    const FtTalk hers = ft_quest_wren_talk(&j.quests, 0);
     CHECK(hers.speaker && strcmp(hers.speaker, "Warden Coll") != 0,
           "she speaks for herself");
     CHECK_EQ(ft_quest_state(&j.quests, FT_QUEST_WREN), FT_QUEST_ACTIVE);
@@ -4773,13 +4936,54 @@ static void test_weldhome(void) {
     ft_world_escort_stop(&j);
     CHECK(!j.escort, "and she goes inside");
 
+    /* --- and she stays home --- */
+    /* She is on the porch in Weldhome now, and not hiding in the cave any
+     * more. The first version left her in the cave for good: go back down
+     * after bringing her home and there she was, telling you to go away. */
+    {
+        const FtRoom* home = ft_room(GATE);
+        int at_home = -1;
+        for(uint8_t i = 0; i < home->ent_count; i++) {
+            if(home->ents[i].kind == FT_ENT_WREN) at_home = (int)i;
+        }
+        CHECK(at_home >= 0, "there is a Wren at home");
+
+        CHECK(ft_world_wren_present(&j, (uint8_t)at_home), "and it is her, once she is home");
+
+        FtWorld cave = j;
+        ft_world_enter(&cave, JUNCTION, 3, 3);
+        for(uint8_t i = 0; i < ej->ent_count; i++) {
+            if(ej->ents[i].kind == FT_ENT_WREN) {
+                CHECK(!ft_world_wren_present(&cave, i), "the cave is empty after");
+            }
+        }
+
+        /* Before she is home, it is the other way round. */
+        FtWorld before;
+        ft_world_init(&before);
+        ft_quest_answer(&before.quests, FT_QUEST_WREN, true);
+        ft_world_enter(&before, GATE, 1, 5);
+        CHECK(!ft_world_wren_present(&before, (uint8_t)at_home), "she is not home yet");
+
+        /* Lose her on the way — found, following, then not — and she is back
+         * where you found her, and she will come again. */
+        ft_quest_advance(&before.quests, FT_QUEST_WREN, FT_QUEST_READY);
+        ft_world_enter(&before, JUNCTION, 3, 3);
+        bool waiting = false;
+        for(uint8_t i = 0; i < ej->ent_count; i++) {
+            if(ej->ents[i].kind == FT_ENT_WREN && ft_world_wren_present(&before, i)) waiting = true;
+        }
+        CHECK(waiting, "lost on the way, she is back in the cave");
+        CHECK(ft_quest_wren_answer(&before.quests).follows, "and follows again when asked");
+    }
+
     /* Wren's own lines fit too, in every state she can be talked to in. */
     for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
         FtQuests k;
         ft_quests_init(&k);
         k.state[FT_QUEST_WREN] = st;
 
-        const FtTalk kt = ft_quest_wren_talk(&k);
+        const FtTalk kt = ft_quest_wren_talk(&k, 0);
         CHECK(kt.count > 0, "Wren state %u says something", st);
         CHECK(kt.speaker && strlen(kt.speaker) <= FT_TUTORIAL_MAX_CHARS,
               "and is named: \"%s\"", kt.speaker ? kt.speaker : "");
@@ -4790,10 +4994,11 @@ static void test_weldhome(void) {
                   kt.beats[i].a ? kt.beats[i].a : "");
         }
 
-        /* Only the right state frees her. */
+        /* Only the right states free her: when Coll has asked, and when
+         * she was found and then lost on the way home. */
         const FtQuestOutcome o = ft_quest_wren_answer(&k);
-        CHECK(o.follows == (st == (uint8_t)FT_QUEST_ACTIVE),
-              "state %u frees her only when Coll has asked", st);
+        CHECK(o.follows == (st == (uint8_t)FT_QUEST_ACTIVE || st == (uint8_t)FT_QUEST_READY),
+              "state %u frees her only when she is waiting to be", st);
     }
 
     /* She does not walk off with somebody who has not been asked to fetch
@@ -4979,10 +5184,39 @@ static void test_items(void) {
     CHECK(tries < 30, "a tree bears within a few visits (%d)", tries);
     w.facing = FT_FACE_RIGHT;
 
-    CHECK_EQ(ft_world_pick_ahead(&w), at);
-    CHECK_EQ(ft_world_pick(&w, (uint8_t)at), (FtItemId)first->ents[at].roster);
-    CHECK_EQ(ft_pockets_used(&w.pockets), 1);
+    /* Facing the trunk finds it; a tree is not a cache you pick by facing. */
+    CHECK_EQ(ft_world_tree_near(&w), at);
     CHECK_EQ(ft_world_pick_ahead(&w), -1);
+
+    /* So does standing under its crown, facing any way at all: that is the
+     * point of shaking a tree rather than picking an apple off it. */
+    {
+        FtWorld under = w;
+        under.mv.tx = first->ents[at].tx;
+        under.mv.ty = (uint8_t)(first->ents[at].ty - 1u);
+        under.facing = FT_FACE_UP;
+        CHECK_EQ(ft_world_tree_near(&under), at);
+        CHECK_EQ(ft_map_tile(ft_world_map(&under), under.mv.tx, under.mv.ty), FT_TILE_LEAF);
+
+        /* And the tiles either side of the trunk are ground now, not
+         * leaves: the crown sits on top of the trunk rather than hanging
+         * down beside it. */
+        CHECK(ft_map_tile(ft_world_map(&under), (int32_t)first->ents[at].tx - 1,
+                          first->ents[at].ty) != FT_TILE_LEAF,
+              "nothing hangs down beside the trunk");
+    }
+
+    CHECK_EQ(ft_world_shake(&w, (uint8_t)at), (FtItemId)first->ents[at].roster);
+    CHECK_EQ(ft_pockets_used(&w.pockets), 1);
+    CHECK(w.shake_ms > 0u, "and the crown sways");
+    CHECK(ft_world_shake_offset(&w, first->ents[at].tx, (int32_t)first->ents[at].ty - 1) != 0,
+          "the crown, that is");
+    CHECK_EQ(ft_world_shake_offset(&w, first->ents[at].tx, first->ents[at].ty), 0);
+
+    /* Shaking it again this visit gets you nothing: the luck was rolled
+     * when you walked in, so mashing OK is not a second go. */
+    CHECK_EQ(ft_world_shake(&w, (uint8_t)at), FT_ITEM_COUNT);
+    CHECK_EQ(ft_pockets_used(&w.pockets), 1);
     CHECK(ft_world_entity_gone(&w, (uint8_t)at), "the tree is bare");
 
     /* A tree comes back when you walk the room again; a cache does not. That
@@ -5272,6 +5506,7 @@ int main(void) {
     test_weldhome();
     test_hale();
     test_long_grass();
+    test_talk_repeats();
     test_items();
     test_audio();
     test_notice();

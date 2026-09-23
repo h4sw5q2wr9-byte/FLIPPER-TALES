@@ -24,5 +24,11 @@ void ft_overworld_toast(Canvas* canvas, const char* text);
  * separately meant threading a callback just to ask the last question. */
 void ft_overworld_render(Canvas* canvas, const FtWorld* w);
 
+/* The same room, framed for a conversation with whoever stands on (tx, ty):
+ * the camera sits between the two of you and a little low, so you are both
+ * in the top half of the screen above the talk box. No banner and no
+ * remarks over heads — the box is doing the talking. */
+void ft_overworld_render_talk(Canvas* canvas, const FtWorld* w, int32_t tx, int32_t ty);
+
 
 #endif /* FT_OVERWORLD_H */

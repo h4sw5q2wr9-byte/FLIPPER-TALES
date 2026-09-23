@@ -91,8 +91,21 @@ typedef struct {
 
 #define FT_TALK_MAX_BEATS 8
 
+/* Whose voice the text types out in. Every character gets a short blip of
+ * their own pitch as their words appear, the way the genre has always done
+ * it — a line with no sound under it reads like a sign. */
+typedef enum {
+    FT_VOICE_KEEPER = 0,
+    FT_VOICE_COLL,
+    FT_VOICE_HALE,
+    FT_VOICE_WREN,
+    FT_VOICE_YOU,
+    FT_VOICE_COUNT
+} FtVoice;
+
 typedef struct {
     const char*   speaker; /* their name, for the header */
+    FtVoice       voice;
     const FtBeat* beats;
     uint8_t       count;
 
@@ -105,13 +118,18 @@ typedef struct {
 
 /* What this quest's giver says right now. Pure: talking does not change
  * anything until the conversation is finished, which is what lets a player
- * back out of a question they did not mean to open. */
-FtTalk ft_quest_talk(const FtQuests* q, FtQuestId id);
+ * back out of a question they did not mean to open.
+ *
+ * `again` is how many times you have already talked to them about this.
+ * Zero gets the whole conversation; after that they say something short,
+ * and different each time round. Hearing a whole scene replayed word for
+ * word is what makes a person read as a sign. The app keeps the count, and
+ * resets it whenever the again==0 conversation changes (the story moved). */
+FtTalk ft_quest_talk(const FtQuests* q, FtQuestId id, uint8_t again);
 
-/* Talking to Wren herself, once the junction is clear. Her own function
- * because she is not the giver: the quest is Coll's, and Wren is the middle
- * of it. */
-FtTalk ft_quest_wren_talk(const FtQuests* q);
+/* Talking to Wren herself. Her own function because she is not the giver:
+ * the quest is Coll's, and Wren is the middle of it. */
+FtTalk ft_quest_wren_talk(const FtQuests* q, uint8_t again);
 
 /* What a finished conversation did. */
 typedef struct {
@@ -130,8 +148,36 @@ FtQuestOutcome ft_quest_wren_answer(FtQuests* q);
  * you get where Coll sent you — so what he says depends on how far the Wren
  * quest has got, whether he has shown you the pit yet, and whether he is
  * standing beside it. Pure, like the others. */
-FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit);
+FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit, uint8_t again);
 FtQuestOutcome ft_quest_hale_answer(const FtQuests* q, bool pit_found, bool by_the_pit);
+
+/* ---- Barks --------------------------------------------------------------
+ *
+ * A line said out loud in the overworld, in a bubble over whoever said it,
+ * without stopping anything: no box, no button. Hale says where he is going
+ * while he walks you there, and Wren does not stop talking on the walk home,
+ * because she is a kid and you rescued her. The world decides when; the words
+ * live here with the rest of the words. */
+typedef enum {
+    FT_BARK_HALE_SET_OFF = 0,
+    FT_BARK_HALE_KEEP_UP,
+    FT_BARK_HALE_COMING,
+    FT_BARK_HALE_THIS_WAY,
+    FT_BARK_HALE_FOUND,
+    FT_BARK_HALE_WAIT,
+    FT_BARK_HALE_POSTED,
+    FT_BARK_HALE_TURNED,
+    FT_BARK_WREN_START,
+    FT_BARK_WREN_CHATTER, /* the first of FT_BARK_WREN_CHATTER_N, in order */
+} FtBark;
+
+#define FT_BARK_WREN_CHATTER_N 8
+#define FT_BARK_COUNT ((uint8_t)FT_BARK_WREN_CHATTER + FT_BARK_WREN_CHATTER_N)
+
+/* A bubble is narrower than the talk box: it sits over somebody's head. */
+#define FT_BARK_MAX_CHARS 18
+
+const char* ft_quest_bark(uint8_t bark);
 
 /* What the Courier says to themselves at a way they have no reason to take.
  * The world asks this before refusing a gated exit. */

@@ -254,13 +254,71 @@ void ft_overworld_toast(Canvas* canvas, const char* text) {
     canvas_draw_str(canvas, x + 4, y + 9, text);
 }
 
+/* Something said out loud, in a bubble over the head of whoever said it. The
+ * sprite is bottom-aligned on its tile, so its top is the tile's top at this
+ * zoom; the bubble sits above that, and is pushed back on screen rather than
+ * dropped when it would run off an edge — a remark you only see in the middle
+ * of the room is not much of a remark. */
+static void draw_bark(Canvas* c, const char* text, int32_t x, int32_t y) {
+    if(!text || !text[0]) return;
+
+    canvas_set_font(c, FontSecondary);
+    const int32_t tw = (int32_t)canvas_string_width(c, text);
+    const int32_t bw = tw + 6, bh = 11;
+
+    const int32_t head_x = x * FT_ZOOM + FT_SPRITE_W / 2;
+    const int32_t head_y = y * FT_ZOOM + (FT_TILE_PX * FT_ZOOM - FT_SPRITE_H);
+
+    int32_t bx = head_x - bw / 2;
+    int32_t by = head_y - bh - 3;
+    if(bx < 0) bx = 0;
+    if(bx + bw > FT_PANEL_W) bx = FT_PANEL_W - bw;
+    if(by < 0) by = 0;
+    if(by + bh + 3 > FT_PANEL_H) by = FT_PANEL_H - bh - 3;
+
+    canvas_set_color(c, ColorWhite);
+    canvas_draw_box(c, bx, by, (size_t)bw, (size_t)bh);
+    canvas_set_color(c, ColorBlack);
+    canvas_draw_frame(c, bx, by, (size_t)bw, (size_t)bh);
+    canvas_draw_str(c, bx + 3, by + 8, text);
+
+    /* The tail, pointing at whoever said it, when there is room for one. */
+    int32_t tx = head_x;
+    if(tx < bx + 2) tx = bx + 2;
+    if(tx > bx + bw - 3) tx = bx + bw - 3;
+    if(by + bh + 2 < FT_PANEL_H) {
+        canvas_set_color(c, ColorWhite);
+        canvas_draw_line(c, tx - 1, by + bh - 1, tx + 1, by + bh - 1);
+        canvas_set_color(c, ColorBlack);
+        canvas_draw_line(c, tx - 2, by + bh - 1, tx, by + bh + 1);
+        canvas_draw_line(c, tx + 2, by + bh - 1, tx, by + bh + 1);
+    }
+}
+
+static void render_world(Canvas* canvas, const FtWorld* w, FtPos focus, bool talking);
+
 void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
+    render_world(canvas, w, ft_stepper_pos(&w->mv, FT_STEP_MS), false);
+}
+
+void ft_overworld_render_talk(Canvas* canvas, const FtWorld* w, int32_t tx, int32_t ty) {
+    const FtPos you = ft_stepper_pos(&w->mv, FT_STEP_MS);
+
+    /* Half way between you, and six world pixels lower than that so the
+     * camera moves down and the pair of you move up the screen, clear of the
+     * box. Worked out so that even stacked one above the other, heads and
+     * feet both stay between the top of the panel and the top of the box. */
+    FtPos focus = {(you.x + tx * FT_TILE_PX) / 2, (you.y + ty * FT_TILE_PX) / 2 + 6};
+    render_world(canvas, w, focus, true);
+}
+
+static void render_world(Canvas* canvas, const FtWorld* w, FtPos focus, bool talking) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
 
     const FtMap*  map = ft_world_map(w);
     const FtPos   player = ft_stepper_pos(&w->mv, FT_STEP_MS);
-    const FtPos   cam = ft_map_camera(map, player);
+    const FtPos   cam = ft_map_camera(map, focus);
     const FtRoom* room = ft_room(w->room);
 
     /* One extra column and row so a half-scrolled tile still draws. */
@@ -334,21 +392,15 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
         /* Things you can take. Gone for the visit once picked, so a cleared
          * room looks cleared. */
-        if(room->ents[i].kind == FT_ENT_TREE || room->ents[i].kind == FT_ENT_CACHE) {
-            /* A cache that has been taken is gone; a tree is still a tree,
-             * it just has nothing on it — and you can see which from across
-             * the room, which is the whole point of walking over. */
-            const bool bearing = ft_world_bearing(w, i);
+        /* A tree draws nothing of its own: it is map tiles, and whether
+         * anything is up in it is something you find out by shaking it. */
+        if(room->ents[i].kind == FT_ENT_TREE) continue;
 
-            if(room->ents[i].kind == FT_ENT_CACHE && !bearing) continue;
+        if(room->ents[i].kind == FT_ENT_CACHE) {
+            /* A cache that has been taken is gone. */
+            if(!ft_world_bearing(w, i)) continue;
 
-            /* Nothing on the tree means nothing to draw: the tree itself
-             * is map tiles, and this is only what is growing in it. */
-            if(!bearing) continue;
-
-            draw_foe(canvas,
-                     (room->ents[i].kind == FT_ENT_CACHE) ? FT_SPRITE_CACHE
-                                                          : FT_SPRITE_FRUIT,
+            draw_foe(canvas, FT_SPRITE_CACHE,
                      (int32_t)room->ents[i].tx * FT_TILE_PX - cam.x,
                      (int32_t)room->ents[i].ty * FT_TILE_PX - cam.y);
             continue;
@@ -357,7 +409,7 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
         /* Wren, while she is still waiting to be found. Once she is walking
          * with you she is drawn from the world's escort stepper instead. */
         if(room->ents[i].kind == FT_ENT_WREN) {
-            if(w->escort) continue;
+            if(!ft_world_wren_present(w, i)) continue;
 
             draw_foe(canvas,
                      FT_SPRITE_KID,
@@ -447,15 +499,31 @@ void ft_overworld_render(Canvas* canvas, const FtWorld* w) {
              * showed up in every preview (which draws the whole map through
              * ft_map_art_index) and in no game, because the one pass that
              * draws leaves on the device skipped the lookup. */
+            /* A tree being shaken sways, crown only: the trunk stays put. */
+            const int32_t sway = ft_world_shake_offset(w, mx, my);
+
             blit_rows(canvas, FT_TILE_ART[ft_map_art_index(map, mx, my)], FT_TILE_PX,
-                      tx * FT_TILE_PX - off_x, ty * FT_TILE_PX - off_y, FT_TILE_PX);
+                      tx * FT_TILE_PX - off_x + sway, ty * FT_TILE_PX - off_y, FT_TILE_PX);
+        }
+    }
+
+    /* Somebody saying something out loud, over their head. */
+    if(!talking && w->bark_ms > 0u) {
+        const char* line = ft_quest_bark(w->bark);
+
+        if(w->bark_who == FT_BARK_BY_HALE && ft_world_hale_here(w)) {
+            const FtPos hp = ft_stepper_pos(&w->hale_mv, ft_world_hale_step_ms(w));
+            draw_bark(canvas, line, hp.x - cam.x, hp.y - cam.y);
+        } else if(w->bark_who == FT_BARK_BY_WREN && w->escort) {
+            const FtPos ep = ft_stepper_pos(&w->escort_mv, FT_STEP_MS);
+            draw_bark(canvas, line, ep.x - cam.x, ep.y - cam.y);
         }
     }
 
     /* Area name, in a cleared strip so it stays legible over any tile. It
      * retires after a couple of seconds rather than occupying the corner for
      * the whole visit. */
-    if(map->name && w->area_ms < FT_AREA_BANNER_MS) {
+    if(!talking && map->name && w->area_ms < FT_AREA_BANNER_MS) {
         canvas_set_font(canvas, FontSecondary);
         const int32_t w = (int32_t)canvas_string_width(canvas, map->name) + 6;
 

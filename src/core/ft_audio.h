@@ -40,6 +40,14 @@ typedef enum {
     FT_SFX_LOSE,
     FT_SFX_ENCOUNTER,  /* the wipe into a fight */
     FT_SFX_REVEAL,     /* something hidden, found */
+
+    /* Voices: one short blip per couple of letters as a line types out, a
+     * pitch per person. See FtVoice in ft_quest.h; same order. */
+    FT_SFX_VOICE_KEEPER,
+    FT_SFX_VOICE_COLL,
+    FT_SFX_VOICE_HALE,
+    FT_SFX_VOICE_WREN,
+    FT_SFX_VOICE_YOU,
     FT_SFX_COUNT
 } FtSfxId;
 

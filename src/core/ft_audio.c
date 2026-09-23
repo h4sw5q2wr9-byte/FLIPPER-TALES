@@ -79,6 +79,17 @@ static const FtNote SFX_REVEAL[] = {
     {G4, 60}, {E4, 60}, {C4, 90}, {FT_NOTE_REST, 60}, {G5, 110},
 };
 
+/* Voices. Each is a single short note — a blip, not a word — and they are
+ * spaced far enough apart in pitch that you can tell who is talking with
+ * your eyes shut. The Keeper is low and slow, Coll clipped, Hale in the
+ * middle, Wren high. You are two notes a fifth apart, which is the only one
+ * that is not a single pitch: you are the machine in the room. */
+static const FtNote VOICE_KEEPER[] = {{G4, 22}};
+static const FtNote VOICE_COLL[]   = {{C5, 14}};
+static const FtNote VOICE_HALE[]   = {{E5, 18}};
+static const FtNote VOICE_WREN[]   = {{A5, 14}};
+static const FtNote VOICE_YOU[]    = {{C5, 9}, {G5, 9}};
+
 #define CUE(a, v) {a, (uint8_t)(sizeof(a) / sizeof((a)[0])), v}
 
 static const struct {
@@ -106,6 +117,14 @@ static const struct {
     [FT_SFX_WIN]       = CUE(SFX_WIN, 75),
     [FT_SFX_LOSE]      = CUE(SFX_LOSE, 60),
     [FT_SFX_REVEAL]    = CUE(SFX_REVEAL, 70),
+
+    /* Under the text, not over it: a voice that is louder than a footstep
+     * but well under anything that happens to you. */
+    [FT_SFX_VOICE_KEEPER] = CUE(VOICE_KEEPER, 22),
+    [FT_SFX_VOICE_COLL]   = CUE(VOICE_COLL, 22),
+    [FT_SFX_VOICE_HALE]   = CUE(VOICE_HALE, 22),
+    [FT_SFX_VOICE_WREN]   = CUE(VOICE_WREN, 22),
+    [FT_SFX_VOICE_YOU]    = CUE(VOICE_YOU, 18),
     [FT_SFX_ENCOUNTER] = CUE(SFX_ENCOUNTER, 65),
 };
 

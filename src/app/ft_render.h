@@ -102,11 +102,13 @@ void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected);
 void ft_render_pockets(
     Canvas* canvas, const FtPockets* p, uint8_t selected, const FtStats* stats);
 
-/* One beat of a conversation. The header names whoever is speaking, which is
- * what makes the back-and-forth visible; `choosing` swaps the OK prompt for
- * the two answers. */
+/* One beat of a conversation, as a box across the bottom of the screen over
+ * whatever is already drawn — the app draws the world first, framed on the
+ * two of you. `shown` is how many characters have typed out so far; pass
+ * UINT16_MAX for the whole beat. `choosing` swaps the words for your two
+ * answers. */
 void ft_render_talk(
-    Canvas* canvas, const FtTalk* t, uint8_t beat, bool choosing, bool yes);
+    Canvas* canvas, const FtTalk* t, uint8_t beat, uint16_t shown, bool choosing, bool yes);
 
 void ft_render_battle(Canvas* canvas, const FtEncounter* e);
 

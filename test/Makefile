@@ -46,7 +46,7 @@ sim: $(BIN)/sim
 $(BIN)/preview: $(CORE_SRC) $(APP_DIR)/ft_render.c canvas_stub.c preview.c $(HDRS) | $(BIN)
 	$(CC) $(PREVIEW_CFLAGS) $(filter %.c,$^) -o $@
 
-$(BIN)/map_preview: $(CORE_SRC) $(APP_DIR)/ft_overworld.c canvas_stub.c map_preview.c $(HDRS) | $(BIN)
+$(BIN)/map_preview: $(CORE_SRC) $(APP_DIR)/ft_overworld.c $(APP_DIR)/ft_render.c canvas_stub.c map_preview.c $(HDRS) | $(BIN)
 	$(CC) $(PREVIEW_CFLAGS) $(filter %.c,$^) -o $@
 
 map: $(BIN)/map_preview

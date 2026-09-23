@@ -7,6 +7,7 @@
 #include <furi.h>
 #include <gui/gui.h>
 #include <input/input.h>
+#include <string.h>
 
 #include "../core/ft_encounter.h"
 #include "../core/ft_world.h"
@@ -104,6 +105,23 @@ typedef struct {
     bool      talk_is_wren;
     bool      talk_is_hale;
 
+    /* The typewriter: characters of this beat shown so far, and time banked
+     * toward the next one. Signed, because a full stop banks a pause. */
+    uint16_t talk_shown;
+    int32_t  talk_type_ms;
+
+    /* Whoever you are talking to stands here, for framing the camera. */
+    int32_t talk_fx, talk_fy;
+
+    /* How many times you have heard from each person since what they have
+     * to say last changed, so the second visit is not the first scene read
+     * back to you. Keyed on the again==0 conversation: when that changes,
+     * the story moved, and the count starts over. Not saved; a reload is a
+     * fair time for somebody to repeat themselves. */
+    uint8_t       talk_slot;
+    const FtBeat* talk_first[FT_VOICE_COUNT];
+    uint8_t       talk_again[FT_VOICE_COUNT];
+
     /* The New game confirmation. Defaults to No. */
     bool confirm_yes;
 
@@ -197,8 +215,9 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
         ft_render_pockets(canvas, &app->world.pockets, app->pocket_item,
                           &app->world.stats);
     } else if(app->mode == FT_MODE_TALK) {
-        ft_render_talk(canvas, &app->talk, app->talk_beat, app->talk_choosing,
-                       app->talk_yes);
+        ft_overworld_render_talk(canvas, &app->world, app->talk_fx, app->talk_fy);
+        ft_render_talk(canvas, &app->talk, app->talk_beat, app->talk_shown,
+                       app->talk_choosing, app->talk_yes);
     } else if(app->mode == FT_MODE_BATTLE) {
         ft_render_battle(canvas, &app->encounter);
     } else {
@@ -502,14 +521,85 @@ static bool ft_save_now(FlipperTales* app) {
     return ft_storage_save(&data);
 }
 
-/* Open whatever conversation has just been loaded into app->talk. */
-static void ft_start_talk(FlipperTales* app) {
+/* ---- Talking ----------------------------------------------------------- */
+
+/* The typewriter's pace. A character every 28ms is quick enough that nobody
+ * waits for it and slow enough to read as somebody saying it; the pauses
+ * after punctuation are what make it read as speech rather than as a
+ * printer. OK at any point shows the rest of the line at once. */
+#define FT_TALK_CHAR_MS  28
+#define FT_TALK_STOP_MS  150 /* after . ! ? */
+#define FT_TALK_COMMA_MS 70  /* after , */
+
+static uint16_t ft_beat_len(const FtBeat* b) {
+    return (uint16_t)((b->a ? strlen(b->a) : 0u) + (b->b ? strlen(b->b) : 0u));
+}
+
+static char ft_beat_char(const FtBeat* b, uint16_t i) {
+    const size_t la = b->a ? strlen(b->a) : 0u;
+    if(i < la) return b->a[i];
+    return b->b ? b->b[i - la] : ' ';
+}
+
+/* Pick the again count for the conversation this person would open with. */
+static uint8_t ft_talk_again(FlipperTales* app, const FtTalk* first) {
+    const uint8_t slot = (first->voice < FT_VOICE_COUNT) ? (uint8_t)first->voice : 0u;
+
+    if(app->talk_first[slot] != first->beats) {
+        app->talk_first[slot] = first->beats;
+        app->talk_again[slot] = 0;
+    }
+    app->talk_slot = slot;
+    return app->talk_again[slot];
+}
+
+static void ft_talk_beat_start(FlipperTales* app) {
+    app->talk_shown = 0;
+    app->talk_type_ms = 0;
+}
+
+/* Open whatever conversation has just been loaded into app->talk, with
+ * whoever is saying it standing on (tx, ty). */
+static void ft_start_talk(FlipperTales* app, int32_t tx, int32_t ty) {
     app->talk_beat = 0;
     app->talk_choosing = false;
     app->talk_yes = true;
+    app->talk_fx = tx;
+    app->talk_fy = ty;
+    ft_talk_beat_start(app);
 
     ft_sound_play(&app->sound, FT_SFX_TALK);
     app->mode = FT_MODE_TALK;
+}
+
+/* Type the words out, with a blip of the speaker's voice every other letter. */
+static void ft_talk_tick(FlipperTales* app, uint32_t dt_ms) {
+    if(app->talk_choosing || app->talk.count == 0u) return;
+
+    const FtBeat*  b = &app->talk.beats[app->talk_beat];
+    const uint16_t total = ft_beat_len(b);
+    if(app->talk_shown >= total) return;
+
+    const FtVoice voice = (b->who == FT_SAY_YOU) ? FT_VOICE_YOU : app->talk.voice;
+    const FtSfxId blip = (FtSfxId)((uint8_t)FT_SFX_VOICE_KEEPER + (uint8_t)voice);
+
+    app->talk_type_ms += (int32_t)dt_ms;
+    while(app->talk_type_ms >= FT_TALK_CHAR_MS && app->talk_shown < total) {
+        app->talk_type_ms -= FT_TALK_CHAR_MS;
+
+        const char ch = ft_beat_char(b, app->talk_shown);
+        app->talk_shown++;
+
+        if(ch != ' ' && (app->talk_shown % 2u) == 1u) ft_sound_play(&app->sound, blip);
+
+        /* A breath after the end of a sentence, a shorter one after a comma
+         * — unless it is the last thing on the line, where there is nothing
+         * to wait for. */
+        if(app->talk_shown < total) {
+            if(ch == '.' || ch == '!' || ch == '?') app->talk_type_ms -= FT_TALK_STOP_MS;
+            else if(ch == ',') app->talk_type_ms -= FT_TALK_COMMA_MS;
+        }
+    }
 }
 
 /* And apply what it did, once it is over. Nothing changes until here, so a
@@ -541,6 +631,9 @@ static void ft_finish_talk(FlipperTales* app, bool yes) {
      * walk home goes badly. */
     if(out.orbs > 0 || out.follows || out.ended || out.leads) ft_save_now(app);
 
+    /* Heard it. Next time they say something shorter, and different. */
+    if(app->talk_again[app->talk_slot] < 250u) app->talk_again[app->talk_slot]++;
+
     app->mode = FT_MODE_OVERWORLD;
 }
 
@@ -552,7 +645,7 @@ static void ft_overworld_ok(FlipperTales* app) {
         return;
     }
 
-    /* Something growing, or something somebody left. */
+    /* Something somebody left. */
     const int pick = ft_world_pick_ahead(&app->world);
     if(pick >= 0) {
         if(ft_pockets_full(&app->world.pockets)) {
@@ -576,22 +669,30 @@ static void ft_overworld_ok(FlipperTales* app) {
      * and she walks out with you. */
     const int kid = ft_world_wren_ahead(&app->world);
     if(kid >= 0) {
-        app->talk = ft_quest_wren_talk(&app->world.quests);
+        const FtQuests* q = &app->world.quests;
+        const FtTalk    first = ft_quest_wren_talk(q, 0);
+        const uint8_t   again = ft_talk_again(app, &first);
+        const FtEntity* e = &ft_room(app->world.room)->ents[kid];
+
+        app->talk = again ? ft_quest_wren_talk(q, again) : first;
         app->talk_is_wren = true;
         app->talk_is_hale = false;
-        ft_start_talk(app);
+        ft_start_talk(app, e->tx, e->ty);
         return;
     }
 
     /* Hale, while he is standing still: at his post, or beside the pit. */
     if(ft_world_hale_ahead(&app->world)) {
         const FtWorld* w = &app->world;
+        const bool     found = (w->revealed & FT_REVEAL_PIT) != 0u;
+        const bool     by = w->hale == (uint8_t)FT_HALE_WAIT;
+        const FtTalk   first = ft_quest_hale_talk(&w->quests, found, by, 0);
+        const uint8_t  again = ft_talk_again(app, &first);
 
-        app->talk = ft_quest_hale_talk(&w->quests, (w->revealed & FT_REVEAL_PIT) != 0u,
-                                       w->hale == (uint8_t)FT_HALE_WAIT);
+        app->talk = again ? ft_quest_hale_talk(&w->quests, found, by, again) : first;
         app->talk_is_wren = false;
         app->talk_is_hale = true;
-        ft_start_talk(app);
+        ft_start_talk(app, w->hale_mv.tx, w->hale_mv.ty);
         return;
     }
 
@@ -604,8 +705,36 @@ static void ft_overworld_ok(FlipperTales* app) {
         app->talk_quest = (FtQuestId)room->ents[who].roster;
         app->talk_is_wren = false;
         app->talk_is_hale = false;
-        app->talk = ft_quest_talk(&app->world.quests, app->talk_quest);
-        ft_start_talk(app);
+
+        const FtTalk  first = ft_quest_talk(&app->world.quests, app->talk_quest, 0);
+        const uint8_t again = ft_talk_again(app, &first);
+        app->talk = again ? ft_quest_talk(&app->world.quests, app->talk_quest, again) : first;
+        ft_start_talk(app, room->ents[who].tx, room->ents[who].ty);
+        return;
+    }
+
+    /* Under a tree, or facing its trunk: shake it and see. Whether anything
+     * is up there was rolled when you walked in, so shaking twice is not a
+     * second chance — come back later. */
+    const int tree = ft_world_tree_near(&app->world);
+    if(tree >= 0) {
+        if(ft_pockets_full(&app->world.pockets)) {
+            (void)ft_world_shake(&app->world, (uint8_t)tree);
+            ft_toast(app, "Pockets are full.");
+            ft_sound_play(&app->sound, FT_SFX_DENY);
+            return;
+        }
+
+        const FtItemId got = ft_world_shake(&app->world, (uint8_t)tree);
+        if(got < FT_ITEM_COUNT) {
+            char line[24];
+            snprintf(line, sizeof(line), "%s! Lucky.", ft_item_def(got)->name);
+            ft_toast(app, line);
+            ft_sound_play(&app->sound, FT_SFX_PICK);
+        } else {
+            ft_toast(app, "Nothing fell.");
+            ft_sound_play(&app->sound, FT_SFX_MOVE);
+        }
         return;
     }
 
@@ -955,6 +1084,8 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
     if(app->mode == FT_MODE_TALK) {
         if(app->talk_choosing) {
             switch(event->key) {
+            case InputKeyUp:
+            case InputKeyDown:
             case InputKeyLeft:
             case InputKeyRight:
                 app->talk_yes = !app->talk_yes;
@@ -975,9 +1106,13 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
 
         switch(event->key) {
         case InputKeyOk:
-            if(app->talk_beat + 1u < app->talk.count) {
+            /* Still typing: OK shows the rest of the line. A second OK
+             * moves on. */
+            if(app->talk_shown < ft_beat_len(&app->talk.beats[app->talk_beat])) {
+                app->talk_shown = ft_beat_len(&app->talk.beats[app->talk_beat]);
+            } else if(app->talk_beat + 1u < app->talk.count) {
                 app->talk_beat++;
-                ft_sound_play(&app->sound, FT_SFX_TALK);
+                ft_talk_beat_start(app);
             } else if(app->talk.ask) {
                 app->talk_choosing = true;
             } else {
@@ -1157,7 +1292,11 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
     if(app->show_help) return;
     if(app->mode == FT_MODE_PAUSE || app->mode == FT_MODE_PRACTICE) return;
     if(app->mode == FT_MODE_ORBS || app->mode == FT_MODE_CONFIRM) return;
-    if(app->mode == FT_MODE_QUESTS || app->mode == FT_MODE_TALK) return;
+    if(app->mode == FT_MODE_TALK) {
+        ft_talk_tick(app, dt_ms);
+        return;
+    }
+    if(app->mode == FT_MODE_QUESTS) return;
     if(app->mode == FT_MODE_POCKETS) return;
     if(app->mode == FT_MODE_DEBUG) return;
     if(app->mode == FT_MODE_GUIDE || app->mode == FT_MODE_GUIDE_ENTRY) return;
@@ -1282,6 +1421,15 @@ static FlipperTales* ft_alloc(void) {
     app->talk_is_wren = false;
     app->talk_is_hale = false;
     app->talk.count = 0;
+    app->talk_shown = 0;
+    app->talk_type_ms = 0;
+    app->talk_fx = 0;
+    app->talk_fy = 0;
+    app->talk_slot = 0;
+    for(uint8_t i = 0; i < FT_VOICE_COUNT; i++) {
+        app->talk_first[i] = NULL;
+        app->talk_again[i] = 0;
+    }
     app->chapters_done = 0;
     app->confirm_yes = false;
     ft_practice_init(&app->practice, furi_get_tick());

@@ -7,6 +7,7 @@
 #include "ft_maps.h"
 #include "../core/ft_world.h"
 #include "ft_overworld.h"
+#include "ft_render.h"
 #include "ft_tiles.h"
 
 typedef struct {
@@ -206,6 +207,98 @@ int main(void) {
             const int c = ft_stub_canvas_clipped(canvas);
             clipped_total += c;
             printf("  %-14s %s\n", shots[i].name, c ? "CLIPPED" : "ok");
+        }
+    }
+
+    /* Talking, over the world: Coll at her gate (above you), Hale beside
+     * the pit (beside you), half typed and whole, and a choice. And the
+     * remarks people make while they walk. */
+    {
+        FtWorld tw;
+        ft_world_init(&tw);
+        ft_world_enter(&tw, FT_ROOM_WELDHOME, 22, 5);
+        tw.facing = FT_FACE_UP;
+        tw.area_ms = 100000u;
+
+        const FtTalk coll = ft_quest_talk(&tw.quests, FT_QUEST_WREN, 0);
+        const struct {
+            const char* name;
+            uint8_t beat;
+            uint16_t shown;
+            bool choosing;
+        } frames[] = {
+            {"talk-coll-typing", 3, 9, false},
+            {"talk-coll", 3, UINT16_MAX, false},
+            {"talk-you", 4, UINT16_MAX, false},
+            {"talk-choice", 7, UINT16_MAX, true},
+        };
+        for(size_t i = 0; i < sizeof(frames) / sizeof(frames[0]); i++) {
+            ft_overworld_render_talk(canvas, &tw, 22, 4);
+            ft_render_talk(canvas, &coll, frames[i].beat, frames[i].shown, frames[i].choosing,
+                           true);
+
+            char path[96];
+            snprintf(path, sizeof(path), "preview/map_%02zu_%s.pbm", 30 + i, frames[i].name);
+            ft_stub_canvas_write_pbm(canvas, path);
+
+            const int c = ft_stub_canvas_clipped(canvas);
+            clipped_total += c;
+            printf("  %-18s %s\n", frames[i].name, c ? "CLIPPED" : "ok");
+        }
+
+        /* Hale beside the pit, level with you. */
+        FtWorld hp;
+        ft_world_init(&hp);
+        ft_quest_advance(&hp.quests, FT_QUEST_WREN, FT_QUEST_ACTIVE);
+        hp.revealed = FT_REVEAL_PIT;
+        hp.hale = FT_HALE_WAIT;
+        hp.hale_room = FT_ROOM_APPROACH;
+        ft_world_hale_pitside(&hp.hale_mv.tx, &hp.hale_mv.ty);
+        ft_world_enter(&hp, FT_ROOM_APPROACH, (uint8_t)(hp.hale_mv.tx + 1u), hp.hale_mv.ty);
+        hp.facing = FT_FACE_LEFT;
+
+        const FtTalk hale = ft_quest_hale_talk(&hp.quests, true, true, 0);
+        ft_overworld_render_talk(canvas, &hp, hp.hale_mv.tx, hp.hale_mv.ty);
+        ft_render_talk(canvas, &hale, 2, UINT16_MAX, false, true);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_34_talk-hale.pbm");
+        {
+            const int c = ft_stub_canvas_clipped(canvas);
+            clipped_total += c;
+            printf("  %-18s %s\n", "talk-hale", c ? "CLIPPED" : "ok");
+        }
+
+        /* A remark, over Hale's head as he sets off. */
+        FtWorld bk;
+        ft_world_init(&bk);
+        ft_quest_answer(&bk.quests, FT_QUEST_WREN, true);
+        ft_world_enter(&bk, FT_ROOM_WELDHOME, 21, 5);
+        bk.area_ms = 100000u;
+        ft_world_hale_lead(&bk);
+        ft_overworld_render(canvas, &bk);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_35_bark-hale.pbm");
+        {
+            const int c = ft_stub_canvas_clipped(canvas);
+            clipped_total += c;
+            printf("  %-18s %s\n", "bark-hale", c ? "CLIPPED" : "ok");
+        }
+
+        /* And Wren on the walk home, pressed right up against the top of
+         * the screen, where the bubble has the least room. */
+        FtWorld wk;
+        ft_world_init(&wk);
+        ft_quest_advance(&wk.quests, FT_QUEST_WREN, FT_QUEST_READY);
+        ft_world_enter(&wk, FT_ROOM_HOLLOW, 4, 2);
+        wk.area_ms = 100000u;
+        ft_world_escort_start(&wk);
+        wk.escort_mv.tx = 4;
+        wk.escort_mv.ty = 3;
+        wk.bark = FT_BARK_WREN_CHATTER + 5;
+        ft_overworld_render(canvas, &wk);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_36_bark-wren.pbm");
+        {
+            const int c = ft_stub_canvas_clipped(canvas);
+            clipped_total += c;
+            printf("  %-18s %s\n", "bark-wren", c ? "CLIPPED" : "ok");
         }
     }
 

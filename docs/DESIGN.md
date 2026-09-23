@@ -841,6 +841,32 @@ turn it is before you read the name. Pips along the bottom show how far
 through you are, because a conversation you cannot see the end of is one you
 start mashing through.
 
+**It happens over the world.** The first two versions blanked the screen for
+a name and a box, so a conversation happened nowhere: you could not see who
+you were talking to, or where. Now the room stays on screen with the camera
+framed between the two of you and a little low, so you are both in the top
+half, and the box sits across the bottom. The speaker's name is on a tab —
+theirs on the left, yours on the right and inverted.
+
+**The words type out, in a voice.** A character every 28 ms, a breath after a
+full stop, a shorter one after a comma; OK shows the rest of the line at once
+and a second OK moves on. Every other letter plays a short blip in the
+speaker's own pitch — the Keeper low, Coll clipped, Hale in the middle, Wren
+high, you two notes a fifth apart because you are the machine in the room. A
+line with no sound under it reads like a sign.
+
+**Nobody repeats a scene at you.** The first time you talk to somebody about
+something you get the whole conversation; after that, a short line, and a
+different one each time round. The app counts per person and resets when the
+first-time conversation changes, which is exactly when the story has moved.
+An offer you turned down comes back shorter, and still as a question.
+
+**People talk while they walk.** A remark in a bubble over somebody's head,
+with no box and nothing to press: Hale says where he is taking you, tells you
+to keep up when you wander off, and says when he has found it; Wren does not
+stop talking on the walk home. Words for all of it live in `ft_quest.c` with
+every other line in the game; the world decides when.
+
 The structure being right did not make the writing right. The first alternating
 draft still read as a machine: every beat was a clipped three-word fragment,
 nobody used a contraction, and all three characters had the same flat voice.
@@ -850,10 +876,17 @@ whole sentence said the way a person says it. The lines use both wherever the
 sentence wants the room.
 
 The rest is voice, which is most of what makes written dialogue read as
-people. The Keeper is dry and old and has decided to look after you. Coll is
-frightened and busy and shows it by being short with you. Wren is a kid, so
-she says too much and then says something true by accident. Three characters
-who would not swap lines is worth more than any amount of lore.
+people. The Keeper is old, dry, and fond of you while pretending not to be.
+Coll is frightened and busy and shows it by being short with you. Hale is
+easy and lazy-cheerful and a bit scared of holes. Wren is a kid who talks in
+capitals when she means it.
+
+A second pass at the writing was still flat in places — grim, expository,
+everybody sad. What the player picked out as working was the joke: *"Coll
+does the talking round here." / "And you?" / "I do the standing."* So that
+is the register now — warm, dry, short, and one laugh a conversation where
+there is room for it. Twenty characters is room for a joke. It is not room
+for exposition, so nobody explains anything they would not say out loud.
 
 **Talking changes nothing.** `ft_quest_talk` is pure; `ft_quest_answer`
 applies. That is what lets a player back out of a question they did not mean
@@ -914,12 +947,25 @@ to press and nothing to learn:
 |---|---|---|
 | `POST` | On the gate, opposite Coll. Solid; talk to him. | Coll's yes, or asking him again |
 | `LEAD` | Out of Weldhome's west door, across the Approach, into the long grass. Stops and looks back if you fall more than three tiles behind. | Reaching the grass: the pit appears beside him, with a sound. Turning back home: he comes with you. |
-| `WAIT` | Beside the pit. Solid; talk to him. | You walking four tiles away from him |
+| `WAIT` | Beside the pit, one step aside so the way in is clear. Solid; talk to him. | You walking four tiles away from him |
 | `FOLLOW` | Behind you — behind Wren, if she is with you. | Going through Weldhome's door (he walks home), or down the pit or off west (he goes back to it) |
 | `HOME` | From Weldhome's door back to his post. | Getting there |
 
 The pit stays found for good, and so does everything in the table: all of it
 is saved.
+
+He knows where the pit is before you do, so he never walks over its tile,
+hidden or not. The first version did — the spot he stopped on was the far
+side of the hole from the gate, so he walked straight across it and stopped
+one tile past, which is exactly what a player saw. He comes down to it from
+the path now, stops at its edge, and steps aside: *"There! After you."*
+
+Wren is in the cave until she is home, and then on a porch in Weldhome —
+two entities, only one of which is ever there. The first version had only
+the cave one, and it stayed: go back down after bringing her home and she
+was hiding again, telling you to go away. If you lose her on the way home
+(a reload, or leaving her behind), she is back where you found her and
+comes again when asked.
 
 Two things that looked fine on paper and did not survive being walked:
 
@@ -951,19 +997,21 @@ Two sources, which behave differently on purpose:
 - **Caches** stay taken. Something somebody left is a reason to have gone
   somewhere once, not a vending machine.
 
-**A tree is not always bearing.** Each visit rolls for it — a hash of the
-room, the entity and how many rooms you have entered, so it is the same
-answer every time it is asked within a visit, costs no save bytes, and
-changes when you come back. A tree that always has an apple on it is a
-button you press on the way past; one that sometimes does is a thing you
-look at. A bare one is drawn bare, so you can see from across the room
-whether it is worth the walk, and it is still solid, because it is still a
-tree.
+**A tree is luck.** Stand under its crown (or face its trunk) and press OK:
+the crown sways, and something falls or nothing does. Each visit rolls for it
+— a hash of the room, the entity and how many rooms you have entered — so it
+is the same answer every time you shake it within a visit (mashing OK is not
+a second go), costs no save bytes, and changes when you come back.
 
-Face one and press OK. **Full pockets leave it where it is** rather than
-swallowing it — picking something you cannot carry and watching it vanish is
-the worst possible outcome. A tree is solid until it is picked, so a cleared
-room does not keep a stump in the way.
+You cannot see which from across the room, and that is deliberate. The first
+version drew the fruit hanging in the leaves, so a tree was a pickup you
+could read at a glance — and at 8x8 a round dark shape with a highlight in
+it, set in a mid-grey canopy, is an eye. A player called it creepy, which
+it was. With nothing drawn, a tree is a small gamble you take on the way
+past, which is what "sometimes it has an apple" was for in the first place.
+
+**Full pockets leave it up there** rather than swallowing it: the tree still
+sways, you are told, and the apple is still there to shake down later.
 
 Using one, in a fight, is the sixth action. The row names the actual item and
 its effect ("Apple x2" / "+5 HP") and UP/DOWN choose which — a second menu
@@ -1271,17 +1319,25 @@ vanishing: the canopy art is an even checkerboard, which on a one-bit panel
 is mid grey — the only fill that is both solid enough to read as leaves from
 across the room and open enough to see a person through.
 
-**A tree is a 3x3 stamp**: a crown of leaves with the trunk at its bottom
-middle, and the trunk's own art carries the join — its top two rows are the
-canopy's checker gathering inwards, then the bark narrows to four pixels, then
-it flares where it reaches the ground. Without that the seam between the trunk
-tile and the leaf above it is a straight horizontal line, and the tree reads as
-a post someone parked a bush on. Two other shapes were tried and are worth recording, because both
-looked wrong for reasons that are not obvious on paper — a 3-wide, 2-tall
-slab above a stem read as a table, and putting the trunk in the *centre* of
-the 3x3 (which is the shape that makes the tile-solidity rule cleanest) read
-as a barrel, because a dark column with the crown cut off around it is not a
-silhouette anything in nature has.
+**A tree is a 3x2 crown on a trunk**: two rows of three leaves, and the trunk
+under the middle of them. The trunk's own art carries the join — its top two
+rows are the canopy's checker gathering inwards, then the bark narrows to four
+pixels, then it flares where it reaches the ground. Without that the seam
+between the trunk tile and the leaf above it is a straight horizontal line,
+and the tree reads as a post someone parked a bush on.
+
+Three other shapes were tried and are worth recording, because all three
+looked wrong for reasons that are not obvious on paper:
+
+- a square-cornered 3x2 slab above a stem read as a **table**;
+- the trunk in the *centre* of a 3x3 (the cleanest shape for the solidity
+  rule) read as a **barrel** — a dark column with the crown cut off round it;
+- the trunk at the bottom middle of a 3x3, with leaves either side of it,
+  had the crown **hanging down to the ground** beside the trunk, which a
+  player called weird, and it was: trees do not have leaves at shin height.
+
+What finally worked is the first shape again, with the two things it was
+missing — rounded corners and a trunk that grows into the crown.
 
 Since a tree is always the same stamp, the four outer corners of the crown
 take **rounded copies** of the leaf tile, cut with a quarter circle and

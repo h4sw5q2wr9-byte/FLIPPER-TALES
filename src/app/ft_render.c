@@ -1421,69 +1421,97 @@ void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected) {
 }
 
 void ft_render_talk(
-    Canvas* canvas, const FtTalk* t, uint8_t beat, bool choosing, bool yes) {
-    canvas_clear(canvas);
-    canvas_set_color(canvas, ColorBlack);
+    Canvas* canvas, const FtTalk* t, uint8_t beat, uint16_t shown, bool choosing, bool yes) {
+    /* Drawn OVER the world, not instead of it. The first two versions
+     * blanked the screen for a name and a box, so a conversation happened
+     * nowhere — you could not see who you were talking to, or where. The
+     * overworld is drawn first with both of you framed above the box. */
     canvas_set_font(canvas, FontSecondary);
-
     if(t->count == 0u) return;
     if(beat >= t->count) beat = (uint8_t)(t->count - 1u);
 
     const FtBeat* at = &t->beats[beat];
-    const bool    mine = (at->who == FT_SAY_YOU);
+    const bool    mine = choosing || at->who == FT_SAY_YOU;
+    const char*   who = mine ? "You" : t->speaker;
 
-    /* Whoever is talking, named. This is the whole of what makes it read as
-     * two people rather than a sign on a wall. */
-    const char* who = mine ? "You" : t->speaker;
+    enum { BOX_Y = 37, TAB_H = 10 };
 
+    canvas_set_color(canvas, ColorWhite);
+    canvas_draw_box(canvas, 0, BOX_Y, FT_SCREEN_W, FT_SCREEN_H - BOX_Y);
+    canvas_set_color(canvas, ColorBlack);
+    canvas_draw_frame(canvas, 0, BOX_Y, FT_SCREEN_W, FT_SCREEN_H - BOX_Y);
+
+    /* Whoever is talking, on a tab. Theirs on the left, yours on the right
+     * and inverted, so the shape of the screen says whose turn it is before
+     * you read a word. */
+    const int32_t tw = (int32_t)canvas_string_width(canvas, who) + 6;
+    const int32_t tx = mine ? FT_SCREEN_W - 4 - tw : 4;
+    const int32_t ty = BOX_Y - TAB_H + 1;
     if(mine) {
-        /* Your own lines are inverted, so a glance at the shape of the
-         * screen tells you whose turn it is without reading the name. */
-        const int32_t w = (int32_t)canvas_string_width(canvas, who) + 6;
-        canvas_draw_box(canvas, FT_SCREEN_W - 2 - w, 1, (size_t)w, 10);
+        canvas_draw_box(canvas, tx, ty, (size_t)tw, TAB_H);
         canvas_set_color(canvas, ColorWhite);
-        canvas_draw_str(canvas, FT_SCREEN_W - 2 - w + 3, 9, who);
+        canvas_draw_str(canvas, tx + 3, ty + 8, who);
         canvas_set_color(canvas, ColorBlack);
     } else {
-        canvas_draw_str(canvas, 2, 9, who);
+        canvas_set_color(canvas, ColorWhite);
+        canvas_draw_box(canvas, tx, ty, (size_t)tw, TAB_H);
+        canvas_set_color(canvas, ColorBlack);
+        canvas_draw_frame(canvas, tx, ty, (size_t)tw, TAB_H);
+        canvas_draw_str(canvas, tx + 3, ty + 8, who);
     }
-    canvas_draw_line(canvas, 0, 12, FT_SCREEN_W - 1, 12);
 
-    canvas_draw_frame(canvas, 2, 16, FT_SCREEN_W - 4, 30);
-    if(at->a) canvas_draw_str(canvas, 6, 28, at->a);
-    if(at->b) canvas_draw_str(canvas, 6, 40, at->b);
-
-    /* How far through, as pips. A conversation you cannot see the end of is
-     * one you start mashing through. */
-    for(uint8_t i = 0; i < t->count && i < 10u; i++) {
-        const int32_t px = FT_SCREEN_W / 2 - (int32_t)t->count * 2 + (int32_t)i * 4;
-        if(i <= beat) {
-            canvas_draw_box(canvas, px, 50, 3, 3);
-        } else {
-            canvas_draw_frame(canvas, px, 50, 3, 3);
+    /* How far through, as small pips on the other side of the tab row. */
+    if(!choosing) {
+        const int32_t pips_w = (int32_t)t->count * 4;
+        const int32_t px0 = mine ? 4 : FT_SCREEN_W - 4 - pips_w;
+        for(uint8_t i = 0; i < t->count && i < FT_TALK_MAX_BEATS; i++) {
+            const int32_t px = px0 + (int32_t)i * 4;
+            if(i <= beat) {
+                canvas_draw_box(canvas, px, BOX_Y - 4, 2, 2);
+            } else {
+                canvas_draw_dot(canvas, px, BOX_Y - 4);
+            }
         }
     }
 
     if(choosing) {
-        char left[24], right[24];
-        snprintf(left, sizeof(left), "%s%s%s", yes ? "[" : " ", t->yes ? t->yes : "Yes",
-                 yes ? "]" : " ");
-        snprintf(right, sizeof(right), "%s%s%s", yes ? " " : "[", t->no ? t->no : "No",
-                 yes ? " " : "]");
-
-        const int32_t lw = (int32_t)canvas_string_width(canvas, left);
-        const int32_t rw = (int32_t)canvas_string_width(canvas, right);
-        const int32_t gap = 8;
-        int32_t x = (FT_SCREEN_W - (lw + gap + rw)) / 2;
-        if(x < 2) x = 2;
-
-        canvas_draw_str(canvas, x, 62, left);
-        canvas_draw_str(canvas, x + lw + gap, 62, right);
+        /* Your answer, as a short list in your own box. */
+        char line[24];
+        snprintf(line, sizeof(line), "%s %s", yes ? ">" : " ", t->yes ? t->yes : "Yes");
+        canvas_draw_str(canvas, 6, BOX_Y + 11, line);
+        snprintf(line, sizeof(line), "%s %s", yes ? " " : ">", t->no ? t->no : "No");
+        canvas_draw_str(canvas, 6, BOX_Y + 22, line);
         return;
     }
 
-    draw_centred(canvas, FT_SCREEN_W / 2, 62,
-                 (beat + 1u >= t->count) ? "OK" : "OK >");
+    /* The words, as far as they have typed out. */
+    const size_t la = at->a ? strlen(at->a) : 0u;
+    const size_t lb = at->b ? strlen(at->b) : 0u;
+    char line[24];
+
+    if(at->a) {
+        size_t n = (shown < la) ? shown : la;
+        if(n > sizeof(line) - 1u) n = sizeof(line) - 1u;
+        memcpy(line, at->a, n);
+        line[n] = '\0';
+        canvas_draw_str(canvas, 5, BOX_Y + 11, line);
+    }
+    if(at->b && shown > la) {
+        size_t n = (size_t)shown - la;
+        if(n > lb) n = lb;
+        if(n > sizeof(line) - 1u) n = sizeof(line) - 1u;
+        memcpy(line, at->b, n);
+        line[n] = '\0';
+        canvas_draw_str(canvas, 5, BOX_Y + 22, line);
+    }
+
+    /* Finished typing: a small arrow in the corner says OK moves on. */
+    if(shown >= la + lb) {
+        const int32_t ax = FT_SCREEN_W - 9, ay = FT_SCREEN_H - 6;
+        canvas_draw_line(canvas, ax, ay, ax + 4, ay);
+        canvas_draw_line(canvas, ax + 1, ay + 1, ax + 3, ay + 1);
+        canvas_draw_dot(canvas, ax + 2, ay + 2);
+    }
 }
 
 /* The field guide's index. Empty until something has been fought, because a

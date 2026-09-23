@@ -452,10 +452,11 @@ int main(void) {
             FtQuests talker;
             ft_quests_init(&talker);
 
-            const FtTalk t = ft_quest_talk(&talker, WHO[k]);
+            const FtTalk t = ft_quest_talk(&talker, WHO[k], 0);
 
             for(uint8_t b = 0; b < t.count; b++) {
-                ft_render_talk(canvas, &t, b, false, true);
+                canvas_clear(canvas);
+                ft_render_talk(canvas, &t, b, UINT16_MAX, false, true);
 
                 char tp[64];
                 snprintf(tp, sizeof(tp), "preview/94_talk%u_%u.pbm", k, b);
@@ -468,7 +469,9 @@ int main(void) {
 
             if(t.ask) {
                 for(uint8_t y = 0; y < 2u; y++) {
-                    ft_render_talk(canvas, &t, (uint8_t)(t.count - 1u), true, y != 0u);
+                    canvas_clear(canvas);
+                    ft_render_talk(canvas, &t, (uint8_t)(t.count - 1u), UINT16_MAX, true,
+                                   y != 0u);
 
                     char cp[64];
                     snprintf(cp, sizeof(cp), "preview/95_choice%u_%u.pbm", k, y);
@@ -486,9 +489,10 @@ int main(void) {
         ft_quests_init(&kid);
         ft_quest_answer(&kid, FT_QUEST_WREN, true);
 
-        const FtTalk wt = ft_quest_wren_talk(&kid);
+        const FtTalk wt = ft_quest_wren_talk(&kid, 0);
         for(uint8_t b = 0; b < wt.count; b++) {
-            ft_render_talk(canvas, &wt, b, false, true);
+            canvas_clear(canvas);
+            ft_render_talk(canvas, &wt, b, UINT16_MAX, false, true);
 
             char wp[64];
             snprintf(wp, sizeof(wp), "preview/96_wren%u.pbm", b);

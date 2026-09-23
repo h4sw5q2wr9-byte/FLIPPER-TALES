@@ -157,6 +157,9 @@ static const FtEntity WH1_ENTS[] = {
     {FT_ENT_TREE, 4, 8, FT_ITEM_APPLE},
     {FT_ENT_TREE, 20, 8, FT_ITEM_APPLE},
     {FT_ENT_CACHE, 13, 8, FT_ITEM_CELL},
+
+    /* Wren, home, on the porch of the house by the gate — once she is. */
+    {FT_ENT_WREN, 14, 4, FT_WREN_HOME},
 };
 
 /* [12] The Hollow. The cave under the long grass. Wren at the far end, and
@@ -174,7 +177,7 @@ static const FtEntity EJ1_ENTS[] = {
 
     /* At the far end of the east cavern, as far from the ladder as the
      * cave goes. */
-    {FT_ENT_WREN, 19, 3, 0},
+    {FT_ENT_WREN, 19, 3, FT_WREN_CAVE},
 
     /* In the side pocket off the first cavern, before the passage. Whether
      * you spend it now or save it for the fight is the first real pocket
@@ -266,7 +269,7 @@ static const FtRoom FT_ROOMS[] = {
     {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2},
     {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2},
     {&FT_MAP_AP1, AP1_EXITS, 3, AP1_ENTS, 2},
-    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 4},
+    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 5},
     {&FT_MAP_EJ1, EJ1_EXITS, 1, EJ1_ENTS, 3},
 };
 #define ROOM_COUNT (sizeof(FT_ROOMS) / sizeof(FT_ROOMS[0]))
@@ -513,6 +516,15 @@ void ft_world_init(FtWorld* w) {
     w->hale_mv.step_ms = 0;
     w->hale_facing = FT_FACE_DOWN;
     w->hale_hurry = false;
+    w->shake_tree = 0;
+    w->shake_ms = 0;
+    w->hale_waits = 0;
+    w->hale_waiting = false;
+    w->bark = 0;
+    w->bark_who = (uint8_t)FT_BARK_NOBODY;
+    w->bark_ms = 0;
+    w->chatter_ms = 0;
+    w->chatter_at = 0;
 
     /* World stats are authoritative: a battle copies them in rather than
      * building its own. */
@@ -735,11 +747,15 @@ static void foe_think(FtWorld* w, FtFoeWalker* k, bool alert, const FtMap* map) 
 static int npc_at_tile(const FtWorld* w, int32_t tx, int32_t ty);
 static bool hale_blocks(const FtWorld* w, int32_t tx, int32_t ty);
 static void hale_update(FtWorld* w, uint32_t dt_ms);
+static void say_aloud(FtWorld* w, FtBarkWho who, uint8_t bark);
+static void chatter(FtWorld* w, uint32_t dt_ms);
 
 void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
     const FtMap* map = ft_world_map(w);
 
     w->area_ms += dt_ms;
+    w->bark_ms = (w->bark_ms > dt_ms) ? (uint16_t)(w->bark_ms - dt_ms) : 0u;
+    w->shake_ms = (w->shake_ms > dt_ms) ? (uint16_t)(w->shake_ms - dt_ms) : 0u;
     w->arrived = false;
     w->ambushed = false;
     w->revealed_now = false;
@@ -826,6 +842,7 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
 
     /* --- Hale, after you, so he reacts to where you are going --- */
     hale_update(w, dt_ms);
+    chatter(w, dt_ms);
 
     /* --- foes --- */
     const FtRoom* room = ft_room(w->room);
@@ -923,7 +940,7 @@ static int npc_at_tile(const FtWorld* w, int32_t tx, int32_t ty) {
 
         /* People. A tree is not one of them any more: the trunk is a map
          * tile and blocks whether or not anything is growing on it. */
-        const bool solid = (k == FT_ENT_NPC) || (k == FT_ENT_WREN && !w->escort);
+        const bool solid = (k == FT_ENT_NPC) || (k == FT_ENT_WREN && ft_world_wren_present(w, i));
         if(!solid) continue;
         if((int32_t)r->ents[i].tx == tx && (int32_t)r->ents[i].ty == ty) return (int)i;
     }
@@ -1006,13 +1023,53 @@ int ft_world_pick_ahead(const FtWorld* w) {
 
     for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
         const FtEntKind k = r->ents[i].kind;
-        if(k != FT_ENT_TREE && k != FT_ENT_CACHE) continue;
+        if(k != FT_ENT_CACHE) continue;
         if((int32_t)r->ents[i].tx != tx || (int32_t)r->ents[i].ty != ty) continue;
         if(!ft_world_bearing(w, i)) continue;
 
         return (int)i;
     }
     return -1;
+}
+
+/* The crown is the 3x2 of leaves above the trunk. */
+static bool in_crown(const FtEntity* e, int32_t tx, int32_t ty) {
+    return tx >= (int32_t)e->tx - 1 && tx <= (int32_t)e->tx + 1 &&
+           ty >= (int32_t)e->ty - 2 && ty <= (int32_t)e->ty - 1;
+}
+
+int ft_world_tree_near(const FtWorld* w) {
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+
+    const int32_t px = w->mv.tx, py = w->mv.ty;
+    const FtRoom* r = ft_room(w->room);
+
+    for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        const FtEntity* e = &r->ents[i];
+        if(e->kind != FT_ENT_TREE) continue;
+
+        if(in_crown(e, px, py)) return (int)i;
+        if((int32_t)e->tx == px + dx && (int32_t)e->ty == py + dy) return (int)i;
+    }
+    return -1;
+}
+
+FtItemId ft_world_shake(FtWorld* w, uint8_t index) {
+    w->shake_tree = index;
+    w->shake_ms = (uint16_t)FT_SHAKE_MS;
+    return ft_world_pick(w, index);
+}
+
+int8_t ft_world_shake_offset(const FtWorld* w, int32_t tx, int32_t ty) {
+    if(w->shake_ms == 0u) return 0;
+
+    const FtRoom* r = ft_room(w->room);
+    if(w->shake_tree >= r->ent_count) return 0;
+    if(!in_crown(&r->ents[w->shake_tree], tx, ty)) return 0;
+
+    /* A few quick sways, not a vibration: 60ms each way. */
+    return ((w->shake_ms / 60u) % 2u) ? 1 : -1;
 }
 
 FtItemId ft_world_pick(FtWorld* w, uint8_t index) {
@@ -1033,11 +1090,22 @@ FtItemId ft_world_pick(FtWorld* w, uint8_t index) {
     return id;
 }
 
-int ft_world_wren_ahead(const FtWorld* w) {
-    /* Once she is walking with you she is behind you, not ahead of you, and
-     * there is nothing in the room to talk to any more. */
-    if(w->escort) return -1;
+bool ft_world_wren_present(const FtWorld* w, uint8_t index) {
+    const FtRoom* r = ft_room(w->room);
+    if(index >= r->ent_count || r->ents[index].kind != FT_ENT_WREN) return false;
 
+    const bool home = ft_quest_state(&w->quests, FT_QUEST_WREN) == FT_QUEST_DONE;
+
+    if(r->ents[index].roster == FT_WREN_HOME) return home;
+
+    /* In the cave until she is home, except while she is walking with you:
+     * then she is behind you, not down there. Lose her on the way — a
+     * reload, a wander off without her — and she is back where you found
+     * her, and willing to go again. */
+    return !home && !w->escort;
+}
+
+int ft_world_wren_ahead(const FtWorld* w) {
     int32_t dx, dy;
     facing_delta(w->facing, &dx, &dy);
 
@@ -1045,7 +1113,7 @@ int ft_world_wren_ahead(const FtWorld* w) {
     const FtRoom* r = ft_room(w->room);
 
     for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
-        if(r->ents[i].kind != FT_ENT_WREN) continue;
+        if(!ft_world_wren_present(w, i)) continue;
         if((int32_t)r->ents[i].tx == tx && (int32_t)r->ents[i].ty == ty) return (int)i;
     }
     return -1;
@@ -1073,6 +1141,8 @@ const char* ft_world_exit_refusal(const FtExit* x) {
 
 void ft_world_escort_start(FtWorld* w) {
     w->escort = true;
+    w->chatter_ms = 0;
+    say_aloud(w, FT_BARK_BY_WREN, FT_BARK_WREN_START);
     w->escort_mv.tx = w->mv.tx;
     w->escort_mv.ty = w->mv.ty;
     w->escort_mv.dx = 0;
@@ -1114,6 +1184,32 @@ bool ft_world_pit_at(const FtWorld* w, int32_t tx, int32_t ty) {
     return false;
 }
 
+/* ---- Saying things out loud -------------------------------------------- */
+
+static void say_aloud(FtWorld* w, FtBarkWho who, uint8_t bark) {
+    w->bark = bark;
+    w->bark_who = (uint8_t)who;
+    w->bark_ms = (uint16_t)FT_BARK_MS;
+}
+
+/* Wren does not stop talking on the way home. One line every few seconds,
+ * in order, and never over the top of somebody else's. */
+static void chatter(FtWorld* w, uint32_t dt_ms) {
+    if(!w->escort) {
+        w->chatter_ms = 0;
+        return;
+    }
+    if(w->bark_ms > 0u) return;
+
+    w->chatter_ms = (uint16_t)(w->chatter_ms + dt_ms);
+    if(w->chatter_ms < FT_CHATTER_MS) return;
+
+    w->chatter_ms = 0;
+    say_aloud(w, FT_BARK_BY_WREN,
+              (uint8_t)(FT_BARK_WREN_CHATTER + (w->chatter_at % FT_BARK_WREN_CHATTER_N)));
+    w->chatter_at++;
+}
+
 /* ---- Hale ---------------------------------------------------------------
  *
  * The other guard on Weldhome's gate, and the one who knows where Wren went.
@@ -1133,9 +1229,21 @@ bool ft_world_pit_at(const FtWorld* w, int32_t tx, int32_t ty) {
 #define HALE_IN_TX   21
 #define HALE_IN_TY   5
 
-/* Beside the pit, which is the hidden exit at (11,8). */
-#define HALE_PIT_TX  10
-#define HALE_PIT_TY  8
+/* Just north of the pit, which is the hidden exit at (11,8). He comes down
+ * off the path to it, so he stops with the hole in front of him.
+ *
+ * It was (10,8), west of it, which is the far side coming from the gate —
+ * so he walked straight across the hidden tile to get there, one step past
+ * where the hole then opened up. That is the "one tile too far". */
+#define HALE_PIT_TX  11
+#define HALE_PIT_TY  7
+
+/* Where he waits once it is open: one step aside, so the way from the path
+ * straight down into the hole is not through him. You are right behind him
+ * when he stops, and a guide who then stands in the doorway he just showed
+ * you is a guide you have to walk round. */
+#define HALE_WAIT_TX 10
+#define HALE_WAIT_TY 7
 
 /* How far behind you can fall before he stops and waits for you. */
 #define HALE_LEASH 3
@@ -1159,8 +1267,8 @@ void ft_world_hale_post(uint8_t* tx, uint8_t* ty) {
 }
 
 void ft_world_hale_pitside(uint8_t* tx, uint8_t* ty) {
-    *tx = HALE_PIT_TX;
-    *ty = HALE_PIT_TY;
+    *tx = HALE_WAIT_TX;
+    *ty = HALE_WAIT_TY;
 }
 
 static void hale_place(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
@@ -1204,6 +1312,9 @@ void ft_world_hale_lead(FtWorld* w) {
     if(w->hale != (uint8_t)FT_HALE_POST) return;
 
     w->hale = (uint8_t)FT_HALE_LEAD;
+    w->hale_waits = 0;
+    w->hale_waiting = false;
+    say_aloud(w, FT_BARK_BY_HALE, FT_BARK_HALE_SET_OFF);
 }
 
 static int32_t tiles_apart(int32_t ax, int32_t ay, int32_t bx, int32_t by) {
@@ -1222,8 +1333,14 @@ static bool hale_passable(const FtWorld* w, const FtMap* m, int32_t tx, int32_t 
     if(ft_tile_solid(ft_map_tile(m, tx, ty))) return false;
     if(npc_at_tile(w, tx, ty) >= 0) return false;
 
-    /* He shows you the hole; he does not fall down it. */
-    if(ft_world_pit_at(w, tx, ty)) return false;
+    /* He shows you the hole; he does not fall down it — and he knows where
+     * it is before you do, so he does not walk over it while it is hidden
+     * either. */
+    const FtRoom* r = ft_room(w->room);
+    for(uint8_t i = 0; i < r->exit_count; i++) {
+        const FtExit* x = &r->exits[i];
+        if(x->reveal != 0u && (int32_t)x->tx == tx && (int32_t)x->ty == ty) return false;
+    }
     return true;
 }
 
@@ -1339,7 +1456,11 @@ static void hale_lead_done(FtWorld* w) {
         w->revealed |= FT_REVEAL_PIT;
         w->revealed_now = true;
         w->hale = (uint8_t)FT_HALE_WAIT;
-        w->hale_facing = FT_FACE_RIGHT;
+
+        say_aloud(w, FT_BARK_BY_HALE, FT_BARK_HALE_FOUND);
+
+        /* And steps aside: "after you". */
+        if(!hale_step_toward(w, HALE_WAIT_TX, HALE_WAIT_TY)) w->hale_facing = FT_FACE_DOWN;
     }
 }
 
@@ -1359,6 +1480,7 @@ static void hale_landed(FtWorld* w) {
         if(tx == HALE_POST_TX && ty == HALE_POST_TY) {
             w->hale = (uint8_t)FT_HALE_POST;
             w->hale_facing = FT_FACE_DOWN;
+            say_aloud(w, FT_BARK_BY_HALE, FT_BARK_HALE_POSTED);
         }
         break;
 
@@ -1380,11 +1502,18 @@ static void hale_update(FtWorld* w, uint32_t dt_ms) {
 
     switch((FtHalePhase)w->hale) {
     case FT_HALE_LEAD: {
-        /* Too far behind: he stops and looks back for you. */
+        /* Too far behind: he stops and looks back for you — and says so,
+         * once per stop, so a player who has wandered off hears about it. */
         if(tiles_apart(hx, hy, px, py) > HALE_LEASH) {
             hale_face(w, px, py);
+            if(!w->hale_waiting) {
+                w->hale_waiting = true;
+                say_aloud(w, FT_BARK_BY_HALE,
+                          (w->hale_waits++ % 2u) ? FT_BARK_HALE_COMING : FT_BARK_HALE_KEEP_UP);
+            }
             return;
         }
+        w->hale_waiting = false;
 
         if(w->room != FT_ROOM_WELDHOME && w->room != FT_ROOM_APPROACH) return;
 
@@ -1404,7 +1533,10 @@ static void hale_update(FtWorld* w, uint32_t dt_ms) {
     case FT_HALE_WAIT:
         /* Walk far enough off and he takes it that you are going home, and
          * comes too — whether Wren is with you or not. */
-        if(tiles_apart(hx, hy, px, py) >= HALE_FOLLOW_AT) w->hale = (uint8_t)FT_HALE_FOLLOW;
+        if(tiles_apart(hx, hy, px, py) >= HALE_FOLLOW_AT) {
+            w->hale = (uint8_t)FT_HALE_FOLLOW;
+            say_aloud(w, FT_BARK_BY_HALE, FT_BARK_HALE_WAIT);
+        }
         return;
 
     case FT_HALE_FOLLOW: {
@@ -1462,11 +1594,13 @@ static void hale_on_enter(FtWorld* w, uint8_t from, uint8_t to, uint8_t tx, uint
              * there first or you did. */
             hale_place(w, FT_ROOM_APPROACH, HALE_IN_TX, HALE_IN_TY);
             w->hale_facing = FT_FACE_LEFT;
+            say_aloud(w, FT_BARK_BY_HALE, FT_BARK_HALE_THIS_WAY);
         } else if(from == FT_ROOM_APPROACH && to == FT_ROOM_WELDHOME) {
             /* You turned back. He comes with you, and it will take talking
              * to him again to set off. */
             w->hale = (uint8_t)FT_HALE_HOME;
             hale_place(w, FT_ROOM_WELDHOME, tx, ty);
+            say_aloud(w, FT_BARK_BY_HALE, FT_BARK_HALE_TURNED);
         } else if(from == FT_ROOM_APPROACH || from == FT_ROOM_WELDHOME) {
             /* Off somewhere he was not taking you. He goes back to the gate. */
             w->hale = (uint8_t)FT_HALE_POST;
@@ -1484,7 +1618,7 @@ static void hale_on_enter(FtWorld* w, uint8_t from, uint8_t to, uint8_t tx, uint
             /* Down the pit, or off west: not his way. He goes back to it
              * and waits. */
             w->hale = (uint8_t)FT_HALE_WAIT;
-            hale_place(w, FT_ROOM_APPROACH, HALE_PIT_TX, HALE_PIT_TY);
+            hale_place(w, FT_ROOM_APPROACH, HALE_WAIT_TX, HALE_WAIT_TY);
             w->hale_facing = FT_FACE_RIGHT;
         }
         break;

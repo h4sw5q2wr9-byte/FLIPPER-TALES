@@ -30,17 +30,25 @@ typedef enum {
     FT_ENT_FOE,
     FT_ENT_NPC,  /* someone to talk to; `roster` carries their quest id */
 
-    /* Wren, waiting at the end of the junction. Her own kind because she is
-     * not a quest giver: talking to her is the middle of somebody else's
-     * quest, and she leaves with you afterwards. */
+    /* Wren. Her own kind because she is not a quest giver: talking to her is
+     * the middle of somebody else's quest, and she leaves with you afterwards.
+     *
+     * `roster` says which Wren: FT_WREN_CAVE is where she is hiding until you
+     * bring her home, FT_WREN_HOME is her back in Weldhome afterwards. Only
+     * one of them is ever there (ft_world_wren_present). The first version
+     * had only the cave one, and she stayed there for ever — go back down
+     * after bringing her home and she was hiding in the cave again, telling
+     * you to go away. */
     FT_ENT_WREN,
 
-    /* Something growing. `roster` carries the item it bears.
+    /* Something growing. `roster` carries the item it bears, and the entity
+     * sits on the trunk; the crown is the 3x2 of leaf tiles above it.
      *
-     * It is not always bearing: each visit rolls for it (see ft_world_bearing),
-     * so walking past one is a look rather than a guaranteed apple. Picked
-     * bare for the visit and back when you return, exactly like the foes —
-     * which is what makes walking a cleared room again worth doing. */
+     * You cannot see whether it is bearing. Stand under it and shake it: each
+     * visit rolls whether anything is up there (see ft_world_bearing), so a
+     * tree is a bit of luck rather than a pickup you can read from across the
+     * room. The fruit used to be drawn hanging in the leaves, and at 8x8 a
+     * round dark thing with a highlight in it is an eye. */
     FT_ENT_TREE,
 
     /* Something somebody left. `roster` carries the item. Taken once and
@@ -53,6 +61,9 @@ typedef struct {
     uint8_t   tx, ty;
     uint8_t   roster; /* a foe's group, or an NPC's quest */
 } FtEntity;
+
+#define FT_WREN_CAVE 0u
+#define FT_WREN_HOME 1u
 
 typedef struct {
     uint8_t tx, ty;
@@ -247,6 +258,10 @@ typedef struct {
      * a sound without watching the bits itself. */
     bool revealed_now;
 
+    /* The tree being shaken, and for how much longer. Not saved. */
+    uint8_t  shake_tree;
+    uint16_t shake_ms;
+
     /* Hale. See FtHalePhase. */
     uint8_t   hale;      /* FtHalePhase */
     uint8_t   hale_room;
@@ -256,7 +271,34 @@ typedef struct {
     /* He is jogging this step, to catch up. Not saved: a step is a fifth of
      * a second, and a reload always lands him standing still. */
     bool hale_hurry;
+
+    /* How many times he has stopped to wait for you on this walk, so he
+     * does not say the same thing every time. */
+    uint8_t hale_waits;
+    bool    hale_waiting;
+
+    /* Something said out loud: an FtBark, who said it, and for how much
+     * longer it hangs there. None of it is saved — it is a remark. */
+    uint8_t  bark;
+    uint8_t  bark_who; /* FtBarkWho */
+    uint16_t bark_ms;
+
+    /* Wren's walk-home chatter: time since she last said something, and
+     * which of her lines is next. */
+    uint16_t chatter_ms;
+    uint8_t  chatter_at;
 } FtWorld;
+
+typedef enum {
+    FT_BARK_NOBODY = 0,
+    FT_BARK_BY_HALE,
+    FT_BARK_BY_WREN
+} FtBarkWho;
+
+/* How long a remark hangs over somebody's head, and how long Wren leaves
+ * between them. Long enough to read twice; not so often that it is noise. */
+#define FT_BARK_MS    2000u
+#define FT_CHATTER_MS 5000u
 
 void ft_world_init(FtWorld* w);
 void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty);
@@ -295,11 +337,30 @@ bool ft_world_foe_noticing(const FtWorld* w, uint8_t index);
  * this is what you get by walking into one. */
 int ft_world_npc_ahead(const FtWorld* w);
 
-/* Same, for the kid waiting at the end of the junction. */
+/* Same, for Wren, wherever she is. */
 int ft_world_wren_ahead(const FtWorld* w);
 
-/* A tree or a cache on the tile you face and have not emptied, else -1. */
+/* Is this Wren entity actually standing there right now? The cave one until
+ * she is home (and not while she is walking with you); the home one after. */
+bool ft_world_wren_present(const FtWorld* w, uint8_t index);
+
+/* A cache on the tile you face and have not emptied, else -1. Trees are not
+ * picked by facing them any more — see ft_world_tree_near. */
 int ft_world_pick_ahead(const FtWorld* w);
+
+/* A tree you are standing under, or whose trunk you are facing, else -1.
+ * Bearing or bare: you do not know which until you shake it. */
+int ft_world_tree_near(const FtWorld* w);
+
+/* Shake it. Returns what fell, or FT_ITEM_COUNT when nothing did (it is bare
+ * this visit, or your pockets are full and it stays up there). Starts the
+ * canopy wiggle either way, because you did shake it. */
+#define FT_SHAKE_MS 360u
+FtItemId ft_world_shake(FtWorld* w, uint8_t index);
+
+/* Is this tile part of the crown of the tree being shaken, and if so which
+ * way is it leaning this frame (-1 or 1)? 0 when it is not moving. */
+int8_t ft_world_shake_offset(const FtWorld* w, int32_t tx, int32_t ty);
 
 /* Is this tree bearing anything this visit? Always true for a cache, which
  * is a thing somebody left rather than a thing that grows. False once it has
