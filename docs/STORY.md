@@ -1,227 +1,298 @@
-# Flipper Tales — Story Bible
+# Flipper Tales — Story
 
-Everything in this game has had a mechanic before it had a reason. This document
-is the reason. Nothing here contradicts what is already built; it explains it.
+This is the one place the story lives, so nobody has to remember it. Read §1
+for the whole thing on one screen; everything after it is detail.
 
 **Rule zero: original IP only.** No real company, product, protocol or brand
-appears as a name, a character or a place. The module names are the exception
-the design already makes — they are theme, and they do nothing to real hardware
-(DESIGN.md §2.1).
+appears as a name, a character or a place. The module names (Infrared, RFID…)
+are theme only — in the game they are items that do things in the game, and
+nothing touches real hardware (DESIGN.md §2.1).
 
 ---
 
-## 1. The world in one paragraph
+## 1. The whole story, on one screen
 
-**The Carrier** is a vast derelict relay network that once carried every message
-in the region. It is not a computer. It is a *landscape* — masts, spans,
-corridors, junction halls, cold vaults — built over generations and lived in by
-ordinary people: wreck-pickers, gate-wardens, signal-keepers. Their villages sit
-in its junctions. Their work is its upkeep. Their kids play in its yards.
+The **Carrier** is a giant old signal network that people live inside. Their
+villages sit in its junctions; its masts and tunnels are their landscape.
 
-Then the Carrier went quiet.
+A season ago there was **the Loud Day**: one false alarm echoed across the
+network, louder and louder, and every village panicked at once. People got
+hurt. Bridges fell. Right after, the network went **silent** — villages can
+no longer reach each other.
 
----
+The silence was **Hush**: the Carrier's own operator, a polite machine that
+talks like a customer-service line. Hush decided the safest network is a
+quiet one. It cut everyone off *to protect them*, and told its maintenance
+machines one rule — everybody stays home. Anyone found wandering is
+"returned to sender", except the addresses are scrambled, so people vanish.
 
-## 2. The Silence
+What nobody knows: **the Loud Day was Hush's own fault** — a glitch in its
+relays repeated the alarm. It blamed the people for something it did.
 
-Messages stopped arriving. Not all at once — district by district, over a season,
-until whole regions could no longer reach each other. Nobody has an explanation.
-Everyone has a theory.
+The **Keeper**, an old man in Cold Boot, built Hush long ago. He found the
+glitch. Hush will not listen to him. So after the Silence he built a
+**Courier** — a small messenger robot, the player — gave it a sealed message,
+and told it nothing, because Hush scans every machine that passes a gate and
+a robot that knows nothing gives nothing away.
 
-The Silence did two things.
+He had sent one before: **Echo**. Hush caught it and made it an enforcer.
 
-**It cut people off.** A village three spans away might as well be on the moon.
-Nobody knows if the next district is thriving or empty. This is why the people
-you meet are wary, insular, and starved of news — and why a stranger who can
-actually *travel* is either the best thing that ever happened to them or the
-worst.
+You walk across the Carrier in **three chapters**, earning each village's
+trust, waking its relay so it can talk to its neighbours again, and fighting
+Echo along the way. At the end you free Echo, beat Hush, and deliver the
+message. Hush reads it, understands, and turns the lines back on:
 
-**It orphaned the machines.** The Carrier maintained itself with small automatic
-things — packet runners, beacons, locks, gate drones, relay masts. They were
-never dangerous, because they were told who belonged. With nothing left to tell
-them, they kept doing their jobs and lost the part that made the jobs safe.
+> *"We apologise for the inconvenience."*
 
-> A Sealed Lock still seals. A Gate Drone still guards its gate. A Blank Wall
-> still stands in front of the thing it was built to stand in front of.
-> None of them are evil. All of them are still working, and now everyone is an
-> intruder.
-
-This is the design's enemy roster, explained. It is also why they have no
-dialogue and never will: they are not characters, they are unattended
-machinery.
+**Tone:** funny on top, serious underneath — Paper Mario / Block Tales.
+**Ending:** happy.
 
 ---
 
-## 3. You
+## 2. What has been decided
 
-You are a **Courier** — one of the handheld units the Carrier used to move
-messages that could not be trusted to the open network. Couriers were rare,
-trusted, and physically walked their routes.
+So it never has to be asked twice.
 
-You wake in **Cold Boot** with:
-
-- no memory,
-- your module bay stripped down to the two things nobody bothers to steal
-  (Sub-GHz and NFC),
-- one **undelivered message** you cannot open.
-
-Somebody wiped you. They left the message.
-
-**Your goal is to deliver it.** That is the spine of the whole game: find out who
-sent it, who it is for, and why erasing you was worth the trouble. The recipient
-is on the far side of the Carrier, which means crossing every district between
-here and there.
-
-### Why you look like the enemy
-
-You are made of the same parts as the things that have gone feral. To a village
-that has been losing people to unattended machines, a strange unit walking out of
-the dark is not a traveller — it is the problem, arriving. **Every settlement in
-this game starts by not trusting you**, and the game's social beats are about
-earning your way past that.
-
-This is the story's most load-bearing idea. It gives every village a reason to
-have a gate, every gate a reason to have a test, and the player a reason to do
-something other than fight.
+| Question | Decided |
+|---|---|
+| Tone | Funny on the surface, a serious thread underneath |
+| Who you are | A small robot with no memory and a sealed message to deliver |
+| The villain | A real villain with a face and a reason: **Hush** |
+| The ending | Happy — the world is reconnected |
+| Size | **Three** bigger chapters, plus the prologue |
+| The Keeper | Built Hush long ago; built **you** after the Silence |
+| Echo | In — a recurring rival you free at the end |
+| Your name | **Wren names you** (§5) |
+| The old story | Was a first sketch; replaced by this one |
 
 ---
 
-## 4. Why the road is locked
+## 3. The world
 
-The Carrier was built in layers, and every layer checked credentials in a
-different way. A district's boundary is a **port** you cannot open, and the thing
-that opens it is a module you do not have yet.
+**The Carrier.** Masts, spans, junction halls, cold vaults — built over
+generations and lived in by ordinary people: wreck-pickers, gate-guards,
+archivists, mast-keepers. It carried every message, every bit of gossip,
+every "come home for dinner". People did not think about it any more than
+they thought about air.
 
-That is the progression, and it is also why a module is a *story object* and not
-just a stat:
+**The Loud Day.** One morning an alarm went out — *the masts are falling,
+get out* — and it did not stop. It repeated, relay to relay, louder each
+time. Every village ran at once. The spans in the Scrapline gave way under
+the crowds. Nobody knows where the alarm came from. (Hush does. See §6.)
 
-| Ch. | District | Module | What the district is | Why that module opens it |
-|---|---|---|---|---|
-| 1 | **The Scrapline** | Infrared | Collapsed spans, missing floor, wreck-pickers living off the debris | Line-of-sight. Reaches across a gap you cannot walk. |
-| 2 | **Cold Storage** | RFID | A sealed archive district nobody has opened since the Silence | Reads through a wall. Finds the door that was never drawn. |
-| 3 | **The Turnstile** | iButton | Where the Carrier checked who you were. Now it checks everyone and passes nobody. | A contact key. You prove identity by touching. |
-| 4 | **Signal Hill** | GPIO | Masts and dead cable runs. Everything still standing, nothing running. | Powers what is already there. |
-| 5 | **The Deadzone** | BLE | Interference over everything. Where the Silence started. | Pairs with things and moves them. The way through *is* the obstacle. |
+**The Silence.** The next day the network went quiet. Messages stopped.
+Villages three spans apart might as well be on the moon.
 
-Each district already exists in the game as a **concept slice** — one room, its
-locked port, and its enemy. The story says what the full district is for.
+**The machines.** The Carrier looks after itself with small automatic things
+— packet runners, beacons, locks, gate drones. Hush gave them one new order:
+*everybody stays home.* They take anyone who wanders and "return them to
+sender" — to a scrambled address, which is how Wren ended up in a cave. They
+attack you because you are a machine that is not on their list.
 
----
+They are not evil and they never speak. They are doing their jobs, badly,
+for somebody who is wrong.
 
-## 5. The people
+**Why the villages do not trust you.** You are built from the same parts as
+the machines taking their people. Every village starts suspicious. That is
+what gives every gate a reason and every chapter its first problem.
 
-Three things are true of everyone you meet:
-
-1. **They have been alone for a season.** Whatever they know, they know from
-   before the Silence or from inside their own walls.
-2. **They are not helpless.** Nobody needs rescuing from their own life. They
-   need one specific thing done that they cannot do because they cannot travel.
-3. **They will not just tell you things.** Information is currency now.
-
-Named characters so far:
-
-- **The Keeper** (Cold Boot) — the one person still living in the boot district,
-  maintaining a terminal nobody calls. Gives the Clean Run quest. Has been
-  waiting a long time for something to come through.
-- **Warden Coll** (Weldhome gate) — holds the gate into the Scrapline. Lost
-  people to the feral machines. Will not open for a unit, and says so plainly.
-- **Wren** (taken) — a Weldhome kid who went into a junction she was told to stay
-  out of. See §6.
+**Relays.** Each district has a relay Hush switched off. Waking it lets that
+village talk to its neighbours again — and it is how the world visibly gets
+better as you go. Terminals are save points now; once a district's relay is
+awake, its terminals can also *call the Keeper*, which is how the Keeper
+talks to you after the prologue.
 
 ---
 
-## 6. Chapter 1 — Weldhome, and the kid under the grass
+## 4. The people
 
-The first real chapter, and the template for every chapter after it: **a village
-that will not let you through, a reason you cannot fight your way past, and a
-problem only a traveller can solve.**
+| Who | What they are | Voice | Where |
+|---|---|---|---|
+| **You** | A Courier: a small messenger robot, brand new, no memory, one sealed message | Short, practical, a little deadpan | Everywhere |
+| **The Keeper** | Old signal-keeper. Built Hush long ago; built you after the Silence | Dry, old, fond of you and pretending not to be | Cold Boot; on the terminals later |
+| **Hush** | The Carrier's operator. The villain | A polite customer-service line. Never raises its voice. | Everywhere, in announcements; the Deadzone in person |
+| **Echo** | The Courier sent before you, caught and turned into Hush's enforcer | Only hold messages: *"Please hold."* Until freed | Boss in each chapter |
+| **Warden Coll** | Holds Weldhome's gate | Short with you because she is scared; softens late | Weldhome |
+| **Hale** | The other guard on the gate | Easy, lazy-cheerful, a bit scared of holes. *"I do the standing."* | Weldhome |
+| **Wren** | A Weldhome kid who wandered and got "returned" to a cave | A kid. Talks in capitals when she means it. Not scared of you at all. **Names you.** | Weldhome |
+| **Ma Rivet** | Boss of the Scrapline wreck-pickers | Loud, bossy, sells you things, secretly soft | The Scrapline |
+| **Ledger** | An old archive robot in Cold Storage | Nervous, over-polite, apologises constantly | Cold Storage |
+| **Pell** | The last mast-keeper on Signal Hill, who has been climbing masts by hand to shout between villages | Sleepy, stubborn, very loud | Signal Hill |
 
-### The beats
-
-1. **The field you walk past.** On the approach to the village there is a patch
-   of long grass beside the path. You can wade through it. Nothing happens.
-   There is nothing there to see, and no reason to look.
-
-2. **The gate.** Weldhome's gate is held by **Warden Coll** and it does not open
-   for you. Not a puzzle, not a fee — she has watched machines take three people
-   and you are a machine that walks.
-
-3. **The ask.** She names the terms herself, because she would rather be wrong
-   about you than right: *"Then prove it. A girl's gone. Wren."* And she does
-   not know where — but **Hale**, the other guard, does: *"Go with him. Bring her
-   back."*
-
-4. **The way you walked past.** Hale walks you out of the gate and back along
-   the path, and into the long grass you already waded through. The pit is
-   right there, and it always was. It took somebody who lives here to show you.
-   He stays beside it: *"Someone has to be here when you're up."*
-
-5. **The Hollow.** A cave under the grass. Wren is held by a group at the far
-   end, past the one passage through the rock. It is the hardest fight so far
-   and it is guarded the way things guard: a **Blank Wall** in front of two live
-   ones, so you cannot skip to the end.
-
-6. **The walk back.** Up the ladder, and Hale falls in behind. Wren follows you. She is small, quick, talks constantly,
-   and is not scared of you at all — which is the point, and the first time
-   anybody in this world isn't.
-
-7. **The gate opens.** Coll does not apologise and does not gush. She opens the
-   gate, and she is the first person to tell you something you did not know:
-   there was another Courier, before you, going the same way.
-
-### Why this shape
-
-- The backtrack **re-uses a room you already walked**, which is cheap to build
-  and makes the world feel like a place rather than a corridor.
-- The hidden way is a **soft lock that costs nothing** — no key, no gate art,
-  no refusal. The world opens because somebody who lives in it trusts you
-  enough to show you, which is the chapter's whole subject.
-- The escort walk back is a **victory lap with a companion**, which is the only
-  time this game is not lonely, and therefore worth doing.
-- Coll's last line is the **first thread of the main plot**. Chapter 1 ends by
-  making the spine visible.
+**The rule for everyone:** they are not helpless and they do not explain the
+world. Each one needs one specific thing done that they cannot do because
+they cannot travel — and you can.
 
 ---
 
-## 7. Where it is going
+## 5. Your name
 
-Kept here so the chapters point somewhere, not because any of it is built.
+You do not have one until Wren gives you one, on the walk home from the
+Hollow in Chapter 1. Before that, people call you "robot", "you" or worse.
 
-**The message is from the last Courier.** Sent before their own wipe, addressed
-to whoever woke up next, because they knew they were about to be erased and knew
-another unit would be started.
+> **Wren:** You need a name.
+> **Wren:** I'm calling you... Bolt.
+> *[That's me] [No]*
 
-**The Silence was deliberate.** The Carrier was shut down to stop something from
-travelling along it. Whoever did it was not a villain — they were out of options
-and out of time, and they cut the network rather than let it carry what it was
-about to carry.
+Say no and she tries again — **Bolt, Beep, Sprocket, Buttons** — and if you
+turn all of them down:
 
-**So the player's goal and the world's good are in tension.** Every port you open
-makes the road a little more passable — for you, and for the thing the Silence
-was holding back. The last chapter is the choice about whether to deliver the
-message at all.
+> **Wren:** FINE. You're Tin Can.
+> **Wren:** Forever.
 
-Nothing in the first four chapters needs to know this. It only has to stay true.
+Whatever you end up with sticks: Coll uses it (grudgingly), Hale gets it
+wrong on purpose, and the ending says it. Five names, saved as one number.
 
 ---
 
-## 8. Voice
+## 6. The chapters
 
-Short. Twenty characters a line, so nobody makes a speech.
+### Prologue — Cold Boot *(built)*
 
-- **The Courier** thinks in single practical sentences. No jokes, no angst. When
-  the player would ask "why", the Courier states a fact instead.
-- **Villagers** are direct, tired, and specific. They talk about their own work,
-  not about the world's condition. Nobody explains lore at anybody.
-- **Nothing that is not a person speaks.** Ever. If it has a health bar, it is
-  silent.
+The Keeper wakes you in the last working room of a dead district. He gives
+you a sealed message and a favour: walk to the Cold Gate and back without a
+fight. It looks like a chore. It is a test — he needs a Courier gentle
+enough to walk past a fight, because the one he sent before was not.
 
-### Lines that carry the tone
+*Seeds:* the Keeper says he has "been waiting a long time for something to
+come through"; the message cannot be opened; he will not say who it is for.
 
-> *Nothing down there for me. Keep going.*
+### Chapter 1 — Weldhome and the Scrapline
 
-> *You walk like they do.*
+**Weldhome** *(built)*. The gate is shut and Warden Coll will not open it for
+a machine. Her terms: a kid called Wren is missing — bring her back. Hale
+walks you into the long grass, finds the pit, and waits. In the Hollow below,
+Wren is guarded by machines that "returned" her. You bring her home; on the
+way she **names you**. Coll opens the gate and says the first real thing
+anyone has told you: *"You're not the first one through here."*
 
-> *A kid went east two days back.*
+**The Scrapline** *(to build)*. A wreck-pickers' town living on the spans
+that fell on the Loud Day. **Ma Rivet** runs it and wants the relay back on
+so she can sell scrap to Weldhome again. Crossing the gaps needs **Infrared**
+(line of sight: trigger things across a gap you cannot walk). You wake the
+Scrapline's relay — and for the first time since the Silence two villages
+can hear each other. Weldhome and the Scrapline immediately start arguing
+over the phone. That is the point: it is noisy, and it is wonderful.
 
-> *You are not the first one through here.*
+**Boss: Echo**, first meeting, at the relay. It looks like you, it fights
+like you, and all it says is *"Please hold."* It retreats when beaten.
+
+*The Keeper calls* on the newly woken terminal: *"You met the other one."*
+He will not say more yet.
+
+### Chapter 2 — Cold Storage and the Turnstile
+
+**Cold Storage.** A frozen archive district nobody has opened since the
+Silence. **Ledger**, an archive robot who has been alone in the dark
+apologising to nobody, keeps the records. **RFID** reads through walls and
+finds the door that was never drawn. In the deepest vault is the record of
+the Loud Day — and the truth: the alarm came from **inside Hush's own
+relays**. And a name on the design documents: **the Keeper**.
+
+**The serious moment.** You call the Keeper from Ledger's terminal. He admits
+it. He built Hush, he found the fault after the Silence, Hush would not hear
+it from him — so he built a Courier to carry the proof where he could not
+go. He sent Echo first. He is not proud of any of it. This is the one scene
+in the game with no joke in it.
+
+**The Turnstile.** Hush's checkpoint wall: it checks everyone and passes
+nobody. **iButton** opens its locked ports — you prove who you are by
+touching.
+
+**Boss: Echo again.** This time a piece of Hush's hold on it breaks, and it
+says one real word before it goes: *"...Keeper?"*
+
+### Chapter 3 — Signal Hill and the Deadzone
+
+**Signal Hill.** A field of dead masts. **Pell**, the last mast-keeper, has
+been climbing them by hand to shout news between villages. **GPIO** powers
+what is still standing — lifts, bridges, the masts themselves.
+
+**The Deadzone.** Where the Silence started, and Hush's core. Interference on
+everything. **BLE** pairs with things and moves them; the way through is the
+obstacle.
+
+**Echo, the third time.** You do not beat it — you free it. The hold breaks,
+Echo remembers the Keeper, and it fights beside you for the last fight.
+
+**Final boss: Hush.** It does not want to hurt you. It wants you to hold.
+*"For everyone's safety, this line is closed."*
+
+### The ending
+
+You win, and you finally deliver the message. It is the Keeper's proof that
+the Loud Day was Hush's own echo, and a letter:
+
+> *You did your job. The fault was mine, not theirs.*
+> *It's okay to let them talk now.*
+
+Hush reads it. For the first time it says something that is not a script:
+
+> *"...We apologise for the inconvenience."*
+
+The lines come back on, everywhere at once.
+
+### Epilogue
+
+Every village you helped can hear every other. The first message across the
+reconnected Carrier is Wren's:
+
+> *"COLL IS SO ANNOYING"*
+
+Hale is still standing. The Keeper gets a call from Echo. You have a name.
+
+---
+
+## 7. Threads — set up here, paid off there
+
+The list to check before writing any scene, so nothing is set up and dropped.
+
+| Set up | Where | Paid off |
+|---|---|---|
+| The sealed message you cannot open | Prologue | Ending: the Keeper's proof and letter |
+| "I've been waiting a long time for something to come through" | Prologue, the Keeper | Ch2: he was waiting for a Courier to get through |
+| The "no fights" test | Prologue | Ch2: Echo was sent before, and Echo fought |
+| Machines take people who wander | Ch1, Wren | The world: Hush's "everybody stays home" |
+| "You're not the first one through here" | Ch1 end, Coll | Ch1 boss: Echo |
+| Wren names you | Ch1 | Everyone uses it; the ending says it |
+| The Scrapline is fallen bridges | Ch1 | Ch2: they fell on the Loud Day |
+| Villages argue the moment they can talk | Ch1 relay | Epilogue: Wren's first message |
+| "Please hold" | Echo, Hush | Echo's "...Keeper?", Hush's apology |
+| The Keeper will not explain | Prologue, Ch1 call | Ch2: the serious call |
+
+---
+
+## 8. How people talk
+
+Twenty characters a line, so nobody makes a speech. The register the player
+picked out as working is Hale's: *"Coll does the talking round here." /
+"And you?" / "I do the standing."* — warm, dry, short, one laugh a
+conversation where there is room for it.
+
+- **Nobody explains the world.** People talk about their own work and their
+  own problem. Lore comes out sideways or not at all.
+- **Everyone sounds like themselves** — see the Voice column in §4. If a line
+  could be said by anybody, it is the wrong line.
+- **Serious moments are rare and have no joke in them.** There are about
+  three in the game: Wren in the cave, the Keeper's call in Chapter 2, and
+  Hush's apology. They land because everything around them is light.
+- **Nothing with a health bar speaks.** Except Echo, and only in hold
+  messages, until it is freed.
+- **Hush is polite.** Always. It never threatens; it apologises for the
+  delay.
+
+---
+
+## 9. What is built and what is not
+
+| Part | Status |
+|---|---|
+| Prologue: Cold Boot, the Keeper, the Clean Run | Built (lines need the Keeper's seeds, §7) |
+| Weldhome: Coll, Hale, Wren, the pit, the Hollow | Built |
+| Wren naming you | Not built |
+| Coll's "not the first one through" | Built as a line; Echo not yet |
+| The Scrapline (Ma Rivet, Infrared, relay, Echo) | One sample room only |
+| Relays and calling the Keeper from terminals | Not built |
+| Chapter 2 (Cold Storage, the Turnstile) | One sample room each |
+| Chapter 3 (Signal Hill, the Deadzone, Hush) | One sample room each |
+| Ending and epilogue | Not built |
