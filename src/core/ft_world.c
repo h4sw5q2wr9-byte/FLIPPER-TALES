@@ -66,6 +66,13 @@ static const FtRoster FT_ROSTERS[] = {
 
     /* [17] Echo, alone, on the spit in front of the Scrapline's relay. */
     {1, {FT_ENEMY_ECHO, 0, 0}},
+
+    /* [18-19] Cold Storage. Chillers are sealed and heavily shielded, so
+     * Sub-GHz does nothing and NFC barely scratches them: this is the
+     * chapter that asks for RFID, which ignores a shield outright. A
+     * Lamplighter beside one asks for the other end of the kit as well. */
+    {2, {FT_ENEMY_CHILLER, FT_ENEMY_CHILLER, 0}},
+    {2, {FT_ENEMY_CHILLER, FT_ENEMY_LAMPLIGHTER, 0}},
 };
 #define ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
 
@@ -237,6 +244,9 @@ static const FtEntity EJ2_ENTS[] = {
 static const FtExit SC1_EXITS[] = {
     {0, 5, FT_ECHO_ROOM, 20, 8, 0, 0, 0},
     {25, 5, FT_ROOM_SPANS, 1, 4, 0, 0, 0},
+
+    /* North, to Cold Storage — once Ma Rivet's job is done. */
+    {12, 0, FT_ROOM_COLD_HALL, 12, 7, (uint8_t)FT_QUEST_RIVET + 1u, (uint8_t)FT_QUEST_DONE, 0},
 };
 static const FtEntity SC1_ENTS[] = {
     {FT_ENT_NPC, 10, 4, FT_QUEST_RIVET},
@@ -254,6 +264,44 @@ static const FtEntity SC2_ENTS[] = {
     {FT_ENT_FOE, 5, 2, 4},
     {FT_ENT_FOE, 19, 3, 5},
     {FT_ENT_CACHE, 22, 7, FT_ITEM_CELL},
+};
+
+/* ---- Chapter 2, part 1: Cold Storage --------------------------------------
+ *
+ * STORY.md §6. The front hall with Ledger, the Stacks, and the Deep Vault
+ * behind a door nobody drew. */
+
+/* [16] Cold Storage. Ledger in his office, beside the terminal that still
+ * calls out; a Chiller crew in each wing of the hall. */
+static const FtExit CS2_EXITS[] = {
+    {12, 8, FT_ROOM_SCRAPLINE, 12, 1, 0, 0, 0},
+    {23, 4, FT_ROOM_STACKS, 1, 4, 0, 0, 0},
+};
+static const FtEntity CS2_ENTS[] = {
+    {FT_ENT_NPC, 12, 3, FT_QUEST_LEDGER},
+    {FT_ENT_FOE, 4, 6, 6},
+    {FT_ENT_FOE, 19, 6, 18},
+    {FT_ENT_CACHE, 6, 1, FT_ITEM_RATION},
+};
+
+/* [17] The Stacks. The undrawn door is on the east wall, level with the
+ * middle aisle. */
+static const FtExit CS3_EXITS[] = {
+    {0, 4, FT_ROOM_COLD_HALL, 22, 4, 0, 0, 0},
+    {25, 5, FT_ROOM_VAULT, 1, 4, 0, 0, 0},
+};
+static const FtEntity CS3_ENTS[] = {
+    {FT_ENT_FOE, 8, 3, 19},
+    {FT_ENT_FOE, 17, 6, 6},
+    {FT_ENT_CACHE, 23, 1, FT_ITEM_CELL},
+};
+
+/* [18] The Deep Vault. One cabinet, and a pair of Chillers keeping it cold. */
+static const FtExit CS4_EXITS[] = {
+    {0, 4, FT_ROOM_STACKS, 24, 5, 0, 0, 0},
+};
+static const FtEntity CS4_ENTS[] = {
+    {FT_ENT_FOE, 12, 4, 18},
 };
 
 /* [15] The Relay. Echo stands on the spit, the only way to the mast. */
@@ -350,24 +398,28 @@ static const char* const AREA_COLD_BOOT = "Cold Boot";
 static const char* const AREA_WELDHOME = "Weldhome";
 static const char* const AREA_HOLLOW = "The Hollow";
 static const char* const AREA_SCRAPLINE = "The Scrapline";
+static const char* const AREA_COLD_STORAGE = "Cold Storage";
 
 static const FtRoom FT_ROOMS[] = {
-    {&FT_MAP_CB1, CB1_EXITS, 1, CB1_ENTS, 2, AREA_COLD_BOOT, 0},
-    {&FT_MAP_CB2, CB2_EXITS, 2, CB2_ENTS, 1, AREA_COLD_BOOT, 0},
-    {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 3, AREA_COLD_BOOT, 0},
-    {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 2, AREA_COLD_BOOT, 0},
-    {&FT_MAP_SL1, SL1_EXITS, 2, SL1_ENTS, 2, AREA_SCRAPLINE, 0},
-    {&FT_MAP_CS1, CS1_EXITS, 2, CS1_ENTS, 2, "Cold Storage", 0},
-    {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2, "The Turnstile", 0},
-    {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2, "Signal Hill", 0},
-    {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2, "The Deadzone", 0},
-    {&FT_MAP_AP1, AP1_EXITS, 3, AP1_ENTS, 2, NULL, 0}, /* a path */
-    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 5, AREA_WELDHOME, 0},
-    {&FT_MAP_EJ1, EJ1_EXITS, 2, EJ1_ENTS, 4, AREA_HOLLOW, 0},
-    {&FT_MAP_EJ2, EJ2_EXITS, 1, EJ2_ENTS, 4, AREA_HOLLOW, 0},
-    {&FT_MAP_SC1, SC1_EXITS, 2, SC1_ENTS, 2, AREA_SCRAPLINE, 0},
-    {&FT_MAP_SC2, SC2_EXITS, 2, SC2_ENTS, 3, AREA_SCRAPLINE, FT_REVEAL_BRIDGE_SPANS},
-    {&FT_MAP_SC3, SC3_EXITS, 1, SC3_ENTS, 1, AREA_SCRAPLINE, FT_REVEAL_BRIDGE_RELAY},
+    {&FT_MAP_CB1, CB1_EXITS, 1, CB1_ENTS, 2, AREA_COLD_BOOT, 0, 0},
+    {&FT_MAP_CB2, CB2_EXITS, 2, CB2_ENTS, 1, AREA_COLD_BOOT, 0, 0},
+    {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 3, AREA_COLD_BOOT, 0, 0},
+    {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 2, AREA_COLD_BOOT, 0, 0},
+    {&FT_MAP_SL1, SL1_EXITS, 2, SL1_ENTS, 2, AREA_SCRAPLINE, 0, 0},
+    {&FT_MAP_CS1, CS1_EXITS, 2, CS1_ENTS, 2, AREA_COLD_STORAGE, 0, 0},
+    {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2, "The Turnstile", 0, 0},
+    {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2, "Signal Hill", 0, 0},
+    {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2, "The Deadzone", 0, 0},
+    {&FT_MAP_AP1, AP1_EXITS, 3, AP1_ENTS, 2, NULL, 0, 0}, /* a path */
+    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 5, AREA_WELDHOME, 0, 0},
+    {&FT_MAP_EJ1, EJ1_EXITS, 2, EJ1_ENTS, 4, AREA_HOLLOW, 0, 0},
+    {&FT_MAP_EJ2, EJ2_EXITS, 1, EJ2_ENTS, 4, AREA_HOLLOW, 0, 0},
+    {&FT_MAP_SC1, SC1_EXITS, 3, SC1_ENTS, 2, AREA_SCRAPLINE, 0, 0},
+    {&FT_MAP_SC2, SC2_EXITS, 2, SC2_ENTS, 3, AREA_SCRAPLINE, FT_REVEAL_BRIDGE_SPANS, 0},
+    {&FT_MAP_SC3, SC3_EXITS, 1, SC3_ENTS, 1, AREA_SCRAPLINE, FT_REVEAL_BRIDGE_RELAY, 0},
+    {&FT_MAP_CS2, CS2_EXITS, 2, CS2_ENTS, 4, AREA_COLD_STORAGE, 0, 0},
+    {&FT_MAP_CS3, CS3_EXITS, 2, CS3_ENTS, 3, AREA_COLD_STORAGE, 0, FT_REVEAL_SECRET_STACKS},
+    {&FT_MAP_CS4, CS4_EXITS, 1, CS4_ENTS, 1, AREA_COLD_STORAGE, 0, 0},
 };
 #define ROOM_COUNT (sizeof(FT_ROOMS) / sizeof(FT_ROOMS[0]))
 
@@ -422,9 +474,15 @@ static bool bridge_down_in(const FtWorld* w) {
     return bit != 0u && (w->revealed & bit) == bit;
 }
 
+static bool secret_found_in(const FtWorld* w) {
+    const uint8_t bit = ft_room(w->room)->secret;
+    return bit != 0u && (w->revealed & bit) == bit;
+}
+
 static bool player_step_free(const FtWorld* w, const FtMap* m, int8_t dx, int8_t dy) {
     const FtTile t = ft_map_tile(m, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy);
     if(t == FT_TILE_BRIDGE) return bridge_down_in(w);
+    if(t == FT_TILE_SECRET) return secret_found_in(w);
     return !ft_tile_solid(t);
 }
 
@@ -1318,9 +1376,9 @@ const char* ft_world_exit_refusal(const FtExit* x) {
     const FtQuestId id = (FtQuestId)(x->need_quest - 1u);
 
     /* A gate somebody is holding says who is holding it; a way you simply
-     * have no reason to take is the Courier talking to themselves. */
-    if(x->need_state == (uint8_t)FT_QUEST_DONE) return "Coll won't open it.";
-
+     * have no reason to take is the Courier talking to themselves. Which is
+     * which is the quest's to say: it used to be "Coll won't open it." for
+     * every gate, and the Scrapline's has nothing to do with Coll. */
     return ft_quest_refusal(id, (FtQuestState)x->need_state);
 }
 
@@ -1537,6 +1595,55 @@ bool ft_world_relay_ahead(const FtWorld* w) {
     facing_delta(w->facing, &dx, &dy);
     return ft_map_tile(ft_world_map(w), (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) ==
            FT_TILE_RELAY;
+}
+
+/* ---- Cold Storage ------------------------------------------------------- */
+
+bool ft_world_secret_found(const FtWorld* w) {
+    return secret_found_in(w);
+}
+
+bool ft_world_rfid_target(const FtWorld* w) {
+    if(ft_room(w->room)->secret == 0u || secret_found_in(w)) return false;
+
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+    return ft_map_tile(ft_world_map(w), (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) ==
+           FT_TILE_SECRET;
+}
+
+bool ft_world_rfid_read(FtWorld* w) {
+    if(!ft_world_rfid_target(w)) return false;
+    w->revealed |= ft_room(w->room)->secret;
+    return true;
+}
+
+bool ft_world_secret_near(const FtWorld* w) {
+    if(ft_room(w->room)->secret == 0u || secret_found_in(w)) return false;
+
+    const FtMap* m = ft_world_map(w);
+    for(int32_t dy = -2; dy <= 2; dy++) {
+        for(int32_t dx = -2; dx <= 2; dx++) {
+            if(abs32(dx) + abs32(dy) > 2) continue;
+            if(ft_map_tile(m, (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) == FT_TILE_SECRET) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool ft_world_archive_ahead(const FtWorld* w) {
+    int32_t dx, dy;
+    facing_delta(w->facing, &dx, &dy);
+    return ft_map_tile(ft_world_map(w), (int32_t)w->mv.tx + dx, (int32_t)w->mv.ty + dy) ==
+           FT_TILE_ARCHIVE;
+}
+
+bool ft_world_truth_due(const FtWorld* w) {
+    return w->room == FT_ROOM_COLD_HALL &&
+           ft_quest_state(&w->quests, FT_QUEST_LEDGER) == FT_QUEST_DONE &&
+           !(w->revealed & FT_REVEAL_KEEPER_TRUTH);
 }
 
 bool ft_world_call_due(const FtWorld* w) {

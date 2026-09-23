@@ -483,7 +483,7 @@ static void test_enemy_table(void) {
  * receiver, and floor after, so a room is only "connected" through one if
  * the bridge can be brought down — which ft_world_ir_* tests prove. */
 static bool blocks_walk(FtTile t) {
-    return ft_tile_solid(t) && t != FT_TILE_BRIDGE;
+    return ft_tile_solid(t) && t != FT_TILE_BRIDGE && t != FT_TILE_SECRET;
 }
 
 /* The chapter samples past the first one used to be chained on from the
@@ -894,7 +894,7 @@ static void test_encounter(void) {
     /* One flat ring of every action, wrapping both ways. The menu used to be
      * two levels with the modules behind a drill-down, which put two of them
      * an extra press away and gave the screen two rows of buttons. */
-    CHECK_EQ(FT_ACTION_COUNT, 7);
+    CHECK_EQ(FT_ACTION_COUNT, 8);
     CHECK_EQ(e.menu_index, 0);
 
     /* Infrared reaches what the others cannot: a flyer and a sealed one. */
@@ -911,22 +911,37 @@ static void test_encounter(void) {
         CHECK_EQ(ft_encounter_effective_target(&ir, FT_ACTION_INFRARED), 0);
     }
 
+    /* RFID reads straight through a Chiller's shield, where NFC halves it. */
+    {
+        const FtDefender chill = {FT_ENEMIES[FT_ENEMY_CHILLER].shielded, 0};
+        const FtHitParams pp = {0, 0, FT_RATING_NICE, false, FT_GUARD_NONE, 0};
+        const FtHitResult rf = ft_resolve_hit(&FT_MODULES[FT_MOD_RFID].attack, &chill, &pp);
+        const FtHitResult nf = ft_resolve_hit(&FT_MODULES[FT_MOD_NFC].attack, &chill, &pp);
+        CHECK(rf.damage > nf.damage, "RFID beats NFC on a Chiller (%d vs %d)", rf.damage,
+              nf.damage);
+        CHECK(!ft_encounter_can_reach(&e, FT_ACTION_RFID, 0) ||
+                  !(FT_ENEMIES[e.foes[0].id].attrs & FT_ATTR_AIRBORNE),
+              "and it is a touch: no reaching a flyer");
+    }
+
     /* Before Ma Rivet's clicker, Infrared is not on the ring at all. */
     {
         bool met = false;
         for(uint8_t i = 0; i < 2u * FT_ACTION_COUNT; i++) {
             ft_encounter_menu_move(&e, 1);
-            if(e.menu_index == FT_ACTION_INFRARED) met = true;
+            if(e.menu_index == FT_ACTION_INFRARED || e.menu_index == FT_ACTION_RFID) met = true;
         }
         for(uint8_t i = 0; i < 2u * FT_ACTION_COUNT; i++) {
             ft_encounter_menu_move(&e, -1);
-            if(e.menu_index == FT_ACTION_INFRARED) met = true;
+            if(e.menu_index == FT_ACTION_INFRARED || e.menu_index == FT_ACTION_RFID) met = true;
         }
         CHECK(!met, "no Infrared before you have it");
+        CHECK(ft_encounter_action_block(&e, FT_ACTION_RFID) != NULL, "nor RFID");
         CHECK(ft_encounter_action_block(&e, FT_ACTION_INFRARED) != NULL, "and it is refused");
         e.menu_index = 0;
     }
     e.infrared = true;
+    e.rfid = true;
 
     ft_encounter_menu_move(&e, -1);
     CHECK_EQ(e.menu_index, FT_ACTION_COUNT - 1);
@@ -3420,8 +3435,9 @@ static void test_world_links(void) {
             } else {
                 /* A ladder is a way out too: the climb back up from under
                  * the ground, which is the one place a ladder belongs. */
+                /* And so is a door nobody drew, once RFID has read it. */
                 CHECK(here == FT_TILE_DOOR || here == FT_TILE_GATE ||
-                          here == FT_TILE_LADDER,
+                          here == FT_TILE_LADDER || here == FT_TILE_SECRET,
                       "room %u exit %u stands on a way out (got %d)", r, e, (int)here);
             }
 
@@ -4551,7 +4567,8 @@ static void chase(const FtWorld* w, int32_t tx, int32_t ty, int8_t* dx, int8_t* 
             {
                 /* A drawbridge is a gap until it is down, and floor after. */
                 const FtTile tt = ft_map_tile(m, nx, ny);
-                if(ft_tile_solid(tt) && !(tt == FT_TILE_BRIDGE && ft_world_bridge_down(w))) {
+                if(ft_tile_solid(tt) && !(tt == FT_TILE_BRIDGE && ft_world_bridge_down(w)) &&
+                   !(tt == FT_TILE_SECRET && ft_world_secret_found(w))) {
                     continue;
                 }
             }
@@ -5551,6 +5568,122 @@ static void test_infrared_freeze(void) {
     CHECK_EQ(ft_world_foe_ahead(&n), 0);
 }
 
+static void test_cold_storage(void) {
+    section("Cold Storage");
+
+    /* North of the Scrapline, once Ma Rivet's job is done. */
+    const FtRoom* town = ft_room(FT_ROOM_SCRAPLINE);
+    const FtExit* north = NULL;
+    for(uint8_t i = 0; i < town->exit_count; i++) {
+        if(town->exits[i].dest_room == FT_ROOM_COLD_HALL) north = &town->exits[i];
+    }
+    CHECK(north != NULL, "the Scrapline has a way north");
+    if(!north) return;
+    {
+        FtWorld g;
+        ft_world_init(&g);
+        ft_world_enter(&g, FT_ROOM_SCRAPLINE, 12, 1);
+        CHECK(!ft_world_exit_open(&g, north), "shut until the relay is awake");
+        CHECK(strcmp(ft_world_exit_refusal(north), "The relay first.") == 0, "and says why");
+        ft_quest_advance(&g.quests, FT_QUEST_RIVET, FT_QUEST_DONE);
+        CHECK(ft_world_exit_open(&g, north), "open once Ma Rivet has paid");
+    }
+
+    /* Everything Ledger says fits, with every name. */
+    for(uint8_t st = 0; st <= (uint8_t)FT_QUEST_DONE; st++) {
+        for(uint8_t again = 0; again < 5u; again++) {
+            FtQuests q;
+            ft_quests_init(&q);
+            q.state[FT_QUEST_LEDGER] = st;
+            const FtTalk c = ft_quest_talk(&q, FT_QUEST_LEDGER, again);
+            check_talk(&c, "Ledger", st, again);
+            CHECK_EQ(c.voice, FT_VOICE_LEDGER);
+        }
+    }
+    {
+        const FtTalk r = ft_quest_record_talk(false);
+        check_talk(&r, "Record", 0, 0);
+        const FtTalk r2 = ft_quest_record_talk(true);
+        check_talk(&r2, "Record", 1, 0);
+        const FtTalk k = ft_quest_keeper_truth();
+        check_talk(&k, "Keeper truth", 0, 0);
+        bool internal = false, keeper = false;
+        for(uint8_t i = 0; i < r.count; i++) {
+            const char* l[2] = {r.beats[i].a, r.beats[i].b};
+            for(int j = 0; j < 2; j++) {
+                if(l[j] && strstr(l[j], "INTERNAL")) internal = true;
+                if(l[j] && strstr(l[j], "KEEPER")) keeper = true;
+            }
+        }
+        CHECK(internal && keeper, "the record says it came from inside, and names the Keeper");
+        CHECK_EQ(r.voice, FT_VOICE_HUSH);
+    }
+
+    /* Ledger's job, and his reader with it. */
+    FtWorld w;
+    ft_world_init(&w);
+    CHECK(!ft_quest_has_rfid(&w.quests), "no RFID before Ledger");
+    CHECK_EQ(ft_quest_for_room(FT_ROOM_COLD_HALL), FT_QUEST_LEDGER);
+    FtQuestOutcome o = ft_quest_answer(&w.quests, FT_QUEST_LEDGER, true);
+    CHECK(o.rfid && ft_quest_has_rfid(&w.quests), "yes hands you RFID");
+
+    /* The Stacks: the door nobody drew is wall until it is read. */
+    ft_world_enter(&w, FT_ROOM_STACKS, 1, 4);
+    for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) w.foes[i].alive = false;
+    CHECK(!ft_world_secret_found(&w), "hidden at first");
+    CHECK(!ft_world_secret_near(&w), "and the reader is quiet by the door you came in");
+    CHECK(walk_here(&w, 24, 5), "to the east wall");
+    CHECK(ft_world_secret_near(&w), "where the reader beeps");
+    w.facing = FT_FACE_RIGHT;
+    walk(&w, 1, 0);
+    CHECK_EQ(w.mv.tx, 24);
+    w.facing = FT_FACE_RIGHT;
+    CHECK(ft_world_rfid_target(&w), "the wall reads as a door");
+    w.facing = FT_FACE_UP;
+    CHECK(!ft_world_rfid_target(&w), "only the right bit of wall");
+    w.facing = FT_FACE_RIGHT;
+    CHECK(ft_world_rfid_read(&w), "beep");
+    CHECK(ft_world_secret_found(&w), "found");
+    CHECK(!ft_world_secret_near(&w), "and the reader goes quiet");
+    {
+        FtSaveData d;
+        ft_save_from_world(&w, true, true, &d);
+        FtWorld r;
+        ft_save_to_world(&d, &r, NULL, NULL);
+        CHECK(ft_world_secret_found(&r), "found for good, in the save");
+    }
+
+    bool through = false;
+    for(int t = 0; t < 200 && !through; t++) {
+        ft_world_update(&w, 1, 0, 10);
+        if(w.arrived) {
+            const FtExit* x = ft_world_exit_under(&w);
+            if(x && ft_world_exit_open(&w, x)) {
+                ft_world_enter(&w, x->dest_room, x->dest_tx, x->dest_ty);
+                through = true;
+            }
+        }
+    }
+    CHECK(through && w.room == FT_ROOM_VAULT, "through it, into the Deep Vault");
+
+    /* The cabinet. */
+    for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) w.foes[i].alive = false;
+    CHECK(walk_here(&w, 8, 3), "up to the cabinet");
+    w.facing = FT_FACE_UP;
+    CHECK(ft_world_archive_ahead(&w), "facing it");
+
+    /* Reading it is the app's; then Ledger, then his terminal. */
+    ft_quest_advance(&w.quests, FT_QUEST_LEDGER, FT_QUEST_READY);
+    o = ft_quest_answer(&w.quests, FT_QUEST_LEDGER, true);
+    CHECK_EQ(o.items, 2);
+    CHECK_EQ(ft_quest_state(&w.quests, FT_QUEST_LEDGER), FT_QUEST_DONE);
+    ft_world_enter(&w, FT_ROOM_COLD_HALL, 12, 7);
+    CHECK(ft_world_truth_due(&w), "the Keeper's call is waiting at Ledger's terminal");
+    w.revealed |= FT_REVEAL_KEEPER_TRUTH;
+    CHECK(!ft_world_truth_due(&w), "once");
+    CHECK(ft_quest_has_rfid(&w.quests), "and you keep the reader");
+}
+
 static void test_talk_repeats(void) {
     section("people do not repeat themselves");
 
@@ -6422,6 +6555,7 @@ int main(void) {
     test_scrapline();
     test_clean_run_both_ways();
     test_infrared_freeze();
+    test_cold_storage();
     test_dead_stay_dead();
     test_area_names();
     test_items();

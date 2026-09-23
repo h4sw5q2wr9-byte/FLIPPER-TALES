@@ -5,6 +5,7 @@
 #define FT_ATK_NFC     2
 #define FT_ATK_PAYLOAD 3
 #define FT_ATK_INFRARED 4
+#define FT_ATK_RFID     5
 
 #define FT_ATK_STAMP         10
 #define FT_ATK_FLICKER       11
@@ -59,6 +60,16 @@ const FtModule FT_MODULES[FT_MODULE_COUNT] = {
          .ram_cost = 2,
          .hits_all = false,
          .attack = {FT_ATK_INFRARED, 6, 0, false, FT_DELIVERY_DIRECTED, FT_CLASS_NORMAL,
+                    FT_PAYLOAD_NONE}},
+
+    [FT_MOD_RFID] =
+        {.name = "RFID",
+         .slot = FT_SLOT_CONTACT,
+         /* Two MP, like Infrared. Against no shield it is a pricier NFC;
+          * against a Chiller's three it is the difference between 3 and 5. */
+         .ram_cost = 2,
+         .hits_all = false,
+         .attack = {FT_ATK_RFID, 5, 9, false, FT_DELIVERY_CONTACT, FT_CLASS_NORMAL,
                     FT_PAYLOAD_NONE}},
 };
 

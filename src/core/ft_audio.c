@@ -97,6 +97,10 @@ static const FtNote VOICE_HUSH[]   = {{D5, 16}};
 /* Ma Rivet: low, short and loud. She is always a little bit shouting. */
 static const FtNote VOICE_RIVET[]  = {{E4, 12}};
 
+/* Ledger: high, quick and a little unsure of itself — two notes that do
+ * not quite agree. */
+static const FtNote VOICE_LEDGER[] = {{B5, 6}, {A5, 6}};
+
 #define CUE(a, v) {a, (uint8_t)(sizeof(a) / sizeof((a)[0])), v}
 
 static const struct {
@@ -134,6 +138,7 @@ static const struct {
     [FT_SFX_VOICE_YOU]    = CUE(VOICE_YOU, 18),
     [FT_SFX_VOICE_HUSH]   = CUE(VOICE_HUSH, 16),
     [FT_SFX_VOICE_RIVET]  = CUE(VOICE_RIVET, 26),
+    [FT_SFX_VOICE_LEDGER] = CUE(VOICE_LEDGER, 18),
     [FT_SFX_ENCOUNTER] = CUE(SFX_ENCOUNTER, 65),
 };
 

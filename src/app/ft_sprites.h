@@ -316,6 +316,25 @@ static const uint16_t FT_SPRITE_HERO[FT_HERO_H] = {
     0x0000,
 };
 
+static const uint16_t FT_SPRITE_LEDGER[FT_SPRITE_H] = {
+    0x07E0,
+    0x0810,
+    0x16D0,
+    0x16D0,
+    0x0810,
+    0x07E0,
+    0x1FF8,
+    0x1008,
+    0x13C8,
+    0x1008,
+    0x1FF8,
+    0x1008,
+    0x13C8,
+    0x1008,
+    0x1FF8,
+    0x0C30,
+};
+
 static const uint16_t FT_SPRITE_ECHO[FT_HERO_H] = {
     0x0180,
     0x0180,

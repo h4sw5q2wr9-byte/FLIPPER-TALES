@@ -388,6 +388,21 @@ static void render_world(Canvas* canvas, const FtWorld* w, FtPos focus, bool tal
                 continue;
             }
 
+            /* A door nobody drew is drawn as exactly the wall around it —
+             * cap or face, by the same rule — so nothing gives it away; once
+             * RFID has read it, it is a door like any other. */
+            if(here == FT_TILE_SECRET) {
+                uint8_t art;
+                if(ft_world_secret_found(w)) {
+                    art = ft_map_side_passage(map, mx, my) ? FT_TILE_ART_DOOR_SIDE :
+                                                             (uint8_t)FT_TILE_DOOR;
+                } else {
+                    art = ft_map_art_index(map, mx, my);
+                }
+                blit_rows(canvas, FT_TILE_ART[art], FT_TILE_PX, sx, sy, FT_TILE_PX);
+                continue;
+            }
+
             blit_rows(
                 canvas, FT_TILE_ART[ft_map_art_index(map, mx, my)], FT_TILE_PX, sx, sy,
                 FT_TILE_PX);

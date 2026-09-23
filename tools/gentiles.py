@@ -326,6 +326,19 @@ TILES["relay"] = """
 ########
 """
 
+# Cold Storage's archive cabinet: drawers, and a lit label on the one that
+# matters. Solid; you face it and read it.
+TILES["archive"] = """
+########
+#......#
+#.####.#
+#......#
+########
+#.#..#.#
+#......#
+########
+"""
+
 # The pit, once Hale has found it. Drawn over the long grass it was hidden in.
 TILES["pit"] = """
 ........
@@ -573,7 +586,7 @@ static const uint8_t FT_TILE_ART[FT_TILE_ART_COUNT][FT_TILE_PX] = {
     order = ["floor", "wall", "void", "grass", "cable", "door", "term", "lock",
              "crate", "ladder", "scrap", "frost", "pylon", "static", "gate",
              "trunk", "leaf", "hut", "roof", "hut_door", "tall_grass", "rock",
-             "cave", "bridge", "receiver", "relay",
+             "cave", "bridge", "receiver", "relay", "wall", "archive",
              "door_side", "lock_side", "cable_v", "wall_top", "shadow", "tuft",
              "gate_side", "leaf_tl", "leaf_tr", "leaf_bl", "leaf_br", "pit"]
     for name in order:

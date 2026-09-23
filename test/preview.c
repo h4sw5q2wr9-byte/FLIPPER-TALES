@@ -38,6 +38,7 @@ static void build(FtEncounter* e, const Shot* s) {
     }
 
     e->infrared = true;
+    e->rfid = true;
     e->phase = s->phase;
     e->phase_ms = s->phase_ms;
     e->menu_index = s->menu_index;
@@ -217,6 +218,7 @@ int main(void) {
         /* Infrared: the beam across to a flyer, and the menu entry. */
         {"anim-infrared",   FT_ENEMY_PARCEL_RUNNER, FT_PHASE_RESULT,     500,  6, 0, 2, false},
         {"menu-infrared",   FT_ENEMY_LAMPLIGHTER, FT_PHASE_MENU,       0,    6, 0, 0, false},
+        {"menu-rfid",       FT_ENEMY_CHILLER,     FT_PHASE_MENU,       0,    7, 0, 0, false},
         {"anim-foe-bcast",  FT_ENEMY_LAMPLIGHTER, FT_PHASE_IMPACT,     560,  0, 1, 0, false},
         /* The Attack panel: the second menu level, over a full three-foe row. */
         {"panel-bcast",     FT_ENEMY_PARCEL_RUNNER, FT_PHASE_MENU,       0,    0, 0, 3, true},
@@ -444,7 +446,7 @@ int main(void) {
         ss.level = 12;
         ss.xp = 99;
         ss.charge = 9;
-        ft_render_status(canvas, &ss, "Lunchbox", true);
+        ft_render_status(canvas, &ss, "Lunchbox", true, true);
         ft_stub_canvas_write_pbm(canvas, "preview/89_status.pbm");
         total_clipped += ft_stub_canvas_clipped(canvas);
         printf("  status              %s\n",

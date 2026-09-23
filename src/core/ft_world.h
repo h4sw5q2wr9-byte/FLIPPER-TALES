@@ -108,6 +108,11 @@ typedef struct {
 #define FT_REVEAL_BRIDGE_RELAY 0x08u
 #define FT_REVEAL_KEEPER_CALL  0x10u
 
+/* Cold Storage: the door in the Stacks nobody drew, found by RFID, and the
+ * Keeper's second call — the serious one — heard. */
+#define FT_REVEAL_SECRET_STACKS 0x20u
+#define FT_REVEAL_KEEPER_TRUTH  0x40u
+
 /* Where: the Scrapline's room, on the far edge of the gap where you cannot
  * follow. It notices you when it is on your screen, with room over its head
  * for what it says — never from off the edge of the view. */
@@ -130,6 +135,10 @@ typedef struct {
      * a room without one. One bridge a room: every FT_TILE_BRIDGE in it
      * comes down together, when you point Infrared at its receiver. */
     uint8_t         bridge;
+
+    /* The same for a door nobody drew (FT_TILE_SECRET): the bit that says
+     * RFID has found it, or 0 for a room without one. */
+    uint8_t         secret;
 } FtRoom;
 
 /* A roster is what one visible foe fights as. The whole group also *walks*
@@ -162,12 +171,17 @@ typedef struct {
 #define FT_ROOM_SPANS        (FT_ROOM_CH1_FIRST + 5)
 #define FT_ROOM_RELAY        (FT_ROOM_CH1_FIRST + 6)
 
+/* Chapter 2, part 1: Cold Storage. */
+#define FT_ROOM_COLD_HALL    (FT_ROOM_CH1_FIRST + 7)
+#define FT_ROOM_STACKS       (FT_ROOM_CH1_FIRST + 8)
+#define FT_ROOM_VAULT        (FT_ROOM_CH1_FIRST + 9)
+
 const FtRoom*   ft_room(uint8_t index);
 uint8_t         ft_room_count(void);
 const FtRoster* ft_roster(uint8_t index);
 
 /* How many there are. The balance simulator walks all of them. */
-#define FT_ROSTER_COUNT 18
+#define FT_ROSTER_COUNT 20
 uint8_t ft_roster_count(void);
 
 /* A tile-aligned actor mid-step. */
@@ -490,6 +504,27 @@ bool ft_world_foe_stunned(const FtWorld* w, uint8_t index);
 
 /* Facing the relay mast. */
 bool ft_world_relay_ahead(const FtWorld* w);
+
+/* ---- Cold Storage -------------------------------------------------------- */
+
+/* Whether this room's undrawn door has been found (false in a room without
+ * one). Until then it is wall; after, a door. */
+bool ft_world_secret_found(const FtWorld* w);
+
+/* RFID: facing an undrawn door, not yet found. Whether you HAVE RFID is the
+ * caller's question (ft_quest_has_rfid). */
+bool ft_world_rfid_target(const FtWorld* w);
+bool ft_world_rfid_read(FtWorld* w);
+
+/* Within two steps of an undrawn door not yet found: the reader beeps. */
+bool ft_world_secret_near(const FtWorld* w);
+
+/* Facing an archive cabinet. */
+bool ft_world_archive_ahead(const FtWorld* w);
+
+/* The Keeper's serious call is waiting on Ledger's terminal: the record is
+ * filed and you have not heard it yet. */
+bool ft_world_truth_due(const FtWorld* w);
 
 /* The Keeper's first call is waiting on the Relay's terminal: the relay is
  * awake and you have not heard it yet. */

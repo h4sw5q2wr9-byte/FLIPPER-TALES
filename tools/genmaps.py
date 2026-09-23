@@ -35,6 +35,8 @@ LEGEND = {
     "b": 23, # drawbridge (a gap until its receiver is pointed at)
     "x": 24, # Infrared receiver
     "M": 25, # relay mast
+    "%": 26, # a door nobody drew (solid until RFID reads it)
+    "A": 27, # archive cabinet
 }
 
 MAPS = {}
@@ -356,7 +358,7 @@ Dss~~ssssCsss~~~sssss#
 # Rivet's in front of the left one, a terminal, and the road straight
 # through: west back to the gap where Echo stood, east to the broken spans.
 MAPS["sc1"] = ("The Scrapline", 0, """
-##########################
+############G#############
 #..rrrr.......rrrr..SS...#
 #..rrrr.......rrrr...S...#
 #..hhdh.......hhdh.......#
@@ -402,7 +404,54 @@ D........bb...........M~#
 #########################
 """)
 
-SOLID = {1, 2, 8, 10, 12, 15, 17, 19, 21, 23, 24, 25}  # wall, void, crate, scrap, pylon, trunk, hut, hut door, rock
+# ---- Chapter 2, part 1: Cold Storage --------------------------------------
+#
+# A frozen archive district nobody has opened since the Silence (STORY.md §6).
+
+# [16] Cold Storage. The front hall: filing racks either side, and Ledger's
+# little office in the middle with its terminal — the one that still calls
+# out. You come in from the Scrapline through the south door.
+MAPS["cs2"] = ("Cold Storage", 0, """
+########################
+#ffffffffffffffffffffff#
+#fCfCfCff######fCfCfCff#
+#fCfCfCff#....#fCfCfCff#
+#ffffffff#.T..#ffffffffD
+#ffffffff##..##ffffffff#
+#ffffffffffffffffffffff#
+#ffffffffffffffffffffff#
+############D###########
+""")
+
+# [17] The Stacks. Aisles of racks, and on the east wall, level with the
+# middle aisle, a door nobody drew. RFID reads it.
+MAPS["cs3"] = ("The Stacks", 0, """
+##########################
+#ffffffffffffffffffffffff#
+#fCCCCfCCCCfCCCCfCCCCffff#
+#ffffffffffffffffffffffff#
+Dffffffffffffffffffffffff#
+#fCCCCfCCCCfCCCCfCCCCffff%
+#ffffffffffffffffffffffff#
+#fCCCCfCCCCfCCCCfCCCCffff#
+#ffffffffffffffffffffffff#
+##########################
+""")
+
+# [18] The Deep Vault. What the undrawn door was hiding: one cabinet, and
+# the Loud Day's incident report in it.
+MAPS["cs4"] = ("The Deep Vault", 0, """
+##################
+#ffffffffffffffff#
+#fCfCfffAffffCfCf#
+#ffffffffffffffff#
+Dffffffffffffffff#
+#fCfCffffffffCfCf#
+#ffffffffffffffff#
+##################
+""")
+
+SOLID = {1, 2, 8, 10, 12, 15, 17, 19, 21, 23, 24, 25, 26, 27}  # wall, void, crate, scrap, pylon, trunk, hut, hut door, rock
 DOOR = 5
 GATE = 14  # a way out, like a door, and allowed on a border
 

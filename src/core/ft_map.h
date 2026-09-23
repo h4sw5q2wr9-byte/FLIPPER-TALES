@@ -121,6 +121,12 @@ typedef enum {
     FT_TILE_RECEIVER,
     FT_TILE_RELAY,
 
+    /* Cold Storage. A door nobody drew: solid and drawn as wall until RFID
+     * reads it (ft_world_secret_found), then a door like any other. And an
+     * archive cabinet, which is where a record is read. */
+    FT_TILE_SECRET,
+    FT_TILE_ARCHIVE,
+
     FT_TILE_COUNT
 } FtTile;
 

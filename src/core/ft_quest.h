@@ -25,6 +25,10 @@ typedef enum {
      * east past the broken spans. Ma Rivet gives you Infrared to do it. */
     FT_QUEST_RIVET,
 
+    /* Cold Storage. Ledger has never reached the Loud Day report: its door
+     * was never drawn. He gives you RFID to read through the walls. */
+    FT_QUEST_LEDGER,
+
     FT_QUEST_COUNT
 } FtQuestId;
 
@@ -109,6 +113,7 @@ typedef enum {
     FT_VOICE_YOU,
     FT_VOICE_HUSH, /* smooth, level, and much too calm */
     FT_VOICE_RIVET,
+    FT_VOICE_LEDGER,
     FT_VOICE_COUNT
 } FtVoice;
 
@@ -152,6 +157,7 @@ typedef struct {
     bool    ended;   /* the quest is now done */
     bool    leads;   /* somebody just set off to show you the way */
     bool    infrared; /* you were just handed Infrared */
+    bool    rfid;     /* you were just handed RFID */
 } FtQuestOutcome;
 
 /* Apply the outcome of a finished conversation. `yes` is only read by a
@@ -172,6 +178,17 @@ bool ft_quest_has_infrared(const FtQuests* q);
 
 /* The Keeper, on the Relay's terminal, once it is awake (STORY.md §6). */
 FtTalk ft_quest_keeper_call(void);
+
+/* Having RFID: Ledger's reader, handed over with his job. */
+bool ft_quest_has_rfid(const FtQuests* q);
+
+/* The Loud Day's incident report, read at the Deep Vault's cabinet — in
+ * Hush's own voice, because it is Hush's log. Short the second time. */
+FtTalk ft_quest_record_talk(bool read_before);
+
+/* The serious call, from Ledger's terminal, once the record is filed. The
+ * one conversation in the game with no joke in it (STORY.md §6). */
+FtTalk ft_quest_keeper_truth(void);
 
 /* ---- Your name -----------------------------------------------------------
  *

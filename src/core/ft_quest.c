@@ -21,6 +21,10 @@ static const FtQuestDef FT_QUESTS[FT_QUEST_COUNT] = {
     /* Ma Rivet in the Scrapline, room 13. The goal is not a room either:
      * waking the relay is something you do to it, past Echo. */
     [FT_QUEST_RIVET] = {"Wake the Relay", 13u, FT_QUEST_NO_ROOM, false, FT_ITEM_CELL, 2},
+
+    /* Ledger, in Cold Storage's front hall, room 16. Reading the record in
+     * the Deep Vault is what finishes it, not arriving anywhere. */
+    [FT_QUEST_LEDGER] = {"The Loud Day", 16u, FT_QUEST_NO_ROOM, false, FT_ITEM_RATION, 2},
 };
 
 const FtQuestDef* ft_quest_def(FtQuestId id) {
@@ -65,12 +69,15 @@ void ft_quest_advance(FtQuests* q, FtQuestId id, FtQuestState to) {
 }
 
 const char* ft_quest_refusal(FtQuestId id, FtQuestState need) {
-    (void)need;
-
     /* The soft lock. No key, no gate art, no new tile — the way is open and
      * the Courier simply has no reason, which is the cheapest possible way
      * to make a world open up later. */
-    if(id == FT_QUEST_WREN) return "Nothing down there.";
+    /* The same quest holds two ways: the drop you have no reason to take,
+     * and Coll's gate, which she will not open until the kid is home. */
+    if(id == FT_QUEST_WREN) {
+        return (need == FT_QUEST_DONE) ? "Coll won't open it." : "Nothing down there.";
+    }
+    if(id == FT_QUEST_RIVET) return "The relay first.";
 
     return "No reason to go.";
 }
@@ -511,6 +518,114 @@ static const FtBeat RIVET_DONE_4[] = {
 static const FtLines RIVET_DONE_MORE[] = {LINES(RIVET_DONE_2), LINES(RIVET_DONE_3),
                                           LINES(RIVET_DONE_4)};
 
+/* ---- Ledger, in Cold Storage ---- */
+
+/* An archive robot alone in the dark since the Silence, apologising to
+ * nobody. Nervous, over-polite, and braver than he thinks. */
+static const char* LEDGER = "Ledger";
+
+static const FtBeat LEDGER_OFFER[] = {
+    {FT_SAY_THEM, "Oh! Oh dear. Sorry.", "I'm so sorry."},
+    {FT_SAY_YOU,  "For what?", NULL},
+    {FT_SAY_THEM, "I don't know. It's", "been a while. Sorry."},
+    {FT_SAY_THEM, "I'm Ledger. I keep", "the records here."},
+    {FT_SAY_THEM, "Nobody's been in", "since the Silence."},
+    {FT_SAY_THEM, "I've been filing.", "And apologising."},
+    {FT_SAY_THEM, "To nobody. Sorry.", NULL},
+    {FT_SAY_THEM, "There's one record I", "have never reached:"},
+    {FT_SAY_THEM, "the Loud Day report.", "Its door was never"},
+    {FT_SAY_THEM, "drawn on any map.", "Sorry."},
+    {FT_SAY_THEM, "This reader sees", "through walls."},
+    {FT_SAY_THEM, "Would you look? It's", "in the Stacks. East."},
+    {FT_SAY_THEM, "Please? Sorry.", "Please?"},
+};
+
+static const FtBeat LEDGER_OFFER_2[] = {
+    {FT_SAY_THEM, "Oh, you're back.", "Sorry."},
+    {FT_SAY_THEM, "Will you look for", "the report?"},
+};
+
+static const FtBeat LEDGER_ON[] = {
+    {FT_SAY_THEM, "Any luck? Sorry, I", "shouldn't rush you."},
+};
+
+static const FtBeat LEDGER_ON_2[] = {
+    {FT_SAY_THEM, "The reader beeps", "near a hidden door."},
+    {FT_SAY_THEM, "Face the wall, and", "read it. Sorry."},
+};
+
+static const FtBeat LEDGER_ON_3[] = {
+    {FT_SAY_THEM, "Sorry. I'll be here.", "I'm always here."},
+};
+
+static const FtLines LEDGER_ON_MORE[] = {LINES(LEDGER_ON_2), LINES(LEDGER_ON_3)};
+static const FtLines LEDGER_OFFER_MORE[] = {LINES(LEDGER_OFFER_2)};
+
+static const FtBeat LEDGER_FAILED[] = {
+    {FT_SAY_THEM, "Sorry?", NULL},
+};
+
+static const FtBeat LEDGER_PAID[] = {
+    {FT_SAY_YOU,  "I found it.", NULL},
+    {FT_SAY_THEM, "Oh. Oh no. What did", "it say?"},
+    {FT_SAY_YOU,  "The alarm came from", "inside. From Hush."},
+    {FT_SAY_THEM, "...Then the Loud Day", "was nobody's fault"},
+    {FT_SAY_THEM, "but its own. All", "those people..."},
+    {FT_SAY_YOU,  "And the Keeper's", "name is on it."},
+    {FT_SAY_THEM, "The Keeper? Then you", "should ask him."},
+    {FT_SAY_THEM, "Use my terminal. It", "still calls out."},
+    {FT_SAY_THEM, "Take these, for the", "road. And thank you."},
+    {FT_SAY_THEM, "I mean it. I'm not", "even sorry."},
+};
+
+static const FtBeat LEDGER_DONE_1[] = {
+    {FT_SAY_THEM, "I've filed it. Under", "'true'. Sorry."},
+};
+
+static const FtBeat LEDGER_DONE_2[] = {
+    {FT_SAY_THEM, "It's quieter now. A", "nicer sort of quiet."},
+};
+
+static const FtBeat LEDGER_DONE_3[] = {
+    {FT_SAY_YOU,  "Stop apologising.", NULL},
+    {FT_SAY_THEM, "Sorry. I mean... no.", NULL},
+};
+
+static const FtLines LEDGER_DONE_MORE[] = {LINES(LEDGER_DONE_2), LINES(LEDGER_DONE_3)};
+
+static const FtBeat RECORD[] = {
+    {FT_SAY_THEM, "ARCHIVE. LOUD DAY.", "INCIDENT REPORT."},
+    {FT_SAY_THEM, "Alarm source:", "INTERNAL."},
+    {FT_SAY_THEM, "Origin: relay loop,", "Carrier core."},
+    {FT_SAY_THEM, "Cause: operator", "fault. Unresolved."},
+    {FT_SAY_THEM, "Action taken: all", "lines closed."},
+    {FT_SAY_THEM, "For your safety.", NULL},
+    {FT_SAY_YOU,  "Hush did it.", NULL},
+    {FT_SAY_YOU,  "And blamed them.", NULL},
+    {FT_SAY_THEM, "Design authority:", "THE KEEPER."},
+    {FT_SAY_YOU,  "...Keeper?", NULL},
+};
+
+static const FtBeat RECORD_AGAIN[] = {
+    {FT_SAY_THEM, "Design authority:", "THE KEEPER."},
+};
+
+static const FtBeat KEEPER_TRUTH[] = {
+    {FT_SAY_THEM, "You found it.", NULL},
+    {FT_SAY_YOU,  "Your name is on it.", NULL},
+    {FT_SAY_THEM, "Yes.", NULL},
+    {FT_SAY_THEM, "I built Hush. A long", "time ago."},
+    {FT_SAY_THEM, "The fault was mine.", "The Loud Day, too."},
+    {FT_SAY_THEM, "After the Silence I", "found it. Hush would"},
+    {FT_SAY_THEM, "not hear it from me.", "So I made a Courier,"},
+    {FT_SAY_THEM, "to carry the proof", "where I can't go."},
+    {FT_SAY_YOU,  "And Echo?", NULL},
+    {FT_SAY_THEM, "Echo was the first.", "It fought. Hush"},
+    {FT_SAY_THEM, "caught it. That is", "on me, too."},
+    {FT_SAY_THEM, "The letter is the", "proof. Keep going."},
+    {FT_SAY_THEM, "...I'm sorry.", NULL},
+};
+
 /* ---- The Keeper, on the phone ---- */
 
 /* The first call. He knows what you met, and he will not say more yet. */
@@ -525,6 +640,20 @@ static const FtBeat KEEPER_CALL[] = {
     {FT_SAY_THEM, "Not now. There's", "more to do first."},
     {FT_SAY_THEM, "Keep going. I'll", "call again."},
 };
+
+FtTalk ft_quest_record_talk(bool read_before) {
+    /* The record speaks in Hush's own voice: it is Hush's log. */
+    return read_before ? say("Record", FT_VOICE_HUSH, (FtLines)LINES(RECORD_AGAIN), NULL, 0u, 0u) :
+                         say("Record", FT_VOICE_HUSH, (FtLines)LINES(RECORD), NULL, 0u, 0u);
+}
+
+FtTalk ft_quest_keeper_truth(void) {
+    return say(KEEPER, FT_VOICE_KEEPER, (FtLines)LINES(KEEPER_TRUTH), NULL, 0u, 0u);
+}
+
+bool ft_quest_has_rfid(const FtQuests* q) {
+    return ft_quest_at_least(q, FT_QUEST_LEDGER, FT_QUEST_ACTIVE);
+}
 
 FtTalk ft_quest_keeper_call(void) {
     return say(KEEPER, FT_VOICE_KEEPER, (FtLines)LINES(KEEPER_CALL), NULL, 0u, 0u);
@@ -722,6 +851,23 @@ static FtTalk rivet_talk(FtQuestState at, uint8_t again) {
     }
 }
 
+static FtTalk ledger_talk(FtQuestState at, uint8_t again) {
+    switch(at) {
+    case FT_QUEST_UNKNOWN:
+        return ask(say(LEDGER, FT_VOICE_LEDGER, WITH(LEDGER_OFFER, LEDGER_OFFER_MORE), again),
+                   "I'll look", "Later");
+    case FT_QUEST_ACTIVE:
+        return say(LEDGER, FT_VOICE_LEDGER, WITH(LEDGER_ON, LEDGER_ON_MORE), again);
+    case FT_QUEST_FAILED:
+        return say(LEDGER, FT_VOICE_LEDGER, ONLY(LEDGER_FAILED), again);
+    case FT_QUEST_READY:
+        return say(LEDGER, FT_VOICE_LEDGER, ONLY(LEDGER_PAID), again);
+    case FT_QUEST_DONE:
+    default:
+        return say(LEDGER, FT_VOICE_LEDGER, WITH(LEDGER_DONE_1, LEDGER_DONE_MORE), again);
+    }
+}
+
 FtTalk ft_quest_talk(const FtQuests* q, FtQuestId id, uint8_t again) {
     const FtQuestState at = ft_quest_state(q, id);
 
@@ -729,6 +875,7 @@ FtTalk ft_quest_talk(const FtQuests* q, FtQuestId id, uint8_t again) {
     case FT_QUEST_CLEAN_RUN: return keeper_talk(at, again);
     case FT_QUEST_WREN:      return coll_talk(at, again);
     case FT_QUEST_RIVET:     return rivet_talk(at, again);
+    case FT_QUEST_LEDGER:    return ledger_talk(at, again);
     default:                 return say("", FT_VOICE_YOU, ONLY(WREN_WAIT), again);
     }
 }
@@ -763,7 +910,7 @@ FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit, ui
 /* ---- What a finished conversation did ---------------------------------- */
 
 static FtQuestOutcome nothing(void) {
-    FtQuestOutcome o = {0, 0, false, false, false, false};
+    FtQuestOutcome o = {0, 0, false, false, false, false, false};
     return o;
 }
 
@@ -785,6 +932,9 @@ FtQuestOutcome ft_quest_answer(FtQuests* q, FtQuestId id, bool yes) {
 
             /* "Take this clicker. Point it at stuff." */
             if(id == FT_QUEST_RIVET) o.infrared = true;
+
+            /* "This reader sees through walls." */
+            if(id == FT_QUEST_LEDGER) o.rfid = true;
         }
         break;
 

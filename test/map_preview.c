@@ -552,6 +552,73 @@ int main(void) {
         printf("  %-18s %s\n", "freeze/offscreen", c ? "CLIPPED" : "ok");
     }
 
+    /* Cold Storage: Ledger, the undrawn door before and after, the record,
+     * and the Keeper's serious call. */
+    {
+        int c = 0;
+        FtWorld lh;
+        ft_world_init(&lh);
+        ft_world_enter(&lh, FT_ROOM_COLD_HALL, 12, 4);
+        lh.area_ms = 100000u;
+        lh.facing = FT_FACE_UP;
+        lh.name = 3;
+        {
+            const FtTalk t = with_name(ft_quest_talk(&lh.quests, FT_QUEST_LEDGER, 0), 3);
+            const uint8_t beats[2] = {0, 9};
+            for(uint8_t b = 0; b < 2; b++) {
+                ft_overworld_render_talk(canvas, &lh, 12, 3);
+                ft_render_talk(canvas, &t, beats[b], UINT16_MAX, false, true);
+                char path[96];
+                snprintf(path, sizeof(path), "preview/map_%02u_ledger.pbm", 100u + b);
+                ft_stub_canvas_write_pbm(canvas, path);
+                c += ft_stub_canvas_clipped(canvas);
+            }
+        }
+
+        FtWorld st;
+        ft_world_init(&st);
+        ft_quest_advance(&st.quests, FT_QUEST_LEDGER, FT_QUEST_ACTIVE);
+        ft_world_enter(&st, FT_ROOM_STACKS, 24, 5);
+        st.area_ms = 100000u;
+        st.facing = FT_FACE_RIGHT;
+        for(uint8_t k = 0; k < FT_MAX_ROOM_ENTS; k++) st.foes[k].alive = false;
+        ft_overworld_render(canvas, &st);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_102_secret-hidden.pbm");
+        c += ft_stub_canvas_clipped(canvas);
+        (void)ft_world_rfid_read(&st);
+        ft_overworld_render(canvas, &st);
+        ft_stub_canvas_write_pbm(canvas, "preview/map_103_secret-found.pbm");
+        c += ft_stub_canvas_clipped(canvas);
+
+        FtWorld vt;
+        ft_world_init(&vt);
+        ft_world_enter(&vt, FT_ROOM_VAULT, 8, 3);
+        vt.area_ms = 100000u;
+        vt.facing = FT_FACE_UP;
+        for(uint8_t k = 0; k < FT_MAX_ROOM_ENTS; k++) vt.foes[k].alive = false;
+        {
+            const FtTalk t = ft_quest_record_talk(false);
+            const uint8_t beats[2] = {1, 8};
+            for(uint8_t b = 0; b < 2; b++) {
+                ft_overworld_render_talk(canvas, &vt, 8, 3);
+                ft_render_talk(canvas, &t, beats[b], UINT16_MAX, false, true);
+                char path[96];
+                snprintf(path, sizeof(path), "preview/map_%02u_record.pbm", 104u + b);
+                ft_stub_canvas_write_pbm(canvas, path);
+                c += ft_stub_canvas_clipped(canvas);
+            }
+        }
+        {
+            const FtTalk t = with_name(ft_quest_keeper_truth(), 3);
+            ft_overworld_render_talk(canvas, &lh, 11, 4);
+            ft_render_talk(canvas, &t, 4, UINT16_MAX, false, true);
+            ft_stub_canvas_write_pbm(canvas, "preview/map_106_truth.pbm");
+            c += ft_stub_canvas_clipped(canvas);
+        }
+        clipped_total += c;
+        printf("  %-18s %s\n", "cold storage", c ? "CLIPPED" : "ok");
+    }
+
     /* Spotted: the mark over a group that has seen you and has not started
      * moving yet. It is the only thing drawn above a sprite, so it is also
      * the only thing that can run off the top of the panel. */
@@ -615,6 +682,9 @@ int main(void) {
     write_whole_map(&FT_MAP_SC1, "preview/whole_e_sc1.pbm");
     write_whole_map(&FT_MAP_SC2, "preview/whole_f_sc2.pbm");
     write_whole_map(&FT_MAP_SC3, "preview/whole_g_sc3.pbm");
+    write_whole_map(&FT_MAP_CS2, "preview/whole_h_cs2.pbm");
+    write_whole_map(&FT_MAP_CS3, "preview/whole_i_cs3.pbm");
+    write_whole_map(&FT_MAP_CS4, "preview/whole_j_cs4.pbm");
     write_whole_map(&FT_MAP_CS1, "preview/whole_6_cs1.pbm");
     write_whole_map(&FT_MAP_TS1, "preview/whole_7_ts1.pbm");
     write_whole_map(&FT_MAP_SH1, "preview/whole_8_sh1.pbm");

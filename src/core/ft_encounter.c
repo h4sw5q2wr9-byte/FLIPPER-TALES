@@ -258,6 +258,7 @@ void ft_encounter_init(
     e->last_total_damage = 0;
     e->retreated = false;
     e->infrared = false;
+    e->rfid = false;
 
     e->deflect_armed = false;
     e->last_deflect_fired = false;
@@ -316,6 +317,7 @@ static const FtAttack* action_attack(const FtEncounter* e, FtAction2 action) {
     case FT_ACTION_BROADCAST: return &FT_MODULES[FT_MOD_SUBGHZ].attack;
     case FT_ACTION_CONTACT:   return &FT_MODULES[FT_MOD_NFC].attack;
     case FT_ACTION_INFRARED:  return &FT_MODULES[FT_MOD_INFRARED].attack;
+    case FT_ACTION_RFID:      return &FT_MODULES[FT_MOD_RFID].attack;
     case FT_ACTION_DEFLECT:
     case FT_ACTION_ITEM:
     default:                  return NULL;
@@ -377,6 +379,7 @@ uint8_t ft_encounter_action_cost(const FtEncounter* e, FtAction2 action) {
     (void)e;
     if(action == FT_ACTION_CONTACT) return ft_module_ram_cost(FT_MOD_NFC);
     if(action == FT_ACTION_INFRARED) return ft_module_ram_cost(FT_MOD_INFRARED);
+    if(action == FT_ACTION_RFID) return ft_module_ram_cost(FT_MOD_RFID);
     return 0u;
 }
 
@@ -386,6 +389,7 @@ const char* ft_encounter_action_block(const FtEncounter* e, FtAction2 action) {
      * module away from you — they decide who it lands on, which the caret
      * over the row already shows. */
     if(action == FT_ACTION_INFRARED && !e->infrared) return "Not yet.";
+    if(action == FT_ACTION_RFID && !e->rfid) return "Not yet.";
 
     if(e->stats.ram < (int16_t)ft_encounter_action_cost(e, action)) {
         return "Out of MP. Guard.";
@@ -432,6 +436,7 @@ const char* ft_action_name(FtAction2 action) {
     case FT_ACTION_BROADCAST: return "Sub-GHz";
     case FT_ACTION_CONTACT:   return "NFC";
     case FT_ACTION_INFRARED:  return "Infrared";
+    case FT_ACTION_RFID:      return "RFID";
     case FT_ACTION_DEFLECT:   return "Deflect";
     case FT_ACTION_ITEM:      return "Use";
     case FT_ACTION_DEFEND:    return "Protect";
@@ -455,9 +460,12 @@ void ft_encounter_menu_move(FtEncounter* e, int8_t delta) {
     while(idx < 0) idx = (int16_t)(idx + FT_ACTION_COUNT);
     while(idx >= FT_ACTION_COUNT) idx = (int16_t)(idx - FT_ACTION_COUNT);
 
-    /* Infrared is not in the ring until you have it: an action you cannot
+    /* A module is not in the ring until you have it: an action you cannot
      * have yet is not a choice, it is a puzzle about why not. */
-    if(idx == FT_ACTION_INFRARED && !e->infrared) {
+    for(uint8_t guard = 0; guard < FT_ACTION_COUNT; guard++) {
+        const bool missing = (idx == FT_ACTION_INFRARED && !e->infrared) ||
+                             (idx == FT_ACTION_RFID && !e->rfid);
+        if(!missing) break;
         idx = (int16_t)(idx + (delta < 0 ? -1 : 1));
         while(idx < 0) idx = (int16_t)(idx + FT_ACTION_COUNT);
         while(idx >= FT_ACTION_COUNT) idx = (int16_t)(idx - FT_ACTION_COUNT);
@@ -718,6 +726,9 @@ static void resolve_player_action(FtEncounter* e) {
         gain_ram(e, -(int16_t)ft_encounter_action_cost(e, action));
     } else if(action == FT_ACTION_INFRARED && e->infrared) {
         atk = &FT_MODULES[FT_MOD_INFRARED].attack;
+        gain_ram(e, -(int16_t)ft_encounter_action_cost(e, action));
+    } else if(action == FT_ACTION_RFID && e->rfid) {
+        atk = &FT_MODULES[FT_MOD_RFID].attack;
         gain_ram(e, -(int16_t)ft_encounter_action_cost(e, action));
     }
 

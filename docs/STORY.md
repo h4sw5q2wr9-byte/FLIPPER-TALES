@@ -274,12 +274,28 @@ her your name. She pays three orbs.
 
 ### Chapter 2 — Cold Storage and the Turnstile
 
-**Cold Storage.** A frozen archive district nobody has opened since the
+**Cold Storage** *(built)*. North of the Scrapline, through a gate that opens
+once Ma Rivet's relay is awake. A frozen archive district nobody has opened
+since the
 Silence. **Ledger**, an archive robot who has been alone in the dark
 apologising to nobody, keeps the records. **RFID** reads through walls and
 finds the door that was never drawn. In the deepest vault is the record of
 the Loud Day — and the truth: the alarm came from **inside Hush's own
 relays**. And a name on the design documents: **the Keeper**.
+
+As built: Ledger apologises for everything ("Oh! Oh dear. Sorry. I'm so
+sorry." / "For what?" / "I don't know. It's been a while. Sorry."), and asks
+you to find the one record he never could — its door "was never drawn on
+any map". He gives you **RFID**. In the Stacks the reader beeps near the
+east wall; face it and read it, and a door is there. In the Deep Vault the
+record reads in Hush's own voice: *Alarm source: INTERNAL. Cause: operator
+fault. Action taken: all lines closed. For your safety. Design authority:
+THE KEEPER.* Ledger files it "under 'true'", and his terminal calls the
+Keeper, who admits all of it — Hush, the fault, the Courier, Echo — and ends
+on *"...I'm sorry."*
+
+In a fight RFID is a touch that reads straight through a shield: the answer
+to Cold Storage's Chillers.
 
 **The serious moment.** You call the Keeper from Ledger's terminal. He admits
 it. He built Hush, he found the fault after the Silence, Hush would not hear
@@ -391,6 +407,8 @@ conversation where there is room for it.
 | The Keeper's first call | Built |
 | Relays and calling the Keeper from terminals | The Scrapline's relay and the first call; calling him yourself is not built |
 | The sealed message shown anywhere in the menus | Not built |
-| Chapter 2 (Cold Storage, the Turnstile) | One sample room each |
+| Chapter 2: Cold Storage (Ledger, RFID, the record, the serious call) | Built |
+| Chapter 2: the Turnstile, iButton, Echo again | Not built |
+| Orbs | Switched off for now: a level heals, quests pay supplies |
 | Chapter 3 (Signal Hill, the Deadzone, Hush) | One sample room each |
 | Ending and epilogue | Not built |

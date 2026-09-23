@@ -19,6 +19,8 @@ bool ft_tile_solid(FtTile t) {
     case FT_TILE_BRIDGE: /* until it is down; the world decides that */
     case FT_TILE_RECEIVER:
     case FT_TILE_RELAY:
+    case FT_TILE_SECRET: /* until RFID finds it; the world decides that */
+    case FT_TILE_ARCHIVE:
         return true;
     default:
         return false;
@@ -108,10 +110,11 @@ uint8_t ft_map_art_index(const FtMap* m, int32_t tx, int32_t ty) {
 
     switch(t) {
     case FT_TILE_WALL:
+    case FT_TILE_SECRET: /* a door nobody drew is drawn as the wall it is in */
         /* Cap where the wall carries on downwards, face where it meets the
          * floor and the player is looking at its side. */
         return ft_tile_solid(ft_map_tile(m, tx, ty + 1)) ? FT_TILE_ART_WALL_TOP :
-                                                           (uint8_t)t;
+                                                           (uint8_t)FT_TILE_WALL;
     case FT_TILE_DOOR:
         return ft_map_side_passage(m, tx, ty) ? FT_TILE_ART_DOOR_SIDE : (uint8_t)t;
     case FT_TILE_LOCK:

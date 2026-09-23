@@ -132,7 +132,8 @@ void ft_render_orbs(Canvas* canvas, const FtStats* stats, uint8_t selected);
 
 /* Where you stand: level, experience, HP and MP. Read-only — orbs are
  * switched off for now, and this is what their icon opens instead. */
-void ft_render_status(Canvas* canvas, const FtStats* stats, const char* name, bool infrared);
+void ft_render_status(Canvas* canvas, const FtStats* stats, const char* name, bool infrared,
+                      bool rfid);
 
 /* What has been asked of you, one row each. Read-only. */
 void ft_render_quests(Canvas* canvas, const FtQuests* q, uint8_t selected);

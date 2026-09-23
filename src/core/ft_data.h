@@ -32,6 +32,10 @@ typedef enum {
     /* Ma Rivet's clicker. Line of sight: the nearest foe, whatever it is —
      * flying or sealed, Infrared reaches it — and hard, for more MP. */
     FT_MOD_INFRARED,
+
+    /* Ledger's reader. Up close, and it reads straight through a shield:
+     * the answer to a Chiller. */
+    FT_MOD_RFID,
     FT_MODULE_COUNT
 } FtModuleId;
 

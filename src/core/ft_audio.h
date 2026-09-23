@@ -50,6 +50,7 @@ typedef enum {
     FT_SFX_VOICE_YOU,
     FT_SFX_VOICE_HUSH,
     FT_SFX_VOICE_RIVET,
+    FT_SFX_VOICE_LEDGER,
     FT_SFX_COUNT
 } FtSfxId;
 

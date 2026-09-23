@@ -110,6 +110,14 @@ typedef struct {
 
     /* Wren naming you, and which name she is on. See ft_start_naming. */
     bool      talk_is_naming;
+
+    /* Reading the Loud Day record at the Deep Vault's cabinet. Finishing it
+     * is what moves Ledger's job on. */
+    bool      talk_is_record;
+
+    /* The room visit in which the RFID reader last beeped, so it beeps once
+     * a visit and not on every step. */
+    uint16_t  beeped_visit;
     uint8_t   naming_try;
 
     /* The conversation's lines with your name written into them. The talk
@@ -258,7 +266,8 @@ static void ft_draw_callback(Canvas* canvas, void* ctx) {
         ft_render_status(canvas, &app->world.stats,
                          (app->world.name < FT_NAME_COUNT) ? ft_quest_name(app->world.name) :
                                                              NULL,
-                         ft_quest_has_infrared(&app->world.quests));
+                         ft_quest_has_infrared(&app->world.quests),
+                         ft_quest_has_rfid(&app->world.quests));
     } else if(app->mode == FT_MODE_QUESTS) {
         ft_render_quests(canvas, &app->world.quests, app->quest_item);
     } else if(app->mode == FT_MODE_POCKETS) {
@@ -321,6 +330,7 @@ static void ft_enter_battle_now(FlipperTales* app, int entity, bool first_strike
     ft_roll_init(&app->encounter.roll, app->world.stats.charge);
     app->encounter.coach = app->coach;
     app->encounter.infrared = ft_quest_has_infrared(&app->world.quests);
+    app->encounter.rfid = ft_quest_has_rfid(&app->world.quests);
 
     if(first_strike) {
         /* Hitting it out here means it enters already hurt. */
@@ -1030,6 +1040,20 @@ static void ft_finish_naming(FlipperTales* app, bool yes) {
 static void ft_finish_talk(FlipperTales* app, bool yes) {
     FtWorld* w = &app->world;
 
+    /* The record, read to the end: that is Ledger's job done bar the
+     * telling. */
+    if(app->talk_is_record) {
+        app->talk_is_record = false;
+        if(ft_quest_state(&w->quests, FT_QUEST_LEDGER) == FT_QUEST_ACTIVE) {
+            ft_quest_advance(&w->quests, FT_QUEST_LEDGER, FT_QUEST_READY);
+            ft_toast(app, "Tell Ledger.");
+            ft_sound_play(&app->sound, FT_SFX_LEVEL);
+            ft_save_now(app);
+        }
+        app->mode = FT_MODE_OVERWORLD;
+        return;
+    }
+
     if(app->talk_is_naming) {
         ft_finish_naming(app, yes);
         return;
@@ -1043,9 +1067,13 @@ static void ft_finish_talk(FlipperTales* app, bool yes) {
 
     if(out.follows) ft_world_escort_start(&app->world);
 
-    /* Ma Rivet's clicker. */
+    /* Ma Rivet's clicker, Ledger's reader. */
     if(out.infrared) {
         ft_toast(app, "Got Infrared!");
+        ft_sound_play(&app->sound, FT_SFX_LEVEL);
+    }
+    if(out.rfid) {
+        ft_toast(app, "Got RFID!");
         ft_sound_play(&app->sound, FT_SFX_LEVEL);
     }
 
@@ -1074,7 +1102,9 @@ static void ft_finish_talk(FlipperTales* app, bool yes) {
 
     /* Anything a conversation changed is progress worth keeping even if the
      * walk home goes badly. */
-    if(out.items > 0 || out.follows || out.ended || out.leads || out.infrared) ft_save_now(app);
+    if(out.items > 0 || out.follows || out.ended || out.leads || out.infrared || out.rfid) {
+        ft_save_now(app);
+    }
 
     /* Heard it. Next time they say something shorter, and different. */
     if(app->talk_again[app->talk_slot] < 250u) app->talk_again[app->talk_slot]++;
@@ -1211,12 +1241,14 @@ static void ft_overworld_ok(FlipperTales* app) {
         ft_save_here(app);
 
         /* The relay is awake, so this terminal can reach somebody other than
-         * Hush — and the first time, somebody is already calling. */
-        if(ft_world_call_due(&app->world)) {
-            app->world.revealed |= FT_REVEAL_KEEPER_CALL;
+         * Hush — and the first time, somebody is already calling. Ledger's
+         * terminal, once the record is filed, is where you call him back. */
+        const bool truth = ft_world_truth_due(&app->world);
+        if(ft_world_call_due(&app->world) || truth) {
+            app->world.revealed |= truth ? FT_REVEAL_KEEPER_TRUTH : FT_REVEAL_KEEPER_CALL;
             ft_save_now(app);
 
-            app->talk = ft_quest_keeper_call();
+            app->talk = truth ? ft_quest_keeper_truth() : ft_quest_keeper_call();
             app->talk_quest = FT_QUEST_COUNT; /* nobody's quest: it changes nothing */
             app->talk_is_wren = false;
             app->talk_is_hale = false;
@@ -1244,6 +1276,32 @@ static void ft_overworld_ok(FlipperTales* app) {
         ft_toast(app, "Click! Bridge down.");
         ft_sound_play(&app->sound, FT_SFX_REVEAL);
         ft_save_now(app);
+        return;
+    }
+
+    /* RFID: a wall with a door in it nobody drew. */
+    if(ft_quest_has_rfid(&app->world.quests) && ft_world_rfid_read(&app->world)) {
+        ft_toast(app, "Beep! A door.");
+        ft_sound_play(&app->sound, FT_SFX_REVEAL);
+        ft_save_now(app);
+        return;
+    }
+
+    /* The archive cabinet: the Loud Day record, in Hush's own words. */
+    if(ft_world_archive_ahead(&app->world)) {
+        const FtQuestState at = ft_quest_state(&app->world.quests, FT_QUEST_LEDGER);
+        if(at == FT_QUEST_UNKNOWN) {
+            ft_toast(app, "Locked drawers.");
+            ft_sound_play(&app->sound, FT_SFX_DENY);
+            return;
+        }
+        app->talk = ft_quest_record_talk(at != FT_QUEST_ACTIVE);
+        app->talk_quest = FT_QUEST_COUNT;
+        app->talk_is_wren = false;
+        app->talk_is_hale = false;
+        app->talk_is_naming = false;
+        app->talk_is_record = true;
+        ft_start_talk(app, app->world.mv.tx, app->world.mv.ty);
         return;
     }
 
@@ -1542,6 +1600,7 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
                 ft_finish_talk(app, false);
                 break;
             }
+            app->talk_is_record = false;
             app->mode = FT_MODE_OVERWORLD;
             break;
 
@@ -1801,6 +1860,14 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
         return;
     }
 
+    /* The RFID reader beeps near a door nobody drew: once a visit. */
+    if(app->world.arrived && ft_quest_has_rfid(&app->world.quests) &&
+       app->beeped_visit != app->world.visits && ft_world_secret_near(&app->world)) {
+        app->beeped_visit = app->world.visits;
+        ft_toast(app, "The reader beeps...");
+        ft_sound_play(&app->sound, FT_SFX_SPOT);
+    }
+
     /* Out of the hole with Wren behind you, and still nameless. */
     if(ft_world_naming_due(&app->world)) {
         ft_start_naming(app, 0, app->world.escort_mv.tx, app->world.escort_mv.ty);
@@ -1859,6 +1926,8 @@ static FlipperTales* ft_alloc(void) {
     app->talk_is_wren = false;
     app->talk_is_hale = false;
     app->talk_is_naming = false;
+    app->talk_is_record = false;
+    app->beeped_visit = 0xFFFFu;
     app->naming_try = 0;
     app->talk.count = 0;
     app->talk_shown = 0;

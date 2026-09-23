@@ -1153,6 +1153,32 @@ until their chapters replace them.
   instead of the save toast (`FT_REVEAL_KEEPER_CALL`), still saving and
   healing.
 
+### 5.4h Cold Storage
+
+Three rooms after the Relay (16 the hall, 17 the Stacks, 18 the Deep Vault),
+reached by a gate on the Scrapline's north wall that opens when Ma Rivet's
+job is done ("The relay first." until then).
+
+- **Ledger** is `FT_QUEST_LEDGER`, his own voice (two quick high notes that
+  do not quite agree) and sprite (a filing cabinet with a worried head and
+  spectacles). Saying yes hands you RFID; having it is his quest being at
+  least ACTIVE.
+- **The door nobody drew** is `FT_TILE_SECRET`: solid, and drawn by the same
+  rule as the wall it is in, so nothing gives it away. With RFID, the reader
+  beeps once a visit within two steps of it; OK facing it reads it
+  (`FtRoom.secret`, a bit in `revealed`), and from then on it is a door.
+- **The record** is read at `FT_TILE_ARCHIVE`, in Hush's voice. Reading it
+  to the end moves Ledger's job to READY; telling him finishes it and pays
+  two Rations. His terminal then plays the Keeper's serious call once
+  (`FT_REVEAL_KEEPER_TRUTH`) — thirteen beats, no joke.
+- **RFID in a fight**: 5 power, pierces any shield, 2 MP, a touch (so no
+  reaching a flyer). Against a Chiller's shield of 3 it does 5 where NFC
+  does 3. Without it, two Chillers measure 53/83/98 — the chapter is asking
+  for it.
+- Gates now say who holds them: the quest's refusal decides ("Coll won't
+  open it." at Weldhome, "The relay first." at the Scrapline) — every gate
+  used to blame Coll.
+
 ### 5.4c Pockets
 
 The only healing used to be a terminal you walked back to and Protect, which

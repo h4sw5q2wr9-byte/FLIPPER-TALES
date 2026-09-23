@@ -433,7 +433,7 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         const bool broadcast = ft_encounter_action_is_broadcast(e, act);
         const bool attacked =
             (act == FT_ACTION_BROADCAST || act == FT_ACTION_CONTACT ||
-             act == FT_ACTION_INFRARED) &&
+             act == FT_ACTION_INFRARED || act == FT_ACTION_RFID) &&
             e->last_player_hit.outcome != FT_HIT_MISSED;
 
         if(attacked && broadcast) {
@@ -999,6 +999,7 @@ static const char* action_desc(const FtEncounter* e, FtAction2 a) {
     case FT_ACTION_BROADCAST: return "All foes, weaker.";
     case FT_ACTION_CONTACT:   return "One foe, strong.";
     case FT_ACTION_INFRARED:  return "Nearest. Hits any.";
+    case FT_ACTION_RFID:      return "Up close. No shield.";
     case FT_ACTION_DEFEND:    return "Guard, heal, +MP";
     case FT_ACTION_FOCUS:     return "Fill SP for DEF.";
     case FT_ACTION_DEFLECT:   return "Free. Blocks bite.";
@@ -1487,7 +1488,8 @@ void ft_render_practice(Canvas* canvas, const FtPractice* p) {
 
 /* The level-up screen. Three stats, what each is worth, and what it would
  * become — a choice nobody can make from the stat's name alone. */
-void ft_render_status(Canvas* canvas, const FtStats* stats, const char* name, bool infrared) {
+void ft_render_status(Canvas* canvas, const FtStats* stats, const char* name, bool infrared,
+                      bool rfid) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
     canvas_set_font(canvas, FontSecondary);
@@ -1507,6 +1509,7 @@ void ft_render_status(Canvas* canvas, const FtStats* stats, const char* name, bo
     canvas_draw_str(canvas, 64, 34, row);
 
     canvas_draw_str(canvas, 6, 46, infrared ? "Sub-GHz NFC Infrared" : "Sub-GHz  NFC");
+    if(rfid) canvas_draw_str(canvas, 6, 54, "RFID");
     draw_centred(canvas, FT_SCREEN_W / 2, 61, "A level heals you.");
 }
 
