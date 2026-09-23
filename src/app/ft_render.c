@@ -527,6 +527,19 @@ static void draw_arena(Canvas* canvas, const FtEncounter* e) {
         canvas_set_color(canvas, ColorBlack);
     }
 
+    /* Your health, under you, level with theirs and drawn the same way — the
+     * player asked for it, and it is right: a fight is two sides, and one
+     * side's bar down in the stat row and the other's under their feet made
+     * it read as two different kinds of thing. Anchored where you stand, not
+     * where a lunge has carried you, so it does not jump about mid-swing. The
+     * rolling value, so a hit is seen to drain rather than jump. */
+    {
+        const int32_t hx = 4, bw = FT_HERO_W;
+        canvas_draw_frame(canvas, hx, floor_y + 2, (size_t)bw, 4);
+        const int32_t fill = ft_bar_fill(e->roll.current, e->stats.charge_max, bw);
+        if(fill > 0) canvas_draw_box(canvas, hx + 1, floor_y + 3, (size_t)fill, 2);
+    }
+
     /* --- the row of foes --- */
     for(uint8_t i = 0; i < count; i++) {
         if(!ft_encounter_foe_visible(e, i)) continue;
@@ -906,7 +919,7 @@ static void draw_enemy_result(Canvas* canvas, const FtEncounter* e) {
 
 static void draw_status(Canvas* canvas, const FtEncounter* e) {
     canvas_set_font(canvas, FontSecondary);
-    char buf[12];
+    char buf[20];
 
     canvas_draw_line(canvas, 0, FT_STATUS_Y - 1, FT_SCREEN_W - 1, FT_STATUS_Y - 1);
 
@@ -914,32 +927,16 @@ static void draw_status(Canvas* canvas, const FtEncounter* e) {
      * Filled to the edge, a full Charge bar and the menu's highlight ran
      * together into a single black slab. */
 
-    /* No "CHG" label. A quarter-ticked bar with a number beside it is already
-     * unambiguous, and the three characters were the difference between a row
-     * that reads and a row that is merely full. */
-    const int32_t bx = 2, bw = 40;
-    canvas_draw_frame(canvas, bx, FT_STATUS_Y + 1, (size_t)bw, 6);
-    {
-        const int32_t fill = ft_bar_fill(e->roll.current, e->stats.charge_max, bw);
-        if(fill > 0) canvas_draw_box(canvas, bx + 1, FT_STATUS_Y + 2, (size_t)fill, 4);
+    /* The health bar lives in the arena now, under you, level with the foes'
+     * bars (see draw_arena). This row keeps the numbers.
+     *
+     * "HP", not "CHG". The three readouts on this row are the whole of it and
+     * a player should not have to be told twice what any of them is. */
+    snprintf(buf, sizeof(buf), "HP %d/%d", (int)e->roll.current, (int)e->stats.charge_max);
+    canvas_draw_str(canvas, 2, FT_STATUS_Y + 6, buf);
 
-        /* Quarter ticks turn the bar into a gauge you can read at a glance
-         * instead of a featureless slab. */
-        for(int32_t q = 1; q < 4; q++) {
-            const int32_t tx = bx + (bw * q) / 4;
-            canvas_set_color(canvas, (tx - bx - 1 < fill) ? ColorWhite : ColorBlack);
-            canvas_draw_dot(canvas, tx, FT_STATUS_Y + 3);
-            canvas_set_color(canvas, ColorBlack);
-        }
-    }
-
-    /* "HP", not "CHG". The three numbers on this row are the whole readout
-     * and a player should not have to be told twice what any of them is. */
-    snprintf(buf, sizeof(buf), "HP%d", (int)e->roll.current);
-    canvas_draw_str(canvas, bx + bw + 3, FT_STATUS_Y + 6, buf);
-
-    snprintf(buf, sizeof(buf), "MP%d", (int)e->stats.ram);
-    canvas_draw_str(canvas, 72, FT_STATUS_Y + 6, buf);
+    snprintf(buf, sizeof(buf), "MP %d", (int)e->stats.ram);
+    canvas_draw_str(canvas, 56, FT_STATUS_Y + 6, buf);
 
     /* One letter, not three: the pips beside it are self-explanatory once
      * they start filling, and the width is needed for four of them. */

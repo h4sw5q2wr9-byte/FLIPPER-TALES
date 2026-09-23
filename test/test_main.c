@@ -3901,6 +3901,108 @@ static bool telegraph_and_guard(FtEncounter* e, int32_t before_impact) {
     return false;
 }
 
+/* Once a foe has finished falling, it stays gone. A player saw dead foes
+ * come back on screen while blocking: the "charge before this hit" snapshot
+ * that drives the death animation was only taken on the player's turn, and
+ * the death animation had been extended to the enemies' turn for deflects —
+ * so on every enemy attack after a kill, a dead foe was drawn again until the
+ * attack "reached" it.
+ *
+ * Played for real, whole fights, several seeds: once a foe with no charge is
+ * not visible, it must never be visible again. */
+/* A name comes up when you walk into a place, not into every room. */
+static void test_area_names(void) {
+    section("area names");
+
+    FtWorld w;
+    ft_world_init(&w);
+    CHECK(ft_world_banner(&w) != NULL, "the first room names where you are");
+    const char* cold_boot = ft_world_banner(&w);
+
+    ft_world_enter(&w, 1, 1, 2);
+    CHECK(ft_world_banner(&w) == NULL, "the next room of the same place says nothing");
+
+    ft_world_enter(&w, FT_ROOM_APPROACH, 1, 5);
+    CHECK(ft_world_banner(&w) == NULL, "a path has no name of its own");
+
+    ft_world_enter(&w, FT_ROOM_WELDHOME, 1, 5);
+    CHECK(ft_world_banner(&w) != NULL && strcmp(ft_world_banner(&w), "Weldhome") == 0,
+          "a village does");
+
+    ft_world_enter(&w, FT_ROOM_APPROACH, 22, 5);
+    ft_world_enter(&w, 3, 16, 8);
+    CHECK(ft_world_banner(&w) == cold_boot, "and walking back names where you went back to");
+
+    ft_world_enter(&w, FT_ROOM_HOLLOW, 3, 2);
+    CHECK(ft_world_banner(&w) != NULL, "down the pit is somewhere");
+    ft_world_enter(&w, FT_ROOM_DEAD_LETTERS, 3, 2);
+    CHECK(ft_world_banner(&w) == NULL, "and deeper is still the same somewhere");
+}
+
+static void test_dead_stay_dead(void) {
+    section("the dead stay dead");
+
+    int revived = 0, fights = 0, kills = 0, attacks_after = 0;
+    static const FtEnemyId THREE[3] = {FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_PARCEL_RUNNER,
+                                       FT_ENEMY_LAMPLIGHTER};
+
+    for(uint32_t seed = 1; seed <= 12u; seed++) {
+        FtEncounter e;
+        ft_encounter_init(&e, THREE, 3, seed);
+
+        /* Two go down early and the third has enough in it to keep
+         * attacking over their bodies for several rounds — which is exactly
+         * when the dead came back. Uneven, so they die on different turns. */
+        e.foes[0].charge = 1;
+        /* This one takes two hits, so it dies on the player's *last* turn of
+         * the round — the only case that brought it back: an earlier turn's
+         * snapshot is overwritten by the next swing, the last one's was not. */
+        e.foes[1].charge = (int16_t)(7 + (int16_t)(seed % 5u));
+        e.foes[2].charge = 40;
+        e.foes[2].charge_max = 40;
+
+        /* And the player survives long enough to see it. */
+        e.stats.charge_max = 400;
+        e.stats.charge = 400;
+        e.roll.current = 400;
+        e.roll.target = 400;
+
+        bool gone[3] = {false, false, false};
+        for(int t = 0; t < 20000 && !ft_encounter_over(&e); t++) {
+            if(e.phase == FT_PHASE_MENU) {
+                e.menu_index = FT_ACTION_BROADCAST;
+                ft_encounter_press_ok(&e);
+            } else if(e.phase == FT_PHASE_PLAYER_ACT && !e.action_pressed &&
+                      e.phase_ms >= FT_READY_MS + FT_ACTION_WINDOW_MS / 2) {
+                ft_encounter_press_ok(&e);
+            } else if(e.phase == FT_PHASE_TELEGRAPH && !e.guard_pressed &&
+                      e.phase_ms + 60u >= FT_READY_MS + FT_TELEGRAPH_MS) {
+                ft_encounter_press_ok(&e);
+            }
+
+            const FtPhase was = e.phase;
+            ft_encounter_tick(&e, 10);
+            if(was != FT_PHASE_IMPACT && e.phase == FT_PHASE_IMPACT && (gone[0] || gone[1])) {
+                attacks_after++;
+            }
+
+            for(uint8_t i = 0; i < 3u; i++) {
+                const bool vis = ft_encounter_foe_visible(&e, i);
+                if(e.foes[i].charge <= 0 && !vis && !gone[i]) {
+                    gone[i] = true;
+                    kills++;
+                }
+                if(gone[i] && vis) revived++;
+            }
+        }
+        fights++;
+    }
+
+    CHECK(kills > fights, "foes actually died (%d in %d fights)", kills, fights);
+    CHECK(attacks_after > 0, "and the living attacked over them (%d times)", attacks_after);
+    CHECK_EQ(revived, 0);
+}
+
 static void test_deflect(void) {
     section("deflect");
 
@@ -4898,21 +5000,36 @@ static void test_weldhome(void) {
     }
     CHECK(has_coll, "somebody is holding it");
 
-    /* --- the junction --- */
-    const FtRoom* ej = ft_room(JUNCTION);
-    bool has_wren = false, has_foe = false;
+    /* --- the Hollow: two levels, and Wren at the bottom --- */
+    const FtRoom* ej = ft_room(FT_ROOM_DEAD_LETTERS);
+    bool has_wren = false, has_guard = false;
     for(uint8_t i = 0; i < ej->ent_count; i++) {
         if(ej->ents[i].kind == FT_ENT_WREN) has_wren = true;
         if(ej->ents[i].kind == FT_ENT_FOE) {
-            has_foe = true;
             const FtRoster* r = ft_roster(ej->ents[i].roster);
-            CHECK_EQ(r->count, 3);
-            CHECK(FT_ENEMIES[r->foes[0]].attrs & FT_ATTR_BULWARK,
-                  "guarded the way things guard: a wall in front");
+            if(FT_ENEMIES[r->foes[0]].attrs & FT_ATTR_BULWARK) {
+                has_guard = true;
+                CHECK_EQ(r->count, 3);
+            }
         }
     }
     CHECK(has_wren, "the kid is down there");
-    CHECK(has_foe, "so is what took her");
+    CHECK(has_guard, "guarded the way things guard: a wall in front");
+
+    /* A dungeon, not a room with a boss in it: the player asked for the cave
+     * to be bigger and harder, and "harder" is counted here. */
+    int fights = 0, bodies = 0;
+    for(uint8_t room = FT_ROOM_HOLLOW; room <= FT_ROOM_DEAD_LETTERS; room++) {
+        const FtRoom* h = ft_room(room);
+        CHECK_EQ(h->area, ft_room(FT_ROOM_HOLLOW)->area);
+        for(uint8_t i = 0; i < h->ent_count; i++) {
+            if(h->ents[i].kind != FT_ENT_FOE) continue;
+            fights++;
+            bodies += ft_roster(h->ents[i].roster)->count;
+        }
+    }
+    CHECK(fights >= 5, "five fights on the way to her (%d)", fights);
+    CHECK(bodies >= 11, "and a crowd in them (%d machines)", bodies);
 
     /* --- freeing her --- */
     FtWorld j;
@@ -4988,7 +5105,7 @@ static void test_weldhome(void) {
         CHECK(ft_world_wren_present(&j, (uint8_t)at_home), "and it is her, once she is home");
 
         FtWorld cave = j;
-        ft_world_enter(&cave, JUNCTION, 3, 3);
+        ft_world_enter(&cave, FT_ROOM_DEAD_LETTERS, 3, 2);
         for(uint8_t i = 0; i < ej->ent_count; i++) {
             if(ej->ents[i].kind == FT_ENT_WREN) {
                 CHECK(!ft_world_wren_present(&cave, i), "the cave is empty after");
@@ -5005,7 +5122,7 @@ static void test_weldhome(void) {
         /* Lose her on the way — found, following, then not — and she is back
          * where you found her, and she will come again. */
         ft_quest_advance(&before.quests, FT_QUEST_WREN, FT_QUEST_READY);
-        ft_world_enter(&before, JUNCTION, 3, 3);
+        ft_world_enter(&before, FT_ROOM_DEAD_LETTERS, 3, 2);
         bool waiting = false;
         for(uint8_t i = 0; i < ej->ent_count; i++) {
             if(ej->ents[i].kind == FT_ENT_WREN && ft_world_wren_present(&before, i)) waiting = true;
@@ -5544,6 +5661,8 @@ int main(void) {
     test_hale();
     test_long_grass();
     test_talk_repeats();
+    test_dead_stay_dead();
+    test_area_names();
     test_items();
     test_audio();
     test_notice();

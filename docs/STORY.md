@@ -189,8 +189,10 @@ come through"; the message cannot be opened; he will not say who it is for.
 
 **Weldhome** *(built)*. The gate is shut and Warden Coll will not open it for
 a machine. Her terms: a kid called Wren is missing — bring her back. Hale
-walks you into the long grass, finds the pit, and waits. In the Hollow below,
-Wren is guarded by machines that "returned" her. You bring her home; on the
+walks you into the long grass, finds the pit, and waits. The Hollow below is
+two levels: the upper caves, full of parcel heaps and the machines that sort
+them, and under them **Dead Letters** — where undeliverable parcels end up,
+and where Wren is, guarded by machines that "returned" her. You bring her home; on the
 way she **names you**. Coll opens the gate and says the first real thing
 anyone has told you: *"You're not the first one through here."*
 
@@ -319,7 +321,7 @@ conversation where there is room for it.
 | Prologue: Cold Boot, the Keeper, the sealed message, the Clean Run | Built, with the Keeper's seeds from §7 |
 | Terminals speaking in Hush's voice | Built |
 | The machines' jobs, names and attack names (§4b) | Built |
-| Weldhome: Coll, Hale, Wren, the pit, the Hollow | Built |
+| Weldhome: Coll, Hale, Wren, the pit, the Hollow (two levels) | Built |
 | Wren naming you | Not built |
 | Coll's "not the first one through" | Built as a line; Echo not yet |
 | The Scrapline (Ma Rivet, Infrared, relay, Echo) | One sample room only |

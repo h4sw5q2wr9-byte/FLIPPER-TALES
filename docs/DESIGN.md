@@ -481,6 +481,17 @@ player. A contact attack has nothing to sweep across and lands on
 `foe_x(target) - reach`, so striking the far side of a three-wide row is a
 longer approach than striking the one standing next to you.
 
+**The dead stay dead.** A player saw foes they had killed come back on screen
+while the others were attacking. The arena draws a foe that was alive
+*before* the hit being shown, so a kill can play out on screen, and that
+"before" is a snapshot of every foe's Charge. It was taken before each of the
+player's swings and never again, so when you killed a foe on the last swing
+of your turn, every enemy attack after it was drawn against a board from
+before that swing — and the dead one stood back up for each of them. The
+snapshot is retaken at the start of every enemy's turn now. The test that
+holds it (`test_dead_stay_dead`) kills a foe on the round's last swing,
+which is the case the first version of the test missed.
+
 ## 5. Reading the screen in 1-bit
 
 The hardest port problem: Block Tales telegraphs attack class **with colour** (yellow GUARDED, red
@@ -589,6 +600,14 @@ belongs to the scene wipe below, which happens once per fight.
 The XOR goes **over** the drawn sprite. Inverting the empty space first and
 then drawing the sprite black-on-black just yields a solid brick, which is
 what the first pass did.
+
+#### Your bar, where theirs are
+
+Every foe has a small HP bar under its feet, and yours used to live in the
+status row below the arena, forty pixels wide — two different places to look
+for the same thing. Yours sits under your feet now, the same height and
+thickness as theirs, so one glance along the floor reads the whole fight. The
+status row keeps the numbers: `HP 18/24` and `MP 3`.
 
 #### The scene wipe
 
@@ -934,13 +953,28 @@ concept slices (`FT_ROOM_CH1_FIRST`), so nothing before them was renumbered:
 |---|---|
 | 9 The Approach | The fork. Two ways on, and a drop you have no reason to take. |
 | 10 Weldhome Gate | A village whose gate does not open for a unit. Warden Coll. |
-| 11 The Hollow | The cave under the long grass. Wren, behind a wall and two live ones. |
+| 11 The Hollow | The cave under the long grass: winding caverns, parcel heaps, three fights and a Ration. |
+| 12 Dead Letters | The level below, down a ladder. A terminal, a Night Shift crew, then the one passage to Wren. |
 
-The Hollow's roster is `{Blank Wall, Scrap Crawler, Stray Packet}` — measured
-at 46/83/97 across the simulator's three skill levels, level with the hardest
-roster in the game and still clearable. The first draft paired the wall with
-two AIRBORNE foes and read 19/52/78: the wall blocks the broadcast and the
-flyers refuse contact, so the fight had two locks and no key.
+The player asked for the cave to be bigger, harder and more memorable, so it
+is two rooms now and five fights where it was one:
+
+| Where | Roster | 20/50/80% skill |
+|---|---|---|
+| Hollow, first | Parcel Runner ×2 | 100/100/100 |
+| Hollow, second | Lamplighter, Parcel Runner | 100/100/100 |
+| Hollow, third | Lamplighter ×2 | 95/99/99 |
+| Dead Letters, west | Parcel Runner ×2, Night Shift | 77/96/99 |
+| Dead Letters, the passage | Queue Barrier, Lamplighter, Parcel Runner | 46/83/97 |
+
+Alone, every fight is winnable. The difficulty is that health carries over:
+measured as one chain, healing only at the Dead Letters terminal, a level-2
+player with one orb in HP gets through 31/81/98% of the time, with three
+orbs 80/98/100, and a level-1 player with none 9/50/85. It rewards
+preparing, and it does not wall anybody who fought on the way. The first
+draft of the guard fight paired the wall with two AIRBORNE foes and read
+19/52/78: the wall blocks the broadcast and the flyers refuse contact, so the
+fight had two locks and no key.
 
 #### Hale and the long grass
 
@@ -1101,6 +1135,19 @@ under the grid. Back resumes, so there is no Resume icon.
 
 **Settings** — Sound, Voices, Tips, New game — is one door, reached from both
 the start screen and the pause grid, and goes back to whichever opened it.
+
+**Area names are for places.** The banner that slides in on entering a room
+used to show for every room, so a stretch of path between two places got a
+name nobody would remember. Now a room has an `area` or it has none: Weldhome
+and the Hollow are places, the Approach is a path. The banner shows only when
+the name changes, so walking between the rooms of one place (the four rooms
+of Cold Boot, the two levels of the Hollow) does not repeat it, and coming
+back through a nameless path to where you were does not either.
+
+The Settings icon was an 8-toothed gear drawn in a 16×16 box, but the teeth
+on the sides were a pixel longer than the ones on top, and at that size a
+stretched gear with legs reads as a bug. It is drawn symmetric now, and the
+generator asserts that it is the same under every mirror and turn.
 
 ### 5.4f The opening
 
@@ -1451,10 +1498,11 @@ Four rules, none of them new — they are what the genre has always done:
 
 Room shapes carry the same load they always did. The Approach forks west and
 east, and the third way is not drawn at all until somebody shows it to you
-(see *Hale and the long grass*, below). The Hollow is a cave with one passage
-between its two caverns, three tiles long and one wide, which is what makes
-the thing guarding Wren a wall rather than a crowd: there is no route round
-it, so the fight *is* the room.
+(see *Hale and the long grass*, below). The Hollow is two levels. The upper one
+winds, with parcel heaps to walk round and a ladder down; Dead Letters, the
+lower, has one passage between its two caverns, three tiles long and one wide,
+which is what makes the thing guarding Wren a wall rather than a crowd: there
+is no route round it, so the fight *is* the room.
 
 One tree in The Approach stands in the middle of the path with its crown
 across it. That is deliberate and it is the first thing you meet outdoors:

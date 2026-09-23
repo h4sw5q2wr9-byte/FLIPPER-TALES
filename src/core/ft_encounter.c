@@ -989,6 +989,16 @@ static void advance_foe_turn(FtEncounter* e, uint8_t from) {
     if(n >= 0) {
         e->acting_foe = (uint8_t)n;
         choose_enemy_attack(e);
+
+        /* Their turn starts from the board as it stands. The "charge before
+         * this hit" snapshot drives the death animation, and it was only ever
+         * taken on the player's turn — so after the player's last swing of a
+         * round killed something, the snapshot still said it was alive, and
+         * every enemy attack that followed drew it back on screen until the
+         * attack "reached" it. A deflect takes its own snapshot before it
+         * strikes, so one that kills still gets its fall. */
+        for(uint8_t i = 0; i < FT_MAX_ENEMIES; i++) e->foe_charge_before[i] = e->foes[i].charge;
+
         enter_phase(e, FT_PHASE_TELEGRAPH);
         return;
     }

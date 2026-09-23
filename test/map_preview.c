@@ -80,7 +80,7 @@ int main(void) {
         {"ap1-trees",    9, &FT_MAP_AP1, 48,  48, FT_FACE_LEFT,  false, 9000},
         {"wh1-gate",    10, &FT_MAP_WH1, 320, 96, FT_FACE_RIGHT, false, 0},
         {"wh1-huts",    10, &FT_MAP_WH1, 160, 48, FT_FACE_UP,    false, 9000},
-        {"ej1-wren",    11, &FT_MAP_EJ1, 288, 112, FT_FACE_RIGHT, false, 0},
+        {"ej2-wren",    12, &FT_MAP_EJ2, 200, 24, FT_FACE_RIGHT, false, 0},
         {"cb2-foe",      1, &FT_MAP_CB2, 48,  28, FT_FACE_RIGHT, true,  0},
         {"cb2-mid",      1, &FT_MAP_CB2, 96,  36, FT_FACE_RIGHT, true,  9000},
         {"cb3-shelf",    2, &FT_MAP_CB3, 48,  28, FT_FACE_DOWN,  true,  0},
@@ -360,6 +360,7 @@ int main(void) {
     write_whole_map(&FT_MAP_AP1, "preview/whole_a_ap1.pbm");
     write_whole_map(&FT_MAP_WH1, "preview/whole_b_wh1.pbm");
     write_whole_map(&FT_MAP_EJ1, "preview/whole_c_ej1.pbm");
+    write_whole_map(&FT_MAP_EJ2, "preview/whole_d_ej2.pbm");
     write_whole_map(&FT_MAP_SL1, "preview/whole_5_sl1.pbm");
     write_whole_map(&FT_MAP_CS1, "preview/whole_6_cs1.pbm");
     write_whole_map(&FT_MAP_TS1, "preview/whole_7_ts1.pbm");

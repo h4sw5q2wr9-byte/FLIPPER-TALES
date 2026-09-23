@@ -195,33 +195,57 @@ D......................G
 ########################
 """)
 
-# [12] The Hollow. What is under the long grass: a cave, and the things that
-# took Wren.
+# [12] The Hollow, upper. What is under the long grass: caves, and the
+# machines that "returned" Wren here.
 #
-# You come down the ladder into the west cavern, and the only way on is a
-# passage three tiles long and one tile wide under the rock. The thing
-# guarding her stands in it. There is no route round, so the fight IS the
-# room — the same rule the bulkhead drew when this was a wreck, but here it
-# is the ground doing it rather than somebody's wall.
+# You come down the ladder into the first cavern, and the way on winds east
+# through three fights to a second ladder at the far end, going deeper. The
+# heaps of crates are parcels — everything the Parcel Runners "returned" with
+# nowhere to go ended up down here.
 #
-# The ladder is right here, and only here. Underground, climbing back up to
-# a hole in the roof is exactly what a ladder is for; up in the field it was
-# a ladder lying in the grass. Nothing grows without light, so no weeds and
-# no trees, and the one side pocket off the cavern is where somebody left
-# their pack.
+# It used to be one screen and a half with one fight in it. A player asked for
+# it to be bigger, harder and more memorable: it is the first real dungeon in
+# the game, and a dungeon is somewhere you have to get through, not a room
+# with a boss standing in it.
 MAPS["ej1"] = ("The Hollow", 0, """
-RRRRRRRRRRRRRRRRRRRRRRRR
-RRRH,RRRRRRRRRRRRRRRRRRR
-RR,,,,,RRRRRRRRRR,,,,RRR
-RR,,,,,,,RRRRRR,,,,,,,RR
-RRR,,,,,,,RRRRR,,,,,,,RR
-RR,,,,,,,,,RRRR,,,,,,,RR
-RR,,,,,RR,,RRRR,,,,,,RRR
-RRR,,,RRRR,,RRR,,,,,,RRR
-RRRR,,,,,,,,,,,,,,,,RRRR
-RRRRR,,,,,RRRRRRR,,RRRRR
-RRRRRRR,,RRRRRRRRRRRRRRR
-RRRRRRRRRRRRRRRRRRRRRRRR
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+RRRH,RRRRRRRRRRRRRRRRRRRRRRRRR
+RR,,,,,RRRRRR,,,,,,RRRRRRRRRRR
+RR,,,,,,,RRR,,,,,,,,,RRRR,,,RR
+RRR,,,,,,,,,,,,RR,,,,,,,,,,,RR
+RRRR,,,,,,,,,,RRRR,,,,,,C,,,RR
+RR,,,,RRR,,,,,,RR,,,,,,CC,,,RR
+RR,,,RRRRR,,,,,,,,,,RRRRR,,,RR
+RR,,,,RRR,,,,,,,,,,RRRRRRR,,RR
+RRR,,,,,,,,,RRRR,,,,RRRRR,,,RR
+RRRR,,,,,,,RRRRRR,,,,,,,,,,,RR
+RRRRR,,C,,RRRRRRRR,,,,,,,,,,RR
+RRRRRR,,,,RRRRRRRRRR,,,,,,H,RR
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+""")
+
+# [13] The Hollow, lower: Dead Letters. Where undeliverable parcels end up,
+# and where Wren is.
+#
+# A terminal at the foot of the ladder — Hush's, even down here — then a
+# cavern where something is asleep among the parcel heaps, then one passage
+# through the rock with the guards standing in it, then Wren. There is no way
+# round the passage: the fight is the room.
+MAPS["ej2"] = ("Dead Letters", 0, """
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+RRRH,T,RRRRRRRRRRRRRRRRRRRRRRR
+RR,,,,,,RRRRRRRRRRRRRR,,,,,RRR
+RR,,,,,,,,RRRRRRRRRRR,,,,,,,RR
+RRR,,,,,,,,,RRRRRRRR,,C,,,,,RR
+RRRRR,,,,,,,,RRRRRRR,CC,,,,,RR
+RR,C,,,,,,,,,RRRRRRR,,,,,,C,RR
+RR,CC,,,,,,,,RRRRRRR,,,,,,,,RR
+RR,,,,,,,,,,,,,,,,,,,,,,,,CCRR
+RRR,,,,,,,,,,RRRRRRR,,,,,,,,RR
+RRRR,,,C,,,,RRRRRRRRR,,,C,,,RR
+RRRRR,,CC,,RRRRRRRRRR,,CC,,,RR
+RRRRRR,,,,RRRRRRRRRRRR,,,,,RRR
+RRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
 """)
 
 

@@ -46,6 +46,23 @@ static const FtRoster FT_ROSTERS[] = {
      * fight had two locks and no key. A story beat nobody can clear is not a
      * story beat. */
     {3, {FT_ENEMY_QUEUE_BARRIER, FT_ENEMY_SWEEPER, FT_ENEMY_PARCEL_RUNNER}},
+
+    /* [13-16] The rest of the Hollow, built up to [12] rather than straight
+     * into it. Prologue machines, because the Hollow is where they dump what
+     * they "return" — Parcel Runners and the Lamplighters that light the way
+     * down — in groups that ask more of you each time:
+     *
+     *   [13] two Runners: the warm-up at the foot of the ladder
+     *   [14] a Lamplighter and a Runner: one you can reach, one you cannot
+     *   [15] two Lamplighters at the ladder down: contact is useless, so
+     *        this is the fight that asks whether you have MP to spend
+     *   [16] two Runners and a Night Shift asleep among the parcels — clear
+     *        the Runners and it clocks in, the hardest thing in the caves
+     *        short of the guards. */
+    {2, {FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_PARCEL_RUNNER, 0}},
+    {2, {FT_ENEMY_LAMPLIGHTER, FT_ENEMY_PARCEL_RUNNER, 0}},
+    {2, {FT_ENEMY_LAMPLIGHTER, FT_ENEMY_LAMPLIGHTER, 0}},
+    {3, {FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_PARCEL_RUNNER, FT_ENEMY_NIGHT_SHIFT}},
 };
 #define ROSTER_COUNT (sizeof(FT_ROSTERS) / sizeof(FT_ROSTERS[0]))
 
@@ -162,27 +179,43 @@ static const FtEntity WH1_ENTS[] = {
     {FT_ENT_WREN, 14, 4, FT_WREN_HOME},
 };
 
-/* [12] The Hollow. The cave under the long grass. Wren at the far end, and
- * the one passage to her guarded the way things guard — a wall in front — so
- * the fight cannot be skipped to the end. */
+/* [12] The Hollow, upper. Three fights winding east to the ladder down, and
+ * a pack somebody dropped in the side pocket. */
 static const FtExit EJ1_EXITS[] = {
-    /* The ladder, back up to the hole in the roof. You come out beside the
-     * pit, on the other side of it from wherever Hale is standing. */
+    /* First: the ladder back up to the hole in the roof. You come out beside
+     * the pit, on the other side of it from wherever Hale is standing. */
     {3, 1, 9, 12, 8, 0, 0, 0},
+
+    /* And the ladder down, to Dead Letters. */
+    {26, 12, FT_ROOM_DEAD_LETTERS, 3, 2, 0, 0, 0},
 };
 static const FtEntity EJ1_ENTS[] = {
-    /* In the passage under the rock, the only way through. There is no
-     * route round, so this is the fight or nothing. */
-    {FT_ENT_FOE, 13, 8, 12},
+    {FT_ENT_FOE, 8, 4, 13},   /* at the foot of the ladder */
+    {FT_ENT_FOE, 18, 4, 14},  /* half way along */
+    {FT_ENT_FOE, 23, 10, 15}, /* at the ladder down */
 
-    /* At the far end of the east cavern, as far from the ladder as the
-     * cave goes. */
-    {FT_ENT_WREN, 19, 3, FT_WREN_CAVE},
+    /* In the side pocket off the first cavern. Whether you spend it now or
+     * save it for the guards is the first real pocket decision the game
+     * asks. */
+    {FT_ENT_CACHE, 7, 12, FT_ITEM_RATION},
+};
 
-    /* In the side pocket off the first cavern, before the passage. Whether
-     * you spend it now or save it for the fight is the first real pocket
-     * decision the game asks. */
-    {FT_ENT_CACHE, 8, 10, FT_ITEM_RATION},
+/* [13] Dead Letters, the lower Hollow. A terminal at the foot of the ladder,
+ * something asleep in the parcel heaps, the only passage east guarded the way
+ * things guard — a wall in front — and Wren at the far end. */
+static const FtExit EJ2_EXITS[] = {
+    {3, 1, FT_ROOM_HOLLOW, 25, 12, 0, 0, 0},
+};
+static const FtEntity EJ2_ENTS[] = {
+    {FT_ENT_FOE, 8, 6, 16},  /* the Night Shift and its two Runners */
+    {FT_ENT_FOE, 16, 8, 12}, /* in the passage: there is no way round */
+
+    /* At the far end of the east cavern, as far from the ladder as the caves
+     * go. */
+    {FT_ENT_WREN, 26, 3, FT_WREN_CAVE},
+
+    /* Behind the guards: a reward for getting there, and the walk home. */
+    {FT_ENT_CACHE, 22, 12, FT_ITEM_CELL},
 };
 
 
@@ -258,19 +291,29 @@ static const FtEntity DZ1_ENTS[] = {
     {FT_ENT_FOE, 17, 7, 11}, /* the sleeper, at the far end */
 };
 
+/* The last field is the AREA the room belongs to — the name that comes up
+ * when you walk into it from somewhere else. Rooms in one area share it, so
+ * walking from one Cold Boot room to the next says nothing, and a path
+ * between places has none at all: "not every small map needs a name, it is
+ * just a path." */
+static const char* const AREA_COLD_BOOT = "Cold Boot";
+static const char* const AREA_WELDHOME = "Weldhome";
+static const char* const AREA_HOLLOW = "The Hollow";
+
 static const FtRoom FT_ROOMS[] = {
-    {&FT_MAP_CB1, CB1_EXITS, 1, CB1_ENTS, 2},
-    {&FT_MAP_CB2, CB2_EXITS, 2, CB2_ENTS, 1},
-    {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 3},
-    {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 2},
-    {&FT_MAP_SL1, SL1_EXITS, 2, SL1_ENTS, 2},
-    {&FT_MAP_CS1, CS1_EXITS, 2, CS1_ENTS, 2},
-    {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2},
-    {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2},
-    {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2},
-    {&FT_MAP_AP1, AP1_EXITS, 3, AP1_ENTS, 2},
-    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 5},
-    {&FT_MAP_EJ1, EJ1_EXITS, 1, EJ1_ENTS, 3},
+    {&FT_MAP_CB1, CB1_EXITS, 1, CB1_ENTS, 2, AREA_COLD_BOOT},
+    {&FT_MAP_CB2, CB2_EXITS, 2, CB2_ENTS, 1, AREA_COLD_BOOT},
+    {&FT_MAP_CB3, CB3_EXITS, 2, CB3_ENTS, 3, AREA_COLD_BOOT},
+    {&FT_MAP_CB4, CB4_EXITS, 2, CB4_ENTS, 2, AREA_COLD_BOOT},
+    {&FT_MAP_SL1, SL1_EXITS, 2, SL1_ENTS, 2, "The Scrapline"},
+    {&FT_MAP_CS1, CS1_EXITS, 2, CS1_ENTS, 2, "Cold Storage"},
+    {&FT_MAP_TS1, TS1_EXITS, 2, TS1_ENTS, 2, "The Turnstile"},
+    {&FT_MAP_SH1, SH1_EXITS, 2, SH1_ENTS, 2, "Signal Hill"},
+    {&FT_MAP_DZ1, DZ1_EXITS, 2, DZ1_ENTS, 2, "The Deadzone"},
+    {&FT_MAP_AP1, AP1_EXITS, 3, AP1_ENTS, 2, NULL}, /* a path */
+    {&FT_MAP_WH1, WH1_EXITS, 2, WH1_ENTS, 5, AREA_WELDHOME},
+    {&FT_MAP_EJ1, EJ1_EXITS, 2, EJ1_ENTS, 4, AREA_HOLLOW},
+    {&FT_MAP_EJ2, EJ2_EXITS, 1, EJ2_ENTS, 4, AREA_HOLLOW},
 };
 #define ROOM_COUNT (sizeof(FT_ROOMS) / sizeof(FT_ROOMS[0]))
 
@@ -413,6 +456,16 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty) {
     w->facing = FT_FACE_DOWN;
     w->walk_ms = 0;
     w->area_ms = 0;
+
+    /* The name comes up when you walk into an area you were not already in.
+     * A path has no name and leaves the last one standing, so walking out of
+     * Cold Boot along the Approach and into Weldhome names Weldhome, and
+     * walking back names Cold Boot again. */
+    {
+        const char* area = ft_room(w->room)->area;
+        w->banner = (area != NULL && area != w->area_named);
+        if(area != NULL) w->area_named = area;
+    }
     w->arrived = false;
     w->ambushed = false;
 
@@ -506,6 +559,8 @@ void ft_world_init(FtWorld* w) {
     /* Nothing shown yet, and Hale on his gate. Set before the first enter
      * below, because entering is what moves him between rooms. */
     w->room = 0;
+    w->area_named = NULL;
+    w->banner = false;
     w->revealed = 0;
     w->revealed_now = false;
     w->hale = (uint8_t)FT_HALE_POST;
@@ -1667,4 +1722,8 @@ void ft_world_terminal_speaks(FtWorld* w) {
     w->bark_ty = (uint8_t)ty;
     say_aloud(w, FT_BARK_BY_TERMINAL, (uint8_t)(FT_BARK_HUSH + (w->hush_at % FT_BARK_HUSH_N)));
     w->hush_at++;
+}
+
+const char* ft_world_banner(const FtWorld* w) {
+    return w->banner ? ft_room(w->room)->area : NULL;
 }

@@ -103,6 +103,10 @@ typedef struct {
     uint8_t         exit_count;
     const FtEntity* ents;
     uint8_t         ent_count;
+
+    /* The area this room belongs to, whose name comes up when you walk in
+     * from a different one. NULL for a path, which has no name of its own. */
+    const char*     area;
 } FtRoom;
 
 /* A roster is what one visible foe fights as. The whole group also *walks*
@@ -130,13 +134,14 @@ typedef struct {
 #define FT_ROOM_APPROACH  FT_ROOM_CH1_FIRST
 #define FT_ROOM_WELDHOME  (FT_ROOM_CH1_FIRST + 1)
 #define FT_ROOM_HOLLOW    (FT_ROOM_CH1_FIRST + 2)
+#define FT_ROOM_DEAD_LETTERS (FT_ROOM_CH1_FIRST + 3)
 
 const FtRoom*   ft_room(uint8_t index);
 uint8_t         ft_room_count(void);
 const FtRoster* ft_roster(uint8_t index);
 
 /* How many there are. The balance simulator walks all of them. */
-#define FT_ROSTER_COUNT 13
+#define FT_ROSTER_COUNT 17
 uint8_t ft_roster_count(void);
 
 /* A tile-aligned actor mid-step. */
@@ -203,6 +208,11 @@ typedef enum {
 
 typedef struct {
     uint8_t   room;
+
+    /* The last area whose name came up, and whether this room's is up now. */
+    const char* area_named;
+    bool        banner;
+
     FtStepper mv;
     FtFacing  facing;
     uint32_t  walk_ms; /* walk cycle, keeps running across steps */
@@ -314,6 +324,11 @@ void ft_world_enter(FtWorld* w, uint8_t room, uint8_t tx, uint8_t ty);
 void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms);
 
 const FtMap* ft_world_map(const FtWorld* w);
+
+/* The area name to show on entering this room, or NULL when there is none:
+ * a path, or another room of the area you were already in. The renderer
+ * shows it for FT_AREA_BANNER_MS after entering. */
+const char* ft_world_banner(const FtWorld* w);
 
 /* Pixel position of an actor's *tile*, interpolated through its current step.
  *

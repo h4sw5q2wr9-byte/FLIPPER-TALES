@@ -526,14 +526,15 @@ static void render_world(Canvas* canvas, const FtWorld* w, FtPos focus, bool tal
     /* Area name, in a cleared strip so it stays legible over any tile. It
      * retires after a couple of seconds rather than occupying the corner for
      * the whole visit. */
-    if(!talking && map->name && w->area_ms < FT_AREA_BANNER_MS) {
+    const char* banner = ft_world_banner(w);
+    if(!talking && banner && w->area_ms < FT_AREA_BANNER_MS) {
         canvas_set_font(canvas, FontSecondary);
-        const int32_t w = (int32_t)canvas_string_width(canvas, map->name) + 6;
+        const int32_t w = (int32_t)canvas_string_width(canvas, banner) + 6;
 
         canvas_set_color(canvas, ColorWhite);
         canvas_draw_box(canvas, 0, 0, (size_t)w, 10);
         canvas_set_color(canvas, ColorBlack);
         canvas_draw_frame(canvas, 0, 0, (size_t)w, 10);
-        canvas_draw_str(canvas, 3, 7, map->name);
+        canvas_draw_str(canvas, 3, 7, banner);
     }
 }
