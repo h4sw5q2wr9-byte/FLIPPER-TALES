@@ -1781,6 +1781,22 @@ the strike-first rule cannot fire on a person.
 
 #### Foe behaviour
 
+**Going back is as fair as going out.** A player found the Keeper's "no
+fights" favour impossible on the way home. A simulated careful player (keeps
+out of sight, waits, runs once seen) was never caught going out and caught
+coming back 286 times in 300, all in The Drop: the shelf's foe roamed to the
+top of the ladder, which you see from the door going out and climb up into
+blind coming back. Three fixes, and a test that walks the route both ways
+(`test_clean_run_both_ways`) so it cannot come back:
+
+- The Drop's shelf foe lives at the far end of the shelf, clear of the ladder.
+- Boot Corridor's foe stands in the middle, as far from each door.
+- Foes notice you by **walking distance**, not a straight line through
+  walls, so a terrace or a rock wall is a wall in both directions.
+
+The rule for new rooms: nothing may lurk within sight of a place you arrive
+at blind — a door, a ladder top, a drop.
+
 A marker that fights as three **walks as three separate actors**. `FtFoeState`
 is the encounter marker — alive, alert, and a count — and holds one
 `FtFoeWalker` per roster member, each with its own stepper, think clock, home

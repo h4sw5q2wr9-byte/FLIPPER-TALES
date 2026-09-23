@@ -100,9 +100,11 @@ static const FtExit CB2_EXITS[] = {
     {19, 4, 2, 1, 2, 0, 0, 0},
 };
 static const FtEntity CB2_ENTS[] = {
-    /* Standing in the grass across the middle of the corridor: seen from the
-     * far end, met at your own pace, and impossible to walk past. */
-    {FT_ENT_FOE, 11, 4, 0},
+    /* In the middle of the corridor, as far from one door as from the other:
+     * the Keeper's favour walks this room both ways, and at (11,4) it stood
+     * three tiles nearer the east door, so coming back you arrived almost
+     * on top of it. test_clean_run_both_ways holds the two directions level. */
+    {FT_ENT_FOE, 9, 4, 0},
 };
 
 /* [3] The Drop: upper shelf, ladder down, terminal on the lower floor. */
@@ -111,7 +113,12 @@ static const FtExit CB3_EXITS[] = {
     {17, 10, 3, 1, 2, 0, 0, 0},
 };
 static const FtEntity CB3_ENTS[] = {
-    {FT_ENT_FOE, 9, 2, 1},
+    /* The shelf's foe roams the far end of the shelf, away from the ladder.
+     * At (9,2) it wandered to the top of the ladder, which is fine going
+     * out — you see it from the door and wait — and a trap coming back,
+     * where you climb up blind into it. A careful player was caught there
+     * on the way home 286 times in 300. */
+    {FT_ENT_FOE, 14, 2, 1},
     {FT_ENT_FOE, 6, 11, 2},
     {FT_ENT_TREE, 8, 9, FT_ITEM_APPLE},
 };
@@ -685,11 +692,6 @@ static uint32_t foe_rand(FtFoeWalker* k) {
 }
 
 /* Can this walker see the player? */
-static bool foe_spots(const FtWorld* w, const FtFoeWalker* k) {
-    const int32_t dx = (int32_t)w->mv.tx - (int32_t)k->mv.tx;
-    const int32_t dy = (int32_t)w->mv.ty - (int32_t)k->mv.ty;
-    return (abs32(dx) + abs32(dy)) <= FT_FOE_ALERT;
-}
 
 /* ---- Chasing ----------------------------------------------------------
  *
@@ -773,6 +775,25 @@ static uint8_t flow_at(const FtMap* m, int32_t tx, int32_t ty) {
     if(tx < 0 || ty < 0 || tx >= (int32_t)m->w || ty >= (int32_t)m->h) return FT_FLOW_FAR;
 
     return g_flow[(uint32_t)ty * m->w + (uint32_t)tx];
+}
+
+/* Whether a walker notices you: you are within FT_FOE_ALERT steps of it by
+ * a route it could actually walk.
+ *
+ * It used to be a straight-line count that ignored walls, so a foe on The
+ * Drop's upper shelf "saw" you through the terrace wall on the floor below,
+ * ran to the ladder and met you there. Going out you never pass under it;
+ * coming back you must — a careful player was caught on the way home 286
+ * times in 300 and never on the way out. Measured by walking distance, a
+ * wall is a wall in both directions. A room too big for the flow field
+ * falls back to the straight count. */
+static bool foe_spots(const FtWorld* w, const FtFoeWalker* k, const FtMap* map) {
+    if(g_flow_valid && g_flow_map == map && g_flow_px == w->mv.tx && g_flow_py == w->mv.ty) {
+        return flow_at(map, k->mv.tx, k->mv.ty) <= FT_FOE_ALERT;
+    }
+    const int32_t dx = (int32_t)w->mv.tx - (int32_t)k->mv.tx;
+    const int32_t dy = (int32_t)w->mv.ty - (int32_t)k->mv.ty;
+    return (abs32(dx) + abs32(dy)) <= FT_FOE_ALERT;
 }
 
 /* Is another walker standing on, or stepping into, this tile? Without this
@@ -983,12 +1004,18 @@ void ft_world_update(FtWorld* w, int8_t dx, int8_t dy, uint32_t dt_ms) {
      * that reacts individually reads as three oblivious animals rather than
      * something that has seen you. */
     bool any_spotted = false;
+    bool any_alive = false;
+    for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+        if(w->foes[i].alive) any_alive = true;
+    }
+    if(any_alive) flow_refresh(map, w->mv.tx, w->mv.ty);
+
     for(uint8_t i = 0; i < room->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
         const FtFoeState* f = &w->foes[i];
         if(!f->alive) continue;
 
         for(uint8_t m = 0; m < f->count; m++) {
-            if(foe_spots(w, &f->w[m])) any_spotted = true;
+            if(foe_spots(w, &f->w[m], map)) any_spotted = true;
         }
     }
     if(any_spotted) {

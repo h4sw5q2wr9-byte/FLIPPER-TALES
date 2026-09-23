@@ -83,7 +83,8 @@ D....=.............#
 """)
 
 # [3] Vertical section. A terrace splits the room and the ladder is the only
-# way down; the foe on the upper shelf is passed before it can be avoided.
+# way down. The upper shelf's foe keeps to the far end, clear of the ladder:
+# you climb back up it blind, so nothing may wait at the top.
 #
 # The terminal is on the LOWER floor, past the drop. Save points sit after the
 # commitment, never before it.

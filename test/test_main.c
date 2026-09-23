@@ -5265,6 +5265,150 @@ static void test_scrapline(void) {
     CHECK(ft_quest_has_infrared(&w.quests), "and you keep the clicker");
 }
 
+/* ---- The Clean Run, both ways ------------------------------------------ */
+
+/* One step toward (tx, ty) for a careful player: shortest path that keeps
+ * at least R tiles from every walker (and where it is stepping). False when
+ * there is no such path. */
+static bool sneak_step(const FtWorld* w, int32_t tx, int32_t ty, int32_t R, int8_t* dx,
+                       int8_t* dy) {
+    static int16_t dist[1024];
+    static uint16_t q[1024];
+    const FtMap* m = ft_world_map(w);
+    const FtRoom* r = ft_room(w->room);
+    const int32_t W = (int32_t)m->w, H = (int32_t)m->h;
+    *dx = 0;
+    *dy = 0;
+    if(W * H > 1024) return false;
+
+    for(int32_t i = 0; i < W * H; i++) dist[i] = -1;
+    uint32_t head = 0, tail = 0;
+    dist[ty * W + tx] = 0;
+    q[tail++] = (uint16_t)(ty * W + tx);
+
+    while(head < tail) {
+        const int32_t at = q[head++], ax = at % W, ay = at / W;
+        const int32_t nx[4] = {ax + 1, ax - 1, ax, ax}, ny[4] = {ay, ay, ay + 1, ay - 1};
+        for(int k = 0; k < 4; k++) {
+            if(nx[k] < 0 || ny[k] < 0 || nx[k] >= W || ny[k] >= H) continue;
+            const int32_t n = ny[k] * W + nx[k];
+            if(dist[n] >= 0 || ft_tile_solid(ft_map_tile(m, nx[k], ny[k]))) continue;
+
+            bool danger = false;
+            for(uint8_t i = 0; i < r->ent_count && i < FT_MAX_ROOM_ENTS; i++) {
+                if(!w->foes[i].alive) continue;
+                for(uint8_t mm = 0; mm < w->foes[i].count; mm++) {
+                    const FtStepper* st = &w->foes[i].w[mm].mv;
+                    const int32_t fx = st->tx, fy = st->ty;
+                    if(abs_i32(fx - nx[k]) + abs_i32(fy - ny[k]) <= R ||
+                       abs_i32(fx + st->dx - nx[k]) + abs_i32(fy + st->dy - ny[k]) <= R) {
+                        danger = true;
+                    }
+                }
+            }
+            if(danger && !(nx[k] == w->mv.tx && ny[k] == w->mv.ty)) continue;
+
+            dist[n] = (int16_t)(dist[at] + 1);
+            q[tail++] = (uint16_t)n;
+        }
+    }
+
+    const int32_t px = w->mv.tx, py = w->mv.ty;
+    int16_t best = dist[py * W + px];
+    if(best < 0) return false;
+    const int32_t sx[4] = {1, -1, 0, 0}, sy[4] = {0, 0, 1, -1};
+    for(int k = 0; k < 4; k++) {
+        const int32_t x = px + sx[k], y = py + sy[k];
+        if(x < 0 || y < 0 || x >= W || y >= H) continue;
+        const int16_t d = dist[y * W + x];
+        if(d >= 0 && d < best) {
+            best = d;
+            *dx = (int8_t)sx[k];
+            *dy = (int8_t)sy[k];
+        }
+    }
+    return true;
+}
+
+static void test_clean_run_both_ways(void) {
+    section("the Clean Run is as fair coming back as going out");
+
+    /* The Keeper's favour is out to the Cold Gate and back without a fight,
+     * and a player said it could not be done: coming back through The Drop,
+     * the shelf's foe roamed to the top of the ladder, where you climb up
+     * blind into it. Going out, you see it from the door and wait. A careful
+     * player, simulated: keeps out of sight when it can, waits a while when
+     * it cannot, and runs for the door once something has seen it. */
+    static const uint8_t ROUTE[] = {0, 1, 2, 3, 2, 1, 0};
+    int caught_out = 0, caught_back = 0;
+    const int RUNS = 150;
+
+    for(int seed = 0; seed < RUNS; seed++) {
+        FtWorld w;
+        ft_world_init(&w);
+        w.visits = (uint16_t)(seed * 7);
+        ft_world_enter(&w, 0, 3, 4);
+
+        for(int leg = 0; leg < 6; leg++) {
+            const FtRoom* from = ft_room(ROUTE[leg]);
+            const FtExit* x = NULL;
+            for(uint8_t e = 0; e < from->exit_count; e++) {
+                if(from->exits[e].dest_room == ROUTE[leg + 1]) x = &from->exits[e];
+            }
+            if(!x) break;
+
+            int idle = (seed * 37 + leg * 11) % 120, waited = 0;
+            bool caught = false;
+            for(int t = 0; t < 20000; t++) {
+                int8_t dx = 0, dy = 0;
+                bool alert = false;
+                for(uint8_t i = 0; i < FT_MAX_ROOM_ENTS; i++) {
+                    if(w.foes[i].alive && w.foes[i].alert) alert = true;
+                }
+                if(idle > 0) {
+                    idle--;
+                } else if(!ft_world_moving(&w)) {
+                    bool got = false;
+                    if(alert) {
+                        for(int32_t R = 1; R >= 0 && !got; R--)
+                            got = sneak_step(&w, x->tx, x->ty, R, &dx, &dy);
+                    } else if(!(got = sneak_step(&w, x->tx, x->ty, FT_FOE_ALERT, &dx, &dy))) {
+                        if(waited < 400) {
+                            waited++;
+                        } else {
+                            for(int32_t R = 3; R >= 0 && !got; R--)
+                                got = sneak_step(&w, x->tx, x->ty, R, &dx, &dy);
+                        }
+                    }
+                }
+                ft_world_update(&w, dx, dy, 10);
+                if(ft_world_foe_contact(&w) >= 0) {
+                    caught = true;
+                    break;
+                }
+                if(w.arrived) {
+                    const FtExit* e = ft_world_exit_under(&w);
+                    if(e && ft_world_exit_open(&w, e)) {
+                        ft_world_enter(&w, e->dest_room, e->dest_tx, e->dest_ty);
+                        break;
+                    }
+                }
+            }
+            if(caught || w.room != ROUTE[leg + 1]) {
+                if(leg < 3) caught_out++;
+                else caught_back++;
+                break;
+            }
+        }
+    }
+
+    CHECK(caught_out * 20 <= RUNS, "out to the Gate unseen (%d of %d caught)", caught_out, RUNS);
+    CHECK(caught_back * 20 <= RUNS, "and back again unseen (%d of %d caught)", caught_back,
+          RUNS);
+    CHECK(abs_i32(caught_out - caught_back) * 20 <= RUNS,
+          "the way back is no harder than the way out (%d vs %d)", caught_out, caught_back);
+}
+
 static void test_talk_repeats(void) {
     section("people do not repeat themselves");
 
@@ -6134,6 +6278,7 @@ int main(void) {
     test_naming();
     test_echo();
     test_scrapline();
+    test_clean_run_both_ways();
     test_dead_stay_dead();
     test_area_names();
     test_items();
