@@ -115,6 +115,10 @@ typedef struct {
     bool        ask;
     const char* yes;
     const char* no;
+
+    /* What the header says when you are the one talking: your name, once
+     * Wren has given you one. NULL reads "You". The app fills it in. */
+    const char* you;
 } FtTalk;
 
 /* What this quest's giver says right now. Pure: talking does not change
@@ -151,6 +155,33 @@ FtQuestOutcome ft_quest_wren_answer(FtQuests* q);
  * standing beside it. Pure, like the others. */
 FtTalk ft_quest_hale_talk(const FtQuests* q, bool pit_found, bool by_the_pit, uint8_t again);
 FtQuestOutcome ft_quest_hale_answer(const FtQuests* q, bool pit_found, bool by_the_pit);
+
+/* ---- Your name -----------------------------------------------------------
+ *
+ * You do not have one until Wren gives you one, on the walk home from the
+ * Hollow (STORY.md §5). She offers four and you can turn each down; turn
+ * them all down and you are Tin Can, forever. Saved as one number. */
+#define FT_NAME_COUNT 5
+#define FT_NAME_NONE  255u
+
+/* Your name, or "robot" before you have one. */
+const char* ft_quest_name(uint8_t name);
+
+/* What Hale calls you instead. He gets it wrong on purpose, every time. */
+const char* ft_quest_hale_name(uint8_t name);
+
+/* Wren's naming, try `tries` (0 = the first name). The first four ask; the
+ * fifth does not — by then she has decided. FT_NAME_COUNT is what she says
+ * once you have said yes to one, and it says your name, so expand it. */
+FtTalk ft_quest_naming_talk(uint8_t tries);
+
+/* A line can say your name: '@' is your name and '#' is what Hale calls you.
+ * Writes at most cap-1 characters and always terminates. Returns `out`. */
+char* ft_quest_expand(const char* line, uint8_t name, char* out, uint8_t cap);
+
+/* The longest either can come out, so the tests can measure every line with
+ * the worst name in it rather than with a single '@'. */
+#define FT_NAME_MAX_CHARS 8
 
 /* ---- The opening ----------------------------------------------------------
  *

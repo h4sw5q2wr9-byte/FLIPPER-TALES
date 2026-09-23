@@ -108,6 +108,15 @@ typedef struct {
     bool      talk_is_wren;
     bool      talk_is_hale;
 
+    /* Wren naming you, and which name she is on. See ft_start_naming. */
+    bool      talk_is_naming;
+    uint8_t   naming_try;
+
+    /* The conversation's lines with your name written into them. The talk
+     * points here rather than at the lines in the core, which are shared. */
+    FtBeat    talk_lines[FT_TALK_MAX_BEATS];
+    char      talk_text[FT_TALK_MAX_BEATS][2][24];
+
     /* The typewriter: characters of this beat shown so far, and time banked
      * toward the next one. Signed, because a full stop banks a pause. */
     uint16_t talk_shown;
@@ -574,6 +583,7 @@ static void ft_intro_done(FlipperTales* app) {
         app->talk_quest = (FtQuestId)e->roster;
         app->talk_is_wren = false;
         app->talk_is_hale = false;
+        app->talk_is_naming = false;
 
         const FtTalk first = ft_quest_talk(&app->world.quests, app->talk_quest, 0);
         (void)ft_talk_again(app, &first);
@@ -928,6 +938,24 @@ static void ft_talk_beat_start(FlipperTales* app) {
 /* Open whatever conversation has just been loaded into app->talk, with
  * whoever is saying it standing on (tx, ty). */
 static void ft_start_talk(FlipperTales* app, int32_t tx, int32_t ty) {
+    /* Your name into every line that says it, and over your own lines. */
+    const uint8_t name = app->world.name;
+    const uint8_t n = (app->talk.count < FT_TALK_MAX_BEATS) ? app->talk.count :
+                                                               (uint8_t)FT_TALK_MAX_BEATS;
+    for(uint8_t i = 0; i < n; i++) {
+        const FtBeat* from = &app->talk.beats[i];
+        FtBeat*       to = &app->talk_lines[i];
+
+        to->who = from->who;
+        to->a = ft_quest_expand(from->a, name, app->talk_text[i][0], sizeof(app->talk_text[i][0]));
+        to->b = from->b ? ft_quest_expand(from->b, name, app->talk_text[i][1],
+                                          sizeof(app->talk_text[i][1])) :
+                          NULL;
+    }
+    app->talk.beats = app->talk_lines;
+    app->talk.count = n;
+    app->talk.you = (name < FT_NAME_COUNT) ? ft_quest_name(name) : NULL;
+
     app->talk_beat = 0;
     app->talk_choosing = false;
     app->talk_yes = true;
@@ -971,10 +999,55 @@ static void ft_talk_tick(FlipperTales* app, uint32_t dt_ms) {
     }
 }
 
+/* Wren stops you on the walk home and gives you a name (STORY.md §5). Each
+ * no is the next name; the fifth is not a question. */
+static void ft_start_naming(FlipperTales* app, uint8_t tries, int32_t tx, int32_t ty) {
+    app->naming_try = tries;
+    app->talk = ft_quest_naming_talk(tries);
+    app->talk_is_wren = false;
+    app->talk_is_hale = false;
+    app->talk_is_naming = true;
+    ft_start_talk(app, tx, ty);
+}
+
+static void ft_finish_naming(FlipperTales* app, bool yes) {
+    FtWorld* w = &app->world;
+
+    /* Her saying it back to you. Nothing left to decide. */
+    if(app->naming_try >= FT_NAME_COUNT) {
+        app->talk_is_naming = false;
+        app->mode = FT_MODE_OVERWORLD;
+        return;
+    }
+
+    const bool last = app->naming_try + 1u >= FT_NAME_COUNT;
+    if(yes || last) {
+        w->name = app->naming_try;
+        ft_sound_play(&app->sound, FT_SFX_LEVEL);
+        ft_save_now(app);
+
+        /* Tin Can already ends on her loving it; the others get a hello. */
+        if(last) {
+            app->talk_is_naming = false;
+            app->mode = FT_MODE_OVERWORLD;
+            return;
+        }
+        ft_start_naming(app, FT_NAME_COUNT, app->talk_fx, app->talk_fy);
+        return;
+    }
+
+    ft_start_naming(app, (uint8_t)(app->naming_try + 1u), app->talk_fx, app->talk_fy);
+}
+
 /* And apply what it did, once it is over. Nothing changes until here, so a
  * question opened by accident can be walked away from. */
 static void ft_finish_talk(FlipperTales* app, bool yes) {
     FtWorld* w = &app->world;
+
+    if(app->talk_is_naming) {
+        ft_finish_naming(app, yes);
+        return;
+    }
     const FtQuestOutcome out =
         app->talk_is_wren ? ft_quest_wren_answer(&w->quests) :
         app->talk_is_hale ?
@@ -1043,9 +1116,18 @@ static void ft_overworld_ok(FlipperTales* app) {
         const uint8_t   again = ft_talk_again(app, &first);
         const FtEntity* e = &ft_room(app->world.room)->ents[kid];
 
+        /* Home, and she never got to name you: a save from before names,
+         * or a debug warp. She does it now. */
+        if(ft_quest_state(q, FT_QUEST_WREN) == FT_QUEST_DONE &&
+           app->world.name == FT_NAME_NONE) {
+            ft_start_naming(app, 0, e->tx, e->ty);
+            return;
+        }
+
         app->talk = again ? ft_quest_wren_talk(q, again) : first;
         app->talk_is_wren = true;
         app->talk_is_hale = false;
+        app->talk_is_naming = false;
         ft_start_talk(app, e->tx, e->ty);
         return;
     }
@@ -1061,6 +1143,7 @@ static void ft_overworld_ok(FlipperTales* app) {
         app->talk = again ? ft_quest_hale_talk(&w->quests, found, by, again) : first;
         app->talk_is_wren = false;
         app->talk_is_hale = true;
+        app->talk_is_naming = false;
         ft_start_talk(app, w->hale_mv.tx, w->hale_mv.ty);
         return;
     }
@@ -1074,6 +1157,7 @@ static void ft_overworld_ok(FlipperTales* app) {
         app->talk_quest = (FtQuestId)room->ents[who].roster;
         app->talk_is_wren = false;
         app->talk_is_hale = false;
+        app->talk_is_naming = false;
 
         const FtTalk  first = ft_quest_talk(&app->world.quests, app->talk_quest, 0);
         const uint8_t again = ft_talk_again(app, &first);
@@ -1425,7 +1509,14 @@ static void ft_handle_input(FlipperTales* app, const InputEvent* event) {
 
         case InputKeyBack:
             /* Leaving early is leaving: a conversation you cannot walk out
-             * of is one you resent. Nothing has been applied. */
+             * of is one you resent. Nothing has been applied.
+             *
+             * Except Wren's naming, which would only stop you again on the
+             * next step. Walking off on a name is turning it down. */
+            if(app->talk_is_naming) {
+                ft_finish_talk(app, false);
+                break;
+            }
             app->mode = FT_MODE_OVERWORLD;
             break;
 
@@ -1675,6 +1766,12 @@ static void ft_update(FlipperTales* app, uint32_t dt_ms) {
 
         if(ambush) ft_toast(app, "Ambushed!");
         ft_begin_battle(app, touched, false, ambush);
+        return;
+    }
+
+    /* Out of the hole with Wren behind you, and still nameless. */
+    if(ft_world_naming_due(&app->world)) {
+        ft_start_naming(app, 0, app->world.escort_mv.tx, app->world.escort_mv.ty);
     }
 }
 
@@ -1729,6 +1826,8 @@ static FlipperTales* ft_alloc(void) {
     app->talk_quest = FT_QUEST_CLEAN_RUN;
     app->talk_is_wren = false;
     app->talk_is_hale = false;
+    app->talk_is_naming = false;
+    app->naming_try = 0;
     app->talk.count = 0;
     app->talk_shown = 0;
     app->talk_type_ms = 0;

@@ -261,6 +261,9 @@ typedef struct {
     bool      escort;
     FtStepper escort_mv;
 
+    /* What Wren called you, or FT_NAME_NONE before she has. */
+    uint8_t name;
+
     /* FT_REVEAL_* bits: hidden ways somebody has shown you. */
     uint8_t revealed;
 
@@ -425,6 +428,12 @@ void ft_world_hale_pitside(uint8_t* tx, uint8_t* ty);
 bool ft_world_pit_at(const FtWorld* w, int32_t tx, int32_t ty);
 
 /* Start and stop somebody walking with you. */
+/* True for the one update in which Wren should stop you and name you: she
+ * is walking you home, you have no name yet, and you have just finished a
+ * step with her out of the hole and out of the long grass behind you — in
+ * the Approach, or Weldhome if you somehow got there first. */
+bool ft_world_naming_due(const FtWorld* w);
+
 void ft_world_escort_start(FtWorld* w);
 void ft_world_escort_stop(FtWorld* w);
 

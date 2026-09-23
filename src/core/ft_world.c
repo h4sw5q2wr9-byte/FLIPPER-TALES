@@ -555,6 +555,7 @@ void ft_world_init(FtWorld* w) {
     ft_pockets_init(&w->pockets);
     w->visits = 0;
     w->escort = false;
+    w->name = FT_NAME_NONE;
 
     /* Nothing shown yet, and Hale on his gate. Set before the first enter
      * below, because entering is what moves him between rooms. */
@@ -1195,6 +1196,22 @@ const char* ft_world_exit_refusal(const FtExit* x) {
     if(x->need_state == (uint8_t)FT_QUEST_DONE) return "Coll won't open it.";
 
     return ft_quest_refusal(id, (FtQuestState)x->need_state);
+}
+
+bool ft_world_naming_due(const FtWorld* w) {
+    if(!w->arrived || !w->escort || w->name != FT_NAME_NONE) return false;
+    if(w->room != FT_ROOM_APPROACH && w->room != FT_ROOM_WELDHOME) return false;
+
+    /* Climbing out, she is on your tile until you step off it. Waiting for
+     * that means she is standing beside you when she speaks, not inside you. */
+    if(w->escort_mv.tx == w->mv.tx && w->escort_mv.ty == w->mv.ty) return false;
+
+    /* And out of the long grass, both of you. In it, the grass is drawn over
+     * your legs and hers and the scene was a picture of grass with two heads
+     * in it — not the moment you get a name. */
+    const FtMap* m = ft_world_map(w);
+    return ft_map_tile(m, w->mv.tx, w->mv.ty) != FT_TILE_TALL_GRASS &&
+           ft_map_tile(m, w->escort_mv.tx, w->escort_mv.ty) != FT_TILE_TALL_GRASS;
 }
 
 void ft_world_escort_start(FtWorld* w) {

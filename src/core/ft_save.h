@@ -27,8 +27,11 @@
 #define FT_SAVE_MAGIC_3 'V'
 
 /* Bumped whenever the layout changes. An older or newer file is refused
- * rather than misread: a garbled save is worse than a missing one. */
-#define FT_SAVE_VERSION 10
+ * rather than misread: a garbled save is worse than a missing one. The one
+ * exception is FT_SAVE_VERSION_PREV, which is this layout minus the byte
+ * added last, and is read with that byte at its default. */
+#define FT_SAVE_VERSION 11
+#define FT_SAVE_VERSION_PREV 10
 
 /* Header (4 magic + 1 version + 1 length) + payload + 4 checksum. Generous,
  * and asserted against the real encoded length by the tests. */
@@ -63,6 +66,10 @@ typedef struct {
      * that respawns. */
     uint8_t revealed;
     uint8_t hale, hale_room, hale_tx, hale_ty;
+
+    /* What Wren called you. Version 10 had no name and still loads, as
+     * FT_NAME_NONE: she names you next time she is with you. */
+    uint8_t name;
 } FtSaveData;
 
 /* Returns the number of bytes written, or 0 if the buffer is too small. */

@@ -2195,6 +2195,7 @@ static void fill_save(FtSaveData* d) {
 
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) d->cleared[i] = (uint8_t)(0xA5u ^ i);
     d->coach = true;
+    d->name = 2;
 }
 
 static bool save_eq(const FtSaveData* a, const FtSaveData* b) {
@@ -2213,6 +2214,7 @@ static bool save_eq(const FtSaveData* a, const FtSaveData* b) {
     for(uint8_t i = 0; i < FT_CLEARED_BYTES; i++) {
         if(a->cleared[i] != b->cleared[i]) return false;
     }
+    if(a->name != b->name) return false;
     return a->coach == b->coach;
 }
 
@@ -4779,20 +4781,158 @@ static void check_talk(const FtTalk* c, const char* who, unsigned st, unsigned a
           "%s %u/%u is named", who, st, again);
     CHECK(c->voice < FT_VOICE_COUNT, "%s %u/%u has a voice", who, st, again);
 
+    /* Measured with every name written in, and before there is one: a
+     * line that fits as "@" can run off the panel as "Sprocket". */
     for(uint8_t i = 0; i < c->count; i++) {
-        CHECK(c->beats[i].a && strlen(c->beats[i].a) <= FT_TUTORIAL_MAX_CHARS,
-              "%s %u/%u beat %u fits: \"%s\"", who, st, again, i,
-              c->beats[i].a ? c->beats[i].a : "");
-        if(c->beats[i].b) {
-            CHECK(strlen(c->beats[i].b) <= FT_TUTORIAL_MAX_CHARS,
-                  "%s %u/%u beat %u line b fits: \"%s\"", who, st, again, i,
-                  c->beats[i].b);
+        CHECK(c->beats[i].a != NULL, "%s %u/%u beat %u says something", who, st, again, i);
+        if(!c->beats[i].a) continue;
+        for(uint8_t n = 0; n <= FT_NAME_COUNT; n++) {
+            const uint8_t name = (n < FT_NAME_COUNT) ? n : (uint8_t)FT_NAME_NONE;
+            char line[64];
+            ft_quest_expand(c->beats[i].a, name, line, sizeof(line));
+            CHECK(strlen(line) <= FT_TUTORIAL_MAX_CHARS, "%s %u/%u beat %u fits: \"%s\"",
+                  who, st, again, i, line);
+            if(c->beats[i].b) {
+                ft_quest_expand(c->beats[i].b, name, line, sizeof(line));
+                CHECK(strlen(line) <= FT_TUTORIAL_MAX_CHARS,
+                      "%s %u/%u beat %u line b fits: \"%s\"", who, st, again, i, line);
+            }
         }
     }
     if(c->ask) {
         CHECK(c->yes && strlen(c->yes) <= 10u && c->no && strlen(c->no) <= 10u,
               "%s %u/%u answers fit", who, st, again);
     }
+}
+
+/* ---- Your name --------------------------------------------------------- */
+
+/* FNV-1a, as the save uses, to build an older file by hand. */
+static uint32_t fnv(const uint8_t* b, uint8_t len) {
+    uint32_t h = 2166136261u;
+    for(uint8_t i = 0; i < len; i++) {
+        h ^= b[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static void test_naming(void) {
+    section("Wren names you");
+
+    /* The names, and Hale's versions of them, all different. */
+    for(uint8_t n = 0; n < FT_NAME_COUNT; n++) {
+        CHECK(strlen(ft_quest_name(n)) <= FT_NAME_MAX_CHARS, "name %u is short", n);
+        CHECK(strlen(ft_quest_hale_name(n)) <= FT_NAME_MAX_CHARS, "Hale's %u is short", n);
+        CHECK(strcmp(ft_quest_name(n), ft_quest_hale_name(n)) != 0,
+              "Hale gets %s wrong", ft_quest_name(n));
+    }
+    CHECK(strcmp(ft_quest_name(0), "Bolt") == 0, "she starts with Bolt");
+    CHECK(strcmp(ft_quest_name(FT_NAME_COUNT - 1u), "Tin Can") == 0, "and ends on Tin Can");
+
+    char out[32];
+    CHECK(strcmp(ft_quest_expand("Hi, @!", 2, out, sizeof(out)), "Hi, Sprocket!") == 0,
+          "@ is your name (%s)", out);
+    CHECK(strcmp(ft_quest_expand("Nice one, #.", 3, out, sizeof(out)), "Nice one, Mittens.") == 0,
+          "# is what Hale calls you (%s)", out);
+    CHECK(strcmp(ft_quest_expand("Hi, @!", FT_NAME_NONE, out, sizeof(out)), "Hi, robot!") == 0,
+          "and before there is one, you are a robot (%s)", out);
+    CHECK(strlen(ft_quest_expand("@@@@@@@@", 2, out, 10)) == 9u, "a small buffer is not overrun");
+
+    /* Four offers, each a question; then Tin Can, which is not; then her
+     * saying it back. Every line fits with every name. */
+    for(uint8_t t = 0; t <= FT_NAME_COUNT; t++) {
+        const FtTalk c = ft_quest_naming_talk(t);
+        check_talk(&c, "Naming", t, 0);
+        CHECK_EQ(c.voice, FT_VOICE_WREN);
+        CHECK(c.ask == (t < FT_NAME_COUNT - 1u), "try %u %s", t,
+              (t < FT_NAME_COUNT - 1u) ? "asks" : "does not ask");
+        if(t < FT_NAME_COUNT) {
+            /* The name on offer is actually in what she says. */
+            bool said = false;
+            for(uint8_t i = 0; i < c.count; i++) {
+                if(strstr(c.beats[i].a, ft_quest_name(t))) said = true;
+                if(c.beats[i].b && strstr(c.beats[i].b, ft_quest_name(t))) said = true;
+            }
+            CHECK(said, "try %u says %s", t, ft_quest_name(t));
+        }
+    }
+
+    /* Out of the hole with her, and she stops you — once you have stepped
+     * off the ladder, so she is beside you and not inside you. */
+    FtWorld w;
+    ft_world_init(&w);
+    w.revealed |= FT_REVEAL_PIT;
+    w.quests.state[FT_QUEST_WREN] = FT_QUEST_READY;
+    const FtExit* up = &ft_room(FT_ROOM_HOLLOW)->exits[0];
+    ft_world_enter(&w, FT_ROOM_HOLLOW, 3, 2);
+    ft_world_escort_start(&w);
+
+    bool early = false, due = false;
+    for(int t = 0; t < 20000 && !due; t++) {
+        int8_t dx = 0, dy = 0;
+        if(!ft_world_moving(&w)) {
+            if(w.room == FT_ROOM_HOLLOW) chase(&w, up->tx, up->ty, &dx, &dy);
+            else chase(&w, 23, 5, &dx, &dy);
+        }
+        drive_tick(&w, dx, dy, NULL);
+        if(ft_world_naming_due(&w)) {
+            if(w.room != FT_ROOM_APPROACH) early = true;
+            due = true;
+        }
+    }
+    CHECK(due, "on the walk home, she names you");
+    CHECK(!early, "in the Approach, not in the cave");
+    CHECK(w.escort_mv.tx != w.mv.tx || w.escort_mv.ty != w.mv.ty, "standing beside you");
+    CHECK(ft_map_tile(ft_world_map(&w), w.mv.tx, w.mv.ty) != FT_TILE_TALL_GRASS &&
+              ft_map_tile(ft_world_map(&w), w.escort_mv.tx, w.escort_mv.ty) !=
+                  FT_TILE_TALL_GRASS,
+          "out of the long grass, where you can both be seen (%u,%u / %u,%u)", w.mv.tx,
+          w.mv.ty, w.escort_mv.tx, w.escort_mv.ty);
+
+    /* Named, she never asks again. */
+    w.name = 1;
+    bool again = false;
+    for(int t = 0; t < 400; t++) {
+        int8_t dx = 0, dy = 0;
+        if(!ft_world_moving(&w)) chase(&w, 23, 5, &dx, &dy);
+        drive_tick(&w, dx, dy, NULL);
+        if(ft_world_naming_due(&w)) again = true;
+    }
+    CHECK(!again, "once is enough");
+
+    /* The name is saved, and comes back. */
+    FtSaveData d;
+    ft_save_from_world(&w, true, true, &d);
+    uint8_t buf[FT_SAVE_MAX_BYTES];
+    const uint8_t len = ft_save_encode(&d, buf, sizeof(buf));
+    FtSaveData back;
+    CHECK(ft_save_decode(buf, len, &back), "a named save loads");
+    FtWorld r;
+    ft_save_to_world(&back, &r, NULL, NULL);
+    CHECK_EQ(r.name, 1);
+
+    /* A save from before names — the same file without its last payload
+     * byte — still loads, with no name, rather than losing the run. */
+    uint8_t old[FT_SAVE_MAX_BYTES];
+    const uint8_t plen = (uint8_t)(buf[5] - 1u);
+    for(uint8_t i = 0; i < 6u + plen; i++) old[i] = buf[i];
+    old[4] = FT_SAVE_VERSION_PREV;
+    old[5] = plen;
+    const uint32_t h = fnv(old, (uint8_t)(6u + plen));
+    for(uint8_t k = 0; k < 4u; k++) old[6u + plen + k] = (uint8_t)((h >> (8u * k)) & 0xFFu);
+    FtSaveData prev;
+    CHECK(ft_save_decode(old, (uint8_t)(len - 1u), &prev), "a save from before names loads");
+    CHECK_EQ(prev.name, FT_NAME_NONE);
+    CHECK_EQ(prev.room, d.room);
+    CHECK_EQ(prev.hale_ty, d.hale_ty);
+    ft_save_to_world(&prev, &r, NULL, NULL);
+    CHECK_EQ(r.name, FT_NAME_NONE);
+
+    /* Nonsense in the byte is no name, not a crash in the name table. */
+    back.name = 77;
+    ft_save_to_world(&back, &r, NULL, NULL);
+    CHECK_EQ(r.name, FT_NAME_NONE);
 }
 
 static void test_talk_repeats(void) {
@@ -5661,6 +5801,7 @@ int main(void) {
     test_hale();
     test_long_grass();
     test_talk_repeats();
+    test_naming();
     test_dead_stay_dead();
     test_area_names();
     test_items();

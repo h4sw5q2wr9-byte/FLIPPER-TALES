@@ -141,6 +141,7 @@ static FtTalk say(const char* who, FtVoice voice, FtLines first, const FtLines* 
     t.ask = false;
     t.yes = NULL;
     t.no = NULL;
+    t.you = NULL;
     return t;
 }
 
@@ -262,8 +263,8 @@ static const FtBeat COLL_FAILED[] = {
 static const FtBeat COLL_PAID[] = {
     {FT_SAY_THEM, "Wren! Inside. Now.", NULL},
     {FT_SAY_THEM, "...Thank you.", NULL},
-    {FT_SAY_YOU,  "She's fine.", NULL},
-    {FT_SAY_THEM, "I can see that.", NULL},
+    {FT_SAY_YOU,  "She named me.", "I'm @."},
+    {FT_SAY_THEM, "Course she did.", NULL},
     {FT_SAY_THEM, "Gate's open. You've", "earned it."},
     {FT_SAY_THEM, "You're not the first", "one through here."},
     {FT_SAY_YOU,  "Who was?", NULL},
@@ -271,14 +272,14 @@ static const FtBeat COLL_PAID[] = {
 };
 
 static const FtBeat COLL_DONE_1[] = {
-    {FT_SAY_THEM, "Gate's open. Go on.", NULL},
+    {FT_SAY_THEM, "Gate's open.", "Go on, @."},
 };
 static const FtBeat COLL_DONE_2[] = {
     {FT_SAY_THEM, "Wren's grounded.", "Forever."},
 };
 static const FtBeat COLL_DONE_3[] = {
     {FT_SAY_YOU,  "Thanks, Coll.", NULL},
-    {FT_SAY_THEM, "Don't make it weird.", NULL},
+    {FT_SAY_THEM, "Don't make it weird.", "...@."},
 };
 static const FtBeat COLL_DONE_4[] = {
     {FT_SAY_THEM, "Still watching you,", "you know."},
@@ -340,6 +341,9 @@ static const FtLines HALE_KNOWN_MORE[] = {LINES(HALE_KNOWN_2)};
 
 static const FtBeat HALE_HOME[] = {
     {FT_SAY_THEM, "She's back!", NULL},
+    {FT_SAY_THEM, "Nice one, #.", NULL},
+    {FT_SAY_YOU,  "It's @.", NULL},
+    {FT_SAY_THEM, "That's what I said.", NULL},
     {FT_SAY_THEM, "Coll almost smiled.", "I saw it."},
     {FT_SAY_YOU,  "Did she?", NULL},
     {FT_SAY_THEM, "Almost.", NULL},
@@ -381,7 +385,7 @@ static const FtBeat WREN_WAIT[] = {
 
 static const FtBeat WREN_HOME_1[] = {
     {FT_SAY_THEM, "I'm grounded.", NULL},
-    {FT_SAY_THEM, "Worth it.", NULL},
+    {FT_SAY_THEM, "Worth it, @.", NULL},
 };
 static const FtBeat WREN_HOME_2[] = {
     {FT_SAY_THEM, "Next time take me", "somewhere good."},
@@ -394,6 +398,77 @@ static const FtBeat WREN_HOME_4[] = {
 };
 static const FtLines WREN_HOME_MORE[] = {LINES(WREN_HOME_2), LINES(WREN_HOME_3),
                                          LINES(WREN_HOME_4)};
+
+/* ---- Your name ---- */
+
+/* STORY.md §5. Five names, and the last is the one you get for being fussy. */
+static const char* const NAMES[FT_NAME_COUNT] = {"Bolt", "Beep", "Sprocket", "Buttons",
+                                                 "Tin Can"};
+
+/* Hale's, one each. Close enough to be a joke and never close enough to be
+ * a mistake. */
+static const char* const HALE_NAMES[FT_NAME_COUNT] = {"Colt", "Boop", "Pocket", "Mittens",
+                                                      "Tin Cup"};
+
+const char* ft_quest_name(uint8_t name) {
+    return (name < FT_NAME_COUNT) ? NAMES[name] : "robot";
+}
+
+const char* ft_quest_hale_name(uint8_t name) {
+    return (name < FT_NAME_COUNT) ? HALE_NAMES[name] : "pal";
+}
+
+char* ft_quest_expand(const char* line, uint8_t name, char* out, uint8_t cap) {
+    if(out == NULL || cap == 0u) return out;
+
+    uint8_t n = 0;
+    for(const char* c = line; c && *c; c++) {
+        const char* sub = (*c == '@') ? ft_quest_name(name) :
+                          (*c == '#') ? ft_quest_hale_name(name) :
+                                        NULL;
+        if(sub) {
+            while(*sub && n + 1u < cap) out[n++] = *sub++;
+        } else if(n + 1u < cap) {
+            out[n++] = *c;
+        }
+    }
+    out[n] = '\0';
+    return out;
+}
+
+/* She stops you on the way home. Each name you turn down, she tries harder
+ * and minds more. */
+static const FtBeat NAMING_0[] = {
+    {FT_SAY_THEM, "Hey. Robot.", NULL},
+    {FT_SAY_YOU,  "Yes?", NULL},
+    {FT_SAY_THEM, "You need a name.", "Robot's rude."},
+    {FT_SAY_THEM, "I'm calling you...", "Bolt."},
+};
+static const FtBeat NAMING_1[] = {
+    {FT_SAY_THEM, "Okay. Um.", NULL},
+    {FT_SAY_THEM, "Beep! Because you", "go beep."},
+    {FT_SAY_YOU,  "I don't beep.", NULL},
+    {FT_SAY_THEM, "You DO beep.", NULL},
+};
+static const FtBeat NAMING_2[] = {
+    {FT_SAY_THEM, "Fine. FINE.", NULL},
+    {FT_SAY_THEM, "Sprocket! That's", "a GOOD one."},
+};
+static const FtBeat NAMING_3[] = {
+    {FT_SAY_THEM, "You're SO picky.", NULL},
+    {FT_SAY_THEM, "Buttons. You've got", "loads of buttons."},
+};
+static const FtBeat NAMING_4[] = {
+    {FT_SAY_THEM, "FINE. You're", "Tin Can."},
+    {FT_SAY_THEM, "Forever.", NULL},
+    {FT_SAY_YOU,  "...Tin Can.", NULL},
+    {FT_SAY_THEM, "I LOVE it.", NULL},
+};
+static const FtBeat NAMED[] = {
+    {FT_SAY_THEM, "Hi, @!", NULL},
+    {FT_SAY_YOU,  "Hi, Wren.", NULL},
+    {FT_SAY_THEM, "Okay. Home now.", "I'm SO hungry."},
+};
 
 /* ---- The opening ---- */
 
@@ -614,4 +689,16 @@ const char* ft_quest_status_line(const FtQuests* q, FtQuestId id) {
     case FT_QUEST_UNKNOWN:
     default:              return "not met";
     }
+}
+
+FtTalk ft_quest_naming_talk(uint8_t tries) {
+    static const FtLines TRIES[FT_NAME_COUNT] = {
+        LINES(NAMING_0), LINES(NAMING_1), LINES(NAMING_2), LINES(NAMING_3), LINES(NAMING_4),
+    };
+
+    /* Past the last name is her saying it, now that it is settled. */
+    if(tries > FT_NAME_COUNT - 1u) return say(WREN, FT_VOICE_WREN, ONLY(NAMED), 0u);
+
+    const FtTalk t = say(WREN, FT_VOICE_WREN, TRIES[tries], NULL, 0u, 0u);
+    return (tries < FT_NAME_COUNT - 1u) ? ask(t, "That's me", "No") : t;
 }

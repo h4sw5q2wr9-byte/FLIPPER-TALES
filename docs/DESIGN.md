@@ -1035,6 +1035,29 @@ Two things that looked fine on paper and did not survive being walked:
   is leaving, on the frame they leave it. The tests walk the whole route —
   lead, reveal, down, up, home with Wren — and hold him to three tiles.
 
+#### Your name
+
+STORY.md §5 is the what; this is the how.
+
+- **When.** `ft_world_naming_due` is true for the one update in which you
+  finish a step with Wren behind you, no name yet, in the Approach (or
+  Weldhome), with her off your tile and neither of you in the long grass.
+  The first version fired the moment you stepped off the ladder, and the
+  scene was a screenful of grass with two heads in it.
+- **How.** `ft_quest_naming_talk(try)`: tries 0–3 each offer a name and ask;
+  a no is the next try. Try 4 is Tin Can and does not ask. Past that is her
+  saying hello with the name you took. Back during any of it is a no, or
+  she would stop you again on the next step.
+- **Saying it.** A line can hold `@` (your name) or `#` (what Hale calls
+  you). The app writes the name in when a conversation opens, into its own
+  copy of the lines, so every line in the core stays a plain constant. The
+  talk-line test measures every line with every name written in, because a
+  line that fits as `@` can run off the panel as `Sprocket`. Once named, the
+  header over your own lines is your name instead of "You".
+- **Saving.** One byte, `FT_NAME_NONE` until she has named you. The save
+  went to version 11; a version-10 file is still read, with no name, and
+  Wren names you the next time you talk to her.
+
 ### 5.4c Pockets
 
 The only healing used to be a terminal you walked back to and Protect, which

@@ -171,6 +171,24 @@ turn all of them down:
 Whatever you end up with sticks: Coll uses it (grudgingly), Hale gets it
 wrong on purpose, and the ending says it. Five names, saved as one number.
 
+*(Built.)* She stops you just out of the long grass on the way home, with
+Hale still waiting by the hole. Say yes and she says hello to you by name;
+press Back and it counts as a no, so she cannot be walked away from forever.
+Once you have a name, the talk box says it over your own lines instead of
+"You".
+
+| Name | What Hale calls you |
+|---|---|
+| Bolt | Colt |
+| Beep | Boop |
+| Sprocket | Pocket |
+| Buttons | Mittens |
+| Tin Can | Tin Cup |
+
+> **Hale:** Nice one, Mittens.
+> **Buttons:** It's Buttons.
+> **Hale:** That's what I said.
+
 ---
 
 ## 6. The chapters
@@ -322,7 +340,7 @@ conversation where there is room for it.
 | Terminals speaking in Hush's voice | Built |
 | The machines' jobs, names and attack names (§4b) | Built |
 | Weldhome: Coll, Hale, Wren, the pit, the Hollow (two levels) | Built |
-| Wren naming you | Not built |
+| Wren naming you | Built: Coll, Hale and Wren use it |
 | Coll's "not the first one through" | Built as a line; Echo not yet |
 | The Scrapline (Ma Rivet, Infrared, relay, Echo) | One sample room only |
 | Relays and calling the Keeper from terminals | Not built |

@@ -81,10 +81,12 @@ static uint8_t write_payload(const FtSaveData* d, uint8_t* b) {
     put_u8(b, &at, d->hale_tx);
     put_u8(b, &at, d->hale_ty);
 
+    put_u8(b, &at, d->name);
+
     return at;
 }
 
-static void read_payload(const uint8_t* b, FtSaveData* d) {
+static void read_payload(const uint8_t* b, FtSaveData* d, bool prev) {
     uint8_t at = 0;
 
     d->stats.charge = get_i16(b, &at);
@@ -127,6 +129,8 @@ static void read_payload(const uint8_t* b, FtSaveData* d) {
     d->hale_room = get_u8(b, &at);
     d->hale_tx = get_u8(b, &at);
     d->hale_ty = get_u8(b, &at);
+
+    d->name = prev ? (uint8_t)FT_NAME_NONE : get_u8(b, &at);
 }
 
 /* The payload length, which the header carries so a decode can check the file
@@ -139,7 +143,13 @@ static uint8_t payload_bytes(void) {
                      + 6u                         /* position and save point */
                      + FT_CLEARED_BYTES + 2u      /* flags */
                      + 3u                         /* whoever is with you */
-                     + 5u);                       /* what was shown, and Hale */
+                     + 5u                         /* what was shown, and Hale */
+                     + 1u);                       /* your name */
+}
+
+/* The last version's payload: this one without the name. */
+static uint8_t prev_payload_bytes(void) {
+    return (uint8_t)(payload_bytes() - 1u);
 }
 
 /* ---- Encode and decode ------------------------------------------------- */
@@ -180,10 +190,11 @@ bool ft_save_decode(const uint8_t* in, uint8_t len, FtSaveData* out) {
        in[2] != FT_SAVE_MAGIC_2 || in[3] != FT_SAVE_MAGIC_3) {
         return false;
     }
-    if(in[4] != FT_SAVE_VERSION) return false;
+    const bool prev = in[4] == FT_SAVE_VERSION_PREV;
+    if(in[4] != FT_SAVE_VERSION && !prev) return false;
 
     const uint8_t plen = in[5];
-    if(plen != payload_bytes()) return false;
+    if(plen != (prev ? prev_payload_bytes() : payload_bytes())) return false;
 
     const uint8_t total = (uint8_t)(HEADER_BYTES + plen + CHECK_BYTES);
     if(len < total) return false;
@@ -194,7 +205,7 @@ bool ft_save_decode(const uint8_t* in, uint8_t len, FtSaveData* out) {
                          ((uint32_t)c[2] << 16) | ((uint32_t)c[3] << 24);
     if(want != got) return false;
 
-    read_payload(in + HEADER_BYTES, out);
+    read_payload(in + HEADER_BYTES, out, prev);
     return true;
 }
 
@@ -228,6 +239,8 @@ void ft_save_from_world(const FtWorld* w, bool coach, bool sound, FtSaveData* d)
     d->hale_room = w->hale_room;
     d->hale_tx = w->hale_mv.tx;
     d->hale_ty = w->hale_mv.ty;
+
+    d->name = w->name;
 }
 
 void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach, bool* sound) {
@@ -270,6 +283,8 @@ void ft_save_to_world(const FtSaveData* d, FtWorld* w, bool* coach, bool* sound)
     w->hale_mv.dy = 0;
     w->hale_mv.step_ms = 0;
     w->hale_hurry = false;
+
+    w->name = (d->name < FT_NAME_COUNT) ? d->name : (uint8_t)FT_NAME_NONE;
 
     if(coach) *coach = d->coach;
     if(sound) *sound = d->sound;

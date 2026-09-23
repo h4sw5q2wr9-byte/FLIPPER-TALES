@@ -26,6 +26,23 @@ typedef struct {
  * This walks the tiles itself rather than calling ft_overworld_render, which
  * is bound to the 128x64 viewport — but it asks core for every decision
  * (orientation, scatter, shadow), so what it shows is what the game draws. */
+/* What the app does before showing a conversation: your name written into
+ * every line that says it, and over the lines you say. */
+static FtBeat g_named_beats[FT_TALK_MAX_BEATS];
+static char   g_named_text[FT_TALK_MAX_BEATS][2][24];
+
+static FtTalk with_name(FtTalk t, uint8_t name) {
+    for(uint8_t i = 0; i < t.count && i < FT_TALK_MAX_BEATS; i++) {
+        g_named_beats[i].who = t.beats[i].who;
+        g_named_beats[i].a = ft_quest_expand(t.beats[i].a, name, g_named_text[i][0], 24);
+        g_named_beats[i].b =
+            t.beats[i].b ? ft_quest_expand(t.beats[i].b, name, g_named_text[i][1], 24) : NULL;
+    }
+    t.beats = g_named_beats;
+    t.you = (name < FT_NAME_COUNT) ? ft_quest_name(name) : NULL;
+    return t;
+}
+
 static void draw_whole_map(Canvas* c, const FtMap* m) {
     canvas_clear(c);
     canvas_set_color(c, ColorBlack);
@@ -299,6 +316,73 @@ int main(void) {
             const int c = ft_stub_canvas_clipped(canvas);
             clipped_total += c;
             printf("  %-18s %s\n", "bark-wren", c ? "CLIPPED" : "ok");
+        }
+    }
+
+    /* Wren naming you, just out of the hole, with Hale waiting by it. */
+    {
+        FtWorld nm;
+        ft_world_init(&nm);
+        ft_quest_advance(&nm.quests, FT_QUEST_WREN, FT_QUEST_READY);
+        nm.revealed = FT_REVEAL_PIT;
+        nm.hale = FT_HALE_WAIT;
+        nm.hale_room = FT_ROOM_APPROACH;
+        ft_world_hale_pitside(&nm.hale_mv.tx, &nm.hale_mv.ty);
+        /* Where the tests find she stops you: the first steps out of the
+         * long grass on the way home. */
+        ft_world_enter(&nm, FT_ROOM_APPROACH, 17, 8);
+        nm.area_ms = 100000u;
+        ft_world_escort_start(&nm);
+        nm.escort_mv.tx = 16;
+        nm.escort_mv.ty = 8;
+        nm.bark_ms = 0;
+        nm.facing = FT_FACE_LEFT;
+
+        const struct {
+            const char* name;
+            uint8_t try_;
+            uint8_t beat;
+            bool choosing;
+            uint8_t named;
+        } frames[] = {
+            {"name-bolt", 0, 3, false, FT_NAME_NONE},
+            {"name-choice", 0, 3, true, FT_NAME_NONE},
+            {"name-beep", 1, 2, false, FT_NAME_NONE},
+            {"name-tincan", 4, 0, false, FT_NAME_NONE},
+            {"name-hi", FT_NAME_COUNT, 1, false, 2},
+        };
+        for(size_t i = 0; i < sizeof(frames) / sizeof(frames[0]); i++) {
+            const FtTalk t = with_name(ft_quest_naming_talk(frames[i].try_), frames[i].named);
+            ft_overworld_render_talk(canvas, &nm, nm.escort_mv.tx, nm.escort_mv.ty);
+            ft_render_talk(canvas, &t, frames[i].beat, UINT16_MAX, frames[i].choosing, true);
+
+            char path[96];
+            snprintf(path, sizeof(path), "preview/map_%02zu_%s.pbm", 60 + i, frames[i].name);
+            ft_stub_canvas_write_pbm(canvas, path);
+            const int c = ft_stub_canvas_clipped(canvas);
+            clipped_total += c;
+            printf("  %-18s %s\n", frames[i].name, c ? "CLIPPED" : "ok");
+        }
+
+        /* And Hale, back home, getting it wrong. */
+        FtWorld hh;
+        ft_world_init(&hh);
+        ft_quest_advance(&hh.quests, FT_QUEST_WREN, FT_QUEST_DONE);
+        ft_world_enter(&hh, FT_ROOM_WELDHOME, 22, 5);
+        hh.area_ms = 100000u;
+        hh.name = 3;
+        hh.facing = FT_FACE_UP;
+        {
+            const FtTalk t = with_name(ft_quest_hale_talk(&hh.quests, true, false, 0), 3);
+            ft_overworld_render_talk(canvas, &hh, hh.hale_mv.tx, hh.hale_mv.ty);
+            ft_render_talk(canvas, &t, 1, UINT16_MAX, false, true);
+            ft_stub_canvas_write_pbm(canvas, "preview/map_65_name-hale.pbm");
+            ft_overworld_render_talk(canvas, &hh, hh.hale_mv.tx, hh.hale_mv.ty);
+            ft_render_talk(canvas, &t, 2, UINT16_MAX, false, true);
+            ft_stub_canvas_write_pbm(canvas, "preview/map_66_name-you.pbm");
+            const int c = ft_stub_canvas_clipped(canvas);
+            clipped_total += c;
+            printf("  %-18s %s\n", "name-hale", c ? "CLIPPED" : "ok");
         }
     }
 

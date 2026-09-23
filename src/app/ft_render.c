@@ -1589,7 +1589,7 @@ void ft_render_talk(
 
     const FtBeat* at = &t->beats[beat];
     const bool    mine = choosing || at->who == FT_SAY_YOU;
-    const char*   who = mine ? "You" : t->speaker;
+    const char*   who = mine ? (t->you ? t->you : "You") : t->speaker;
 
     enum { BOX_Y = 37, TAB_H = 10 };
 
